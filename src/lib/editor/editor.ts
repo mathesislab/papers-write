@@ -4,9 +4,10 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { EditorState, Transaction, type Extension } from "@codemirror/state";
-import { EditorView, drawSelection, keymap, placeholder } from "@codemirror/view";
+import { EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
+import { Decoration, EditorView, drawSelection, keymap, placeholder, type DecorationSet } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { sections } from "./sections";
 
 const style = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "650", color: "var(--md-heading)" },
@@ -31,6 +32,48 @@ const theme = EditorView.theme({
   ".cm-placeholder": { color: "var(--muted)" },
 });
 
+/** The section shown alone (its index), or the whole text (null). */
+const showEffect = StateEffect.define<number | null>();
+
+/** The rest of the text hidden around the section shown, as whole lines; the cursor cannot go into it. */
+function hidden(text: string, index: number | null): DecorationSet {
+  if (index === null) return Decoration.none;
+  const all = sections(text);
+  const section = all[Math.min(index, all.length - 1)];
+  if (!section) return Decoration.none;
+  const ranges = [];
+  if (section.from > 0) ranges.push(Decoration.replace({ block: true }).range(0, section.from - 1));
+  if (section.to < text.length) ranges.push(Decoration.replace({ block: true }).range(section.to, text.length));
+  return Decoration.set(ranges);
+}
+
+const shown = StateField.define<{ index: number | null; hidden: DecorationSet }>({
+  create: () => ({ index: null, hidden: Decoration.none }),
+  update(value, tr) {
+    let index = value.index;
+    for (const e of tr.effects) if (e.is(showEffect)) index = e.value;
+    if (index === value.index && !tr.docChanged) return value;
+    return { index, hidden: hidden(tr.state.doc.toString(), index) };
+  },
+  provide: (field) => [
+    EditorView.decorations.from(field, (value) => value.hidden),
+    EditorView.atomicRanges.of((view) => view.state.field(field).hidden),
+  ],
+});
+
+/** The section `index` alone, or the whole text (null); the cursor into the section if it was out of it. */
+export function showSection(view: EditorView, index: number | null) {
+  const text = view.state.doc.toString();
+  const section = index === null ? undefined : sections(text)[index];
+  const cursor = view.state.selection.main.head;
+  const inside = section && cursor >= section.from && cursor <= section.to;
+  view.dispatch({
+    effects: showEffect.of(index),
+    ...(section && !inside ? { selection: { anchor: Math.max(section.from, section.to - 1) }, scrollIntoView: true } : {}),
+  });
+  view.focus();
+}
+
 /** An editor of `text` in `parent`; `changed` with the text after each change typed. */
 export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, more: Extension[] = []) {
   return new EditorView({
@@ -46,6 +89,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
         theme,
         EditorView.lineWrapping,
         placeholder("Your review, in Markdown: ## for its sections, a section a round, say."),
+        shown,
         EditorView.updateListener.of((update) => {
           if (update.docChanged && update.transactions.some((t) => t.annotation(Transaction.userEvent))) {
             changed(update.state.doc.toString());

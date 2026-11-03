@@ -5,11 +5,12 @@ export const SHORT = 10;
 
 /** The letters a tile holds on one line, before the name wraps to two. */
 const LINE = 7;
-/** The width the name has in a tile, in px, and the width of a letter in em (bold, capitals and all). */
-const WIDTH = 60;
+/** The width the name has in a tile beside the bar of its due date, in px, and the width of a letter in em (bold,
+ *  capitals and all). */
+const WIDTH = 54;
 const LETTER = 0.62;
 /** The font sizes of a name, on one line and on two, at most; and at least. */
-const SIZE = { one: 15, two: 12, min: 9 };
+const SIZE = { one: 13, two: 11, min: 8.5 };
 
 /** The first letters of the first two words of a name, in capitals (`Ice sheet paper` is `IS`). */
 export function initials(name: string): string {

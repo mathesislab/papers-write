@@ -7,7 +7,8 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  import { citation, fullReference, latex, pandoc, type Found, type RefItem, type Span } from "$lib/refs";
+  import { citation, fullReference, latex, pandoc } from "$lib/refs";
+  import type { Found, Item, Span } from "$lib/types";
 
   let {
     text = "",
@@ -64,7 +65,7 @@
   }
 
   /** The PDF of the paper marked, if it has one. */
-  function pdf(item: RefItem | undefined) {
+  function pdf(item: Item | undefined) {
     if (item?.files[0]) onopen(item.files[0]);
   }
 

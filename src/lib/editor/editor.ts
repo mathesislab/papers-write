@@ -1,12 +1,22 @@
 // The editor of the review: CodeMirror 6, Markdown, the markup dimmed (the headings, the emphasis, the quotes drawn
-// as they read), in the system font.
+// as they read, the page and line of a quote coloured), in the system font.
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
-import { Decoration, EditorView, drawSelection, keymap, placeholder, type DecorationSet } from "@codemirror/view";
+import {
+  Decoration,
+  EditorView,
+  ViewPlugin,
+  drawSelection,
+  keymap,
+  placeholder,
+  type DecorationSet,
+  type ViewUpdate,
+} from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { locationPrefix } from "./quote";
 import { sections } from "./sections";
 
 const style = HighlightStyle.define([
@@ -30,7 +40,38 @@ const theme = EditorView.theme({
   ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "1.5px" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { background: "var(--selection)" },
   ".cm-placeholder": { color: "var(--muted)" },
+  ".cm-location": { color: "var(--md-location)", fontWeight: "550" },
 });
+
+/** The page and line of a quote at the start of a line (`p5, l136–138:`) marked, in the lines in view. */
+const locations = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = mark(view);
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged) this.decorations = mark(update.view);
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+function mark(view: EditorView): DecorationSet {
+  const ranges = [];
+  let last = -1;
+  for (const { from, to } of view.visibleRanges) {
+    for (let pos = from; pos <= to; ) {
+      const line = view.state.doc.lineAt(pos);
+      pos = line.to + 1;
+      if (line.from <= last) continue;
+      last = line.from;
+      const length = locationPrefix(line.text);
+      if (length) ranges.push(Decoration.mark({ class: "cm-location" }).range(line.from, line.from + length));
+    }
+  }
+  return Decoration.set(ranges);
+}
 
 /** The section shown alone (its index), or the whole text (null). */
 const showEffect = StateEffect.define<number | null>();
@@ -86,6 +127,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         markdown(),
         syntaxHighlighting(style),
+        locations,
         theme,
         EditorView.lineWrapping,
         placeholder("Your review, in Markdown: ## for its sections, a section a round, say."),

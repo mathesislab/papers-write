@@ -9,7 +9,7 @@
   // sync client: the owner calls `changedOnDisk`), it is read again; with changes of its own not yet written, the bar
   // asks which to keep. Where the file is read from and written to is the owner's: `load` and `save`.
 
-  import { redo as stepForward, undo as stepBack } from "@codemirror/commands";
+  import { indentLess, indentMore, redo as stepForward, undo as stepBack } from "@codemirror/commands";
   import { Prec, type Extension } from "@codemirror/state";
   import { keymap, type EditorView } from "@codemirror/view";
   import { onMount } from "svelte";
@@ -136,6 +136,9 @@
   /** The history of the editor stepped back or forward. */
   export const undo = () => editor && stepBack(editor);
   export const redo = () => editor && stepForward(editor);
+  /** The lines at the cursor indented less or more (⌘[ and ⌘] of the Go menu). */
+  export const outdent = () => editor && indentLess(editor);
+  export const indent = () => editor && indentMore(editor);
   /** The symbols listed over the editor, if it is Markdown. */
   export function list() {
     if (!mono && editor) listing = true;

@@ -109,5 +109,24 @@ export function replaceText(view: EditorView, text: string) {
   });
 }
 
+/** A quote put in at the cursor as a paragraph of its own, the cursor after it to write what it is about. */
+export function insertQuote(view: EditorView, quote: string) {
+  const { doc } = view.state;
+  const { head } = view.state.selection.main;
+  const line = doc.lineAt(head);
+  const above = line.number > 1 ? doc.line(line.number - 1).text.trim() : "";
+  // a blank line between it and the text before it, and the text after it
+  const before = line.text.slice(0, head - line.from).trim() ? "\n\n" : line.text.trim() || !above ? "" : "\n";
+  const after = line.text.slice(head - line.from).trim() ? "\n\n" : "";
+  const cursor = head + before.length + quote.length + 1;
+  view.dispatch({
+    changes: { from: head, insert: `${before}${quote} ${after}` },
+    selection: { anchor: cursor },
+    scrollIntoView: true,
+    userEvent: "input.quote",
+  });
+  view.focus();
+}
+
 /** The words of a text. */
 export const wordsOf = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w)).length;

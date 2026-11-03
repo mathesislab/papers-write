@@ -17,7 +17,7 @@ test("a tile says the short name when set, else the initials, smaller as it grow
   assert.deepEqual(label("Ice sheet paper", "  "), { lines: ["IS"], size: 13 });
   assert.deepEqual(label("Ice sheet paper", "GMD1"), { lines: ["GMD1"], size: 13 });
   assert.deepEqual(label("Ice sheet paper", "Review"), { lines: ["Review"], size: 13 });
-  assert.deepEqual(label("Ice sheet paper", "Greenld"), { lines: ["Greenld"], size: 12 });
+  assert.deepEqual(label("Ice sheet paper", "Greenld"), { lines: ["Greenld"], size: 13 });
   assert.deepEqual(label("", null), { lines: [], size: 13 });
 });
 

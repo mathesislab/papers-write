@@ -1,5 +1,6 @@
-// The editor of the review: CodeMirror 6, Markdown, the markup dimmed (the headings, the emphasis, the quotes drawn
-// as they read, the page and line of a quote coloured), in the system font.
+// The editor of the review and of the files of a project: CodeMirror 6. Markdown, the markup dimmed (the headings,
+// the emphasis, the quotes drawn as they read, the page and line of a quote coloured), in the system font; or plain
+// text in monospace.
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
@@ -31,17 +32,21 @@ const style = HighlightStyle.define([
   { tag: tags.monospace, fontFamily: "ui-monospace, Menlo, monospace", fontSize: "12.5px" },
 ]);
 
-const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "13.5px", color: "var(--fg)", background: "transparent" },
-  "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { overflow: "auto", fontFamily: "-apple-system, BlinkMacSystemFont, system-ui, sans-serif" },
-  ".cm-content": { lineHeight: "1.6", padding: "10px 0 40px", caretColor: "var(--accent)" },
-  ".cm-line": { padding: "0 18px" },
-  ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "1.5px" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { background: "var(--selection)" },
-  ".cm-placeholder": { color: "var(--muted)" },
-  ".cm-location": { color: "var(--md-location)", fontWeight: "550" },
-});
+const theme = (mono: boolean) =>
+  EditorView.theme({
+    "&": { height: "100%", fontSize: mono ? "12.5px" : "13.5px", color: "var(--fg)", background: "transparent" },
+    "&.cm-focused": { outline: "none" },
+    ".cm-scroller": {
+      overflow: "auto",
+      fontFamily: mono ? "ui-monospace, Menlo, monospace" : "-apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+    },
+    ".cm-content": { lineHeight: mono ? "1.5" : "1.6", padding: "10px 0 40px", caretColor: "var(--accent)" },
+    ".cm-line": { padding: "0 18px" },
+    ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "1.5px" },
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { background: "var(--selection)" },
+    ".cm-placeholder": { color: "var(--muted)" },
+    ".cm-location": { color: "var(--md-location)", fontWeight: "550" },
+  });
 
 /** The page and line of a quote at the start of a line (`p5, l136–138:`) marked, in the lines in view. */
 const locations = ViewPlugin.fromClass(
@@ -115,8 +120,12 @@ export function showSection(view: EditorView, index: number | null) {
   view.focus();
 }
 
+/** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `extensions` are more. */
+export type Options = { mono?: boolean; extensions?: Extension[] };
+
 /** An editor of `text` in `parent`; `changed` with the text after each change typed. */
-export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, more: Extension[] = []) {
+export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, options: Options = {}) {
+  const mono = options.mono ?? false;
   return new EditorView({
     parent,
     state: EditorState.create({
@@ -125,19 +134,23 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
         history(),
         drawSelection(),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-        markdown(),
-        syntaxHighlighting(style),
-        locations,
-        theme,
+        ...(mono
+          ? []
+          : [
+              markdown(),
+              syntaxHighlighting(style),
+              locations,
+              placeholder("Your review, in Markdown: ## for its sections, a section a round, say."),
+              shown,
+            ]),
+        theme(mono),
         EditorView.lineWrapping,
-        placeholder("Your review, in Markdown: ## for its sections, a section a round, say."),
-        shown,
         EditorView.updateListener.of((update) => {
           if (update.docChanged && update.transactions.some((t) => t.annotation(Transaction.userEvent))) {
             changed(update.state.doc.toString());
           }
         }),
-        ...more,
+        ...(options.extensions ?? []),
       ],
     }),
   });

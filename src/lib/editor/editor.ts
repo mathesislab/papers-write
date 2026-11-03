@@ -183,5 +183,11 @@ export function insertQuote(view: EditorView, quote: string) {
   view.focus();
 }
 
+/** Text put in at the cursor, in place of what is selected, within the line. */
+export function insertText(view: EditorView, text: string) {
+  view.dispatch(view.state.replaceSelection(text), { scrollIntoView: true, userEvent: "input.paste" });
+  view.focus();
+}
+
 /** The words of a text. */
 export const wordsOf = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w)).length;

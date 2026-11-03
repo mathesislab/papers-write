@@ -2,7 +2,7 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { badge, chip, initials } from "../src/lib/bar.ts";
+import { initials, label } from "../src/lib/bar.ts";
 
 test("the first letters of the first two words, in capitals", () => {
   assert.equal(initials("Ice sheet paper"), "IS");
@@ -13,21 +13,23 @@ test("the first letters of the first two words, in capitals", () => {
 });
 
 test("a tile says the short name when set, else the initials, smaller as it grows", () => {
-  assert.deepEqual(chip("Ice sheet paper", null), { text: "IS", size: 13 });
-  assert.deepEqual(chip("Ice sheet paper", "  "), { text: "IS", size: 13 });
-  assert.deepEqual(chip("Ice sheet paper", "Ice"), { text: "Ice", size: 11.5 });
-  assert.deepEqual(chip("Ice sheet paper", "GMD1"), { text: "GMD1", size: 10 });
-  assert.deepEqual(chip("Ice sheet paper", "TooLong"), { text: "TooL", size: 10 });
-  assert.deepEqual(chip("", null), { text: "", size: 13 });
+  assert.deepEqual(label("Ice sheet paper", null), { lines: ["IS"], size: 15 });
+  assert.deepEqual(label("Ice sheet paper", "  "), { lines: ["IS"], size: 15 });
+  assert.deepEqual(label("Ice sheet paper", "GMD1"), { lines: ["GMD1"], size: 15 });
+  assert.deepEqual(label("Ice sheet paper", "Review"), { lines: ["Review"], size: 15 });
+  assert.deepEqual(label("Ice sheet paper", "Greenld"), { lines: ["Greenld"], size: 13.5 });
+  assert.deepEqual(label("", null), { lines: [], size: 15 });
 });
 
-const now = Date.parse("2026-11-10T00:00:00Z");
+test("a long name wraps to two lines, at a break near the middle, else in halves", () => {
+  assert.deepEqual(label("x", "Ice sheets"), { lines: ["Ice", "sheets"], size: 12 });
+  assert.deepEqual(label("x", "ice-sheets"), { lines: ["ice-", "sheets"], size: 12 });
+  assert.deepEqual(label("x", "Greenland1"), { lines: ["Green", "land1"], size: 12 });
+  assert.deepEqual(label("x", "ABCDEFGH"), { lines: ["ABCD", "EFGH"], size: 12 });
+  // a break that leaves a line too long is not taken
+  assert.deepEqual(label("x", "a bcdefghi"), { lines: ["a bcd", "efghi"], size: 12 });
+});
 
-test("a badge within a week of the due date, red when close, ! once past", () => {
-  assert.equal(badge(null, now), null);
-  assert.equal(badge("2026-11-30", now), null);
-  assert.deepEqual(badge("2026-11-17", now), { text: "7", urgent: false });
-  assert.deepEqual(badge("2026-11-12", now), { text: "2", urgent: true });
-  assert.deepEqual(badge("2026-11-10", now), { text: "0", urgent: true });
-  assert.deepEqual(badge("2026-11-08", now), { text: "!", urgent: true });
+test("a short name holds ten letters at most", () => {
+  assert.deepEqual(label("x", "Greenland1234"), { lines: ["Green", "land1"], size: 12 });
 });

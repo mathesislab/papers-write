@@ -1,6 +1,6 @@
 // The editor of the review and of the files of a project: CodeMirror 6. Markdown, the markup dimmed (the headings,
 // the emphasis, the quotes drawn as they read, the page and line of a quote coloured), in the system font; or plain
-// text in monospace.
+// text in monospace. The font and size of the Markdown follow the settings, through --editor-font and --editor-size.
 
 import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
@@ -20,6 +20,7 @@ import { tags } from "@lezer/highlight";
 import { locationPrefix } from "./quote";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
+import type { EditorFont } from "./types";
 
 const style = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "650", color: "var(--md-heading)" },
@@ -30,16 +31,30 @@ const style = HighlightStyle.define([
   { tag: tags.quote, color: "var(--md-quote)", fontStyle: "italic" },
   { tag: tags.link, color: "var(--accent)" },
   { tag: tags.url, color: "var(--muted)" },
-  { tag: tags.monospace, fontFamily: "ui-monospace, Menlo, monospace", fontSize: "12.5px" },
+  { tag: tags.monospace, fontFamily: "ui-monospace, Menlo, monospace", fontSize: "0.92em" },
 ]);
+
+/** The fonts of the settings. */
+const FONTS: Record<EditorFont, string> = {
+  system: "-apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+  serif: '"New York", ui-serif, Georgia, serif',
+  mono: "ui-monospace, Menlo, monospace",
+};
+
+/** The font and size of the settings set for the editors of this window (CSS variables of the page). */
+export function setEditorFont(font: EditorFont, size: number) {
+  const style = document.documentElement.style;
+  style.setProperty("--editor-font", FONTS[font] ?? FONTS.system);
+  style.setProperty("--editor-size", `${size}px`);
+}
 
 const theme = (mono: boolean) =>
   EditorView.theme({
-    "&": { height: "100%", fontSize: mono ? "12.5px" : "13.5px", color: "var(--fg)", background: "transparent" },
+    "&": { height: "100%", fontSize: mono ? "calc(var(--editor-size, 13.5px) - 1px)" : "var(--editor-size, 13.5px)", color: "var(--fg)", background: "transparent" },
     "&.cm-focused": { outline: "none" },
     ".cm-scroller": {
       overflow: "auto",
-      fontFamily: mono ? "ui-monospace, Menlo, monospace" : "-apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+      fontFamily: mono ? "ui-monospace, Menlo, monospace" : `var(--editor-font, ${FONTS.system})`,
     },
     ".cm-content": { lineHeight: mono ? "1.5" : "1.6", padding: "10px 0 40px", caretColor: "var(--accent)" },
     ".cm-line": { padding: "0 18px" },

@@ -10,11 +10,12 @@
   // asks which to keep. Where the file is read from and written to is the owner's: `load` and `save`.
 
   import { redo as stepForward, undo as stepBack } from "@codemirror/commands";
-  import type { Extension } from "@codemirror/state";
-  import type { EditorView } from "@codemirror/view";
+  import { Prec, type Extension } from "@codemirror/state";
+  import { keymap, type EditorView } from "@codemirror/view";
   import { onMount } from "svelte";
-  import { makeEditor, replaceText, setRules } from "$lib/editor";
-  import { DEFAULTS, merged } from "$lib/symbols";
+  import { insertSymbol, makeEditor, replaceText, setRules } from "$lib/editor";
+  import SymbolList from "$lib/SymbolList.svelte";
+  import { DEFAULTS, LATEX, merged } from "$lib/symbols";
 
   let {
     load,
@@ -53,7 +54,12 @@
   /** changed elsewhere while changes of its own were not written */
   let conflict = $state(false);
   let gone = false;
+  /** the list of symbols shown over the editor (⌘/) */
+  let listing = $state(false);
   const rules = $derived(merged(DEFAULTS, symbols));
+  const entries = $derived([...rules, ...[...LATEX].map(([keys, insert]) => ({ keys, insert }))]);
+  // ⌘/ in the editor lists the symbols (the menu's Symbols… has the key first, in the app)
+  const listKey = Prec.high(keymap.of([{ key: "Mod-/", run: () => (list(), true) }]));
   $effect(() => {
     const now = rules;
     if (editor) setRules(editor, now);
@@ -70,7 +76,7 @@
   function show(file: { path: string; text: string }) {
     [path, written, conflict] = [file.path, file.text, false];
     if (editor) replaceText(editor, file.text);
-    else editor = makeEditor(host, file.text, typed, { mono, rules, extensions });
+    else editor = makeEditor(host, file.text, typed, { mono, rules, extensions: mono ? extensions : [...extensions, listKey] });
     onchange?.(file.text);
     [status, error] = ["saved", ""];
   }
@@ -130,6 +136,16 @@
   /** The history of the editor stepped back or forward. */
   export const undo = () => editor && stepBack(editor);
   export const redo = () => editor && stepForward(editor);
+  /** The symbols listed over the editor, if it is Markdown. */
+  export function list() {
+    if (!mono && editor) listing = true;
+  }
+
+  /** A symbol chosen from the list: at the cursor. */
+  function chosen(symbol: string) {
+    listing = false;
+    if (editor) insertSymbol(editor, symbol);
+  }
 
   onMount(() => {
     reload();
@@ -157,10 +173,14 @@
     </div>
   {/if}
   <div class="host" bind:this={host}></div>
+  {#if listing}
+    <SymbolList {entries} oninsert={chosen} onclose={() => ((listing = false), editor?.focus())} />
+  {/if}
 </div>
 
 <style>
   .file {
+    position: relative;
     height: 100%;
     display: flex;
     flex-direction: column;

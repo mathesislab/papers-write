@@ -179,6 +179,12 @@ const latexTab = (view: EditorView) => {
   return !!hit;
 };
 
+/** A symbol put in at the cursor, in place of the selection. */
+export function insertSymbol(view: EditorView, symbol: string) {
+  view.dispatch(view.state.replaceSelection(symbol), { userEvent: "input.symbol", scrollIntoView: true });
+  view.focus();
+}
+
 /** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `rules` are the sequences
  *  that become symbols as they are typed (Markdown only); `extensions` are more. */
 export type Options = { mono?: boolean; rules?: readonly Rule[]; extensions?: Extension[] };

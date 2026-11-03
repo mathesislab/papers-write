@@ -13,13 +13,15 @@
   import type { Extension } from "@codemirror/state";
   import type { EditorView } from "@codemirror/view";
   import { onMount } from "svelte";
-  import { makeEditor, replaceText } from "$lib/editor";
+  import { makeEditor, replaceText, setRules } from "$lib/editor";
+  import { DEFAULTS, merged } from "$lib/symbols";
 
   let {
     load,
     save,
     mono = false,
     extensions = [],
+    symbols = [],
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
@@ -33,6 +35,8 @@
     mono?: boolean;
     /** more extensions of the editor */
     extensions?: Extension[];
+    /** the user's own sequences typed that become symbols, and the defaults they turn off (Markdown only) */
+    symbols?: [string, string][];
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -49,6 +53,11 @@
   /** changed elsewhere while changes of its own were not written */
   let conflict = $state(false);
   let gone = false;
+  const rules = $derived(merged(DEFAULTS, symbols));
+  $effect(() => {
+    const now = rules;
+    if (editor) setRules(editor, now);
+  });
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const text = () => editor?.state.doc.toString() ?? "";
@@ -61,7 +70,7 @@
   function show(file: { path: string; text: string }) {
     [path, written, conflict] = [file.path, file.text, false];
     if (editor) replaceText(editor, file.text);
-    else editor = makeEditor(host, file.text, typed, { mono, extensions });
+    else editor = makeEditor(host, file.text, typed, { mono, rules, extensions });
     onchange?.(file.text);
     [status, error] = ["saved", ""];
   }

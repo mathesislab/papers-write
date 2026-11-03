@@ -2,9 +2,9 @@
 // the emphasis, the quotes drawn as they read, the page and line of a quote coloured), in the system font; or plain
 // text in monospace.
 
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
 import {
   Decoration,
@@ -19,6 +19,7 @@ import {
 import { tags } from "@lezer/highlight";
 import { locationPrefix } from "./quote";
 import { sections } from "./sections";
+import { DEFAULTS, latex, typed, type Rule } from "./symbols";
 
 const style = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "650", color: "var(--md-heading)" },
@@ -120,8 +121,67 @@ export function showSection(view: EditorView, index: number | null) {
   view.focus();
 }
 
-/** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `extensions` are more. */
-export type Options = { mono?: boolean; extensions?: Extension[] };
+/** The sequences that become symbols as they are typed. */
+const rulesEffect = StateEffect.define<readonly Rule[]>();
+const symbolRules = StateField.define<readonly Rule[]>({
+  create: () => DEFAULTS,
+  update(rules, tr) {
+    for (const e of tr.effects) if (e.is(rulesEffect)) return e.value;
+    return rules;
+  },
+});
+
+/** The sequences typed that become symbols set (see `merged` in symbols.ts), in an editor made as Markdown. */
+export function setRules(view: EditorView, rules: readonly Rule[]) {
+  view.dispatch({ effects: rulesEffect.of(rules) });
+}
+
+/** Whether `pos` is in code, where what is typed stays as typed: inside an inline code span or in a block of code. */
+export function inCode(state: EditorState, pos: number): boolean {
+  for (let node = syntaxTree(state).resolve(pos, -1); node.parent; node = node.parent) {
+    if (node.name === "InlineCode") return node.from < pos && pos < node.to;
+    if (node.name === "FencedCode" || node.name === "CodeBlock") return true;
+  }
+  return false;
+}
+
+/** The `back` characters before the cursor replaced by `insert`, the cursor after it. The change is an undo step of its
+ *  own: undone, what was typed is back. */
+function replaceBack(view: EditorView, back: number, insert: string) {
+  const head = view.state.selection.main.head;
+  view.dispatch({
+    changes: { from: head - back, to: head, insert },
+    selection: { anchor: head - back + insert.length },
+    annotations: isolateHistory.of("full"),
+    userEvent: "input.symbol",
+  });
+}
+
+/** A sequence typed that completes one of the rules: the character typed goes in, then the sequence is replaced. */
+const typedSymbols = EditorView.inputHandler.of((view, from, to, text, insert) => {
+  const { state } = view;
+  if (view.composing || text.length !== 1 || from !== to || state.selection.ranges.length !== 1) return false;
+  const line = state.doc.lineAt(from);
+  const hit = typed(line.text.slice(0, from - line.from), text, state.field(symbolRules));
+  if (!hit || inCode(state, from)) return false;
+  view.dispatch(insert());
+  replaceBack(view, hit.from + 1, hit.insert);
+  return true;
+});
+
+/** Tab after a LaTeX name (`\alpha`) gives its symbol; after anything else it is left to the indent. */
+const latexTab = (view: EditorView) => {
+  const { main } = view.state.selection;
+  if (!main.empty) return false;
+  const line = view.state.doc.lineAt(main.head);
+  const hit = latex(line.text.slice(0, main.head - line.from));
+  if (hit) replaceBack(view, hit.length, hit.insert);
+  return !!hit;
+};
+
+/** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `rules` are the sequences
+ *  that become symbols as they are typed (Markdown only); `extensions` are more. */
+export type Options = { mono?: boolean; rules?: readonly Rule[]; extensions?: Extension[] };
 
 /** An editor of `text` in `parent`; `changed` with the text after each change typed. */
 export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, options: Options = {}) {
@@ -133,11 +193,13 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
       extensions: [
         history(),
         drawSelection(),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([...(mono ? [] : [{ key: "Tab", run: latexTab }]), ...defaultKeymap, ...historyKeymap, indentWithTab]),
         ...(mono
           ? []
           : [
               markdown(),
+              symbolRules.init(() => options.rules ?? DEFAULTS),
+              typedSymbols,
               syntaxHighlighting(style),
               locations,
               placeholder("Your review, in Markdown: ## for its sections, a section a round, say."),

@@ -257,14 +257,35 @@ const tab = (view: EditorView) => {
   return true;
 };
 
-/** What the editors take from the settings: what Tab puts in. */
-export type EditorPrefs = { indent: Indent };
-export const PREFS: EditorPrefs = { indent: "four" };
-export const prefsFrom = (s: Settings): EditorPrefs => ({ indent: s.indent ?? PREFS.indent });
+/** What the editors take from the settings: what Tab puts in, and whether the text is a column of a readable width. */
+export type EditorPrefs = { indent: Indent; readable: boolean };
+export const PREFS: EditorPrefs = { indent: "four", readable: true };
+export const prefsFrom = (s: Settings): EditorPrefs => ({
+  indent: s.indent ?? PREFS.indent,
+  readable: s.readable_width ?? PREFS.readable,
+});
 
 const INDENTS: Record<Indent, string> = { four: "    ", two: "  ", tab: "\t" };
+
+/** The width of the column of text when it is readable, and the room the line numbers take beside it. */
+const COLUMN = "46em";
+const GUTTER = "3.5em";
+/** The text as a column of `COLUMN` at most, in the middle, as Obsidian has it: the room left is a margin on each
+ *  side (of the lines, so that a click there still goes into the text), down to the usual padding in a narrow window.
+ *  With the line numbers, they stand beside the column. */
+const readable = EditorView.theme({
+  "&": { containerType: "inline-size" },
+  // more specific than the theme's padding of the lines, which it overrides
+  ".cm-content .cm-line": { paddingInline: `max(18px, calc((100cqw - ${COLUMN}) / 2))` },
+  ".cm-gutters": { paddingLeft: `max(0px, calc((100cqw - ${COLUMN}) / 2 - ${GUTTER}))` },
+  ".cm-gutters ~ .cm-content .cm-line": { paddingLeft: "18px" },
+});
+
 const prefsSlot = new Compartment();
-const prefsOf = (prefs: EditorPrefs): Extension => [indentUnit.of(INDENTS[prefs.indent] ?? INDENTS.four)];
+const prefsOf = (prefs: EditorPrefs): Extension => [
+  indentUnit.of(INDENTS[prefs.indent] ?? INDENTS.four),
+  prefs.readable ? readable : [],
+];
 
 /** The settings of the editor changed. */
 export function setPrefs(view: EditorView, prefs: EditorPrefs) {

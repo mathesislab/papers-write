@@ -12,6 +12,7 @@ import {
   ViewPlugin,
   drawSelection,
   keymap,
+  lineNumbers,
   placeholder,
   type DecorationSet,
   type ViewUpdate,
@@ -257,13 +258,24 @@ const tab = (view: EditorView) => {
   return true;
 };
 
-/** What the editors take from the settings: what Tab puts in, and whether the text is a column of a readable width. */
-export type EditorPrefs = { indent: Indent; readable: boolean };
-export const PREFS: EditorPrefs = { indent: "four", readable: true };
+/** What the editors take from the settings: what Tab puts in, whether the text is a column of a readable width, and
+ *  whether its lines are numbered. */
+export type EditorPrefs = { indent: Indent; readable: boolean; lineNumbers: boolean };
+export const PREFS: EditorPrefs = { indent: "four", readable: true, lineNumbers: false };
 export const prefsFrom = (s: Settings): EditorPrefs => ({
   indent: s.indent ?? PREFS.indent,
   readable: s.readable_width ?? PREFS.readable,
+  lineNumbers: s.line_numbers ?? PREFS.lineNumbers,
 });
+
+/** The numbers of the lines, quiet, on the page's background. */
+const numbered = [
+  lineNumbers(),
+  EditorView.theme({
+    ".cm-gutters": { background: "transparent", border: "none", color: "var(--muted)" },
+    ".cm-lineNumbers .cm-gutterElement": { padding: "0 4px 0 10px", fontSize: "0.85em", fontVariantNumeric: "tabular-nums" },
+  }),
+];
 
 const INDENTS: Record<Indent, string> = { four: "    ", two: "  ", tab: "\t" };
 
@@ -285,6 +297,7 @@ const prefsSlot = new Compartment();
 const prefsOf = (prefs: EditorPrefs): Extension => [
   indentUnit.of(INDENTS[prefs.indent] ?? INDENTS.four),
   prefs.readable ? readable : [],
+  prefs.lineNumbers ? numbered : [],
 ];
 
 /** The settings of the editor changed. */
@@ -373,3 +386,13 @@ export function insertQuote(view: EditorView, quote: string) {
 
 /** The words of a text. */
 export const wordsOf = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w)).length;
+
+/** The words selected, in all the ranges of the selection. */
+export const selectedWords = (state: EditorState) =>
+  state.selection.ranges.reduce((n, r) => n + (r.empty ? 0 : wordsOf(state.sliceDoc(r.from, r.to))), 0);
+
+/** "1,234 words", or "56 of 1,234 words" with words selected. */
+export function wordCount(words: number, selected = 0): string {
+  const all = `${words.toLocaleString()} word${words === 1 ? "" : "s"}`;
+  return selected ? `${selected.toLocaleString()} of ${all}` : all;
+}

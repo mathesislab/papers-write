@@ -11,9 +11,9 @@
 
   import { indentLess, indentMore, redo as stepForward, undo as stepBack } from "@codemirror/commands";
   import { Prec, type Extension } from "@codemirror/state";
-  import { keymap, type EditorView } from "@codemirror/view";
+  import { EditorView, keymap } from "@codemirror/view";
   import { onMount } from "svelte";
-  import { PREFS, insertSymbol, makeEditor, replaceText, setPrefs, setRules, type EditorPrefs } from "$lib/editor";
+  import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "$lib/editor";
   import SymbolList from "$lib/SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "$lib/symbols";
 
@@ -28,6 +28,7 @@
     status = $bindable("saved"),
     error = $bindable(""),
     path = $bindable(""),
+    selected = $bindable(0),
   }: {
     /** the file read: its path, and its text */
     load: () => Promise<{ path: string; text: string }>;
@@ -48,6 +49,8 @@
     error?: string;
     /** the path of the file as last read */
     path?: string;
+    /** the words selected */
+    selected?: number;
   } = $props();
 
   let host: HTMLElement;
@@ -63,6 +66,9 @@
   const entries = $derived([...rules, ...[...LATEX].map(([keys, insert]) => ({ keys, insert }))]);
   // ⌘/ in the editor lists the symbols (the menu's Symbols… has the key first, in the app)
   const listKey = Prec.high(keymap.of([{ key: "Mod-/", run: () => (list(), true) }]));
+  const selection = EditorView.updateListener.of((u) => {
+    if (u.selectionSet || u.docChanged) selected = selectedWords(u.state);
+  });
   $effect(() => {
     const now = rules;
     if (editor) setRules(editor, now);
@@ -83,7 +89,12 @@
   function show(file: { path: string; text: string }) {
     [path, written, conflict] = [file.path, file.text, false];
     if (editor) replaceText(editor, file.text);
-    else editor = makeEditor(host, file.text, typed, { mono, rules, prefs, extensions: mono ? extensions : [...extensions, listKey] });
+    else editor = makeEditor(host, file.text, typed, {
+        mono,
+        rules,
+        prefs,
+        extensions: [...extensions, selection, ...(mono ? [] : [listKey])],
+      });
     onchange?.(file.text);
     [status, error] = ["saved", ""];
   }

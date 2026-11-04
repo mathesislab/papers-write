@@ -2,7 +2,16 @@
 // the emphasis, the quotes drawn as they read, the page and line of a quote coloured), in the system font; or plain
 // text in monospace. The font and size of the Markdown follow the settings, through --editor-font and --editor-size.
 
-import { defaultKeymap, history, historyKeymap, indentLess, indentMore, isolateHistory } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentLess,
+  indentMore,
+  isolateHistory,
+  redoSelection,
+  undoSelection,
+} from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { Compartment, EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
@@ -311,6 +320,9 @@ export function insertSymbol(view: EditorView, symbol: string) {
   view.focus();
 }
 
+/** The history's keys but ⌘U and ⇧⌘U (undo and redo the selection): ⌘U is the menu's Quote Selection. */
+const historyKeys = historyKeymap.filter((k) => k.run !== undoSelection && k.run !== redoSelection);
+
 /** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `rules` are the sequences
  *  that become symbols as they are typed (Markdown only); `prefs` those of the settings; `extensions` are more. */
 export type Options = { mono?: boolean; rules?: readonly Rule[]; prefs?: EditorPrefs; extensions?: Extension[] };
@@ -330,7 +342,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
           ...(mono ? [] : [{ key: "Tab", run: latexTab }]),
           { key: "Tab", run: tab, shift: indentLess },
           ...defaultKeymap,
-          ...historyKeymap,
+          ...historyKeys,
         ]),
         prefsSlot.of(prefsOf(options.prefs ?? PREFS)),
         ...(mono

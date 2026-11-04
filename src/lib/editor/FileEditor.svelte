@@ -122,7 +122,11 @@
     try {
       const file = await load();
       if (gone || file.path !== path || file.text === written) return;
-      if (text() === written) show(file);
+      // what is in the editor already: it is what was written
+      if (file.text === text()) {
+        written = file.text;
+        [status, error] = ["saved", ""];
+      } else if (text() === written) show(file);
       else conflict = true;
     } catch (e) {
       failed(e);

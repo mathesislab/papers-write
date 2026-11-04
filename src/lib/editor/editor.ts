@@ -17,6 +17,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { difference } from "./difference";
 import { locationPrefix } from "./quote";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
@@ -239,12 +240,12 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
   });
 }
 
-/** The whole text replaced (read again from the file), not to be undone into. */
+/** The text replaced by `text` (read again from the file), not to be undone into: only the part that differs, so
+ *  that the cursor and the history of what was typed elsewhere stay where they were. */
 export function replaceText(view: EditorView, text: string) {
-  view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: text },
-    annotations: Transaction.addToHistory.of(false),
-  });
+  const change = difference(view.state.doc.toString(), text);
+  if (change.from === change.to && !change.insert) return;
+  view.dispatch({ changes: change, annotations: Transaction.addToHistory.of(false) });
 }
 
 /** A quote put in at the cursor as a paragraph of its own, the cursor after it to write what it is about. */

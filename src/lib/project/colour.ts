@@ -1,6 +1,6 @@
-// The colour of a project: a bar at the top of its windows, to tell them apart among others (Mission Control,
-// small windows). The colours of Papers Desktop's window (its src/lib/windowColour.ts), pastel: a bar to tell the
-// window apart, not to catch the eye.
+// The colours of a project (its tile in the project bar, its dot among the recent projects) and of the bar at the
+// top of the app's windows, to tell them apart among others (the settings). The colours of Papers Desktop's window
+// (its src/lib/windowColour.ts), pastel: to tell apart, not to catch the eye.
 
 import type { Colour } from "./types";
 

@@ -1,6 +1,7 @@
-//! The colour of a project: a bar at the top of its windows, to tell them
-//! apart among others (Mission Control, small windows). The colours of
-//! Papers Desktop's window, by name; how they are drawn is the page's.
+//! The colours of Papers Desktop's window, by name: that of a project (its
+//! tile in the project bar, its dot among the recent projects), and that of
+//! the bar at the top of the app's windows (the settings). How they are
+//! drawn is the page's.
 
 use serde::{Deserialize, Serialize};
 

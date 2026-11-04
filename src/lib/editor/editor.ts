@@ -270,7 +270,7 @@ const tab = (view: EditorView) => {
 /** What the editors take from the settings: what Tab puts in, whether the text is a column of a readable width, and
  *  whether its lines are numbered. */
 export type EditorPrefs = { indent: Indent; readable: boolean; lineNumbers: boolean };
-export const PREFS: EditorPrefs = { indent: "four", readable: true, lineNumbers: false };
+export const PREFS: EditorPrefs = { indent: "two", readable: true, lineNumbers: false };
 export const prefsFrom = (s: Settings): EditorPrefs => ({
   indent: s.indent ?? PREFS.indent,
   readable: s.readable_width ?? PREFS.readable,
@@ -286,7 +286,7 @@ const numbered = [
   }),
 ];
 
-const INDENTS: Record<Indent, string> = { four: "    ", two: "  ", tab: "\t" };
+const INDENTS: Record<Indent, string> = { two: "  ", four: "    ", tab: "\t" };
 
 /** The width of the column of text when it is readable, and the room the line numbers take beside it. */
 const COLUMN = "46em";
@@ -304,7 +304,7 @@ const readable = EditorView.theme({
 
 const prefsSlot = new Compartment();
 const prefsOf = (prefs: EditorPrefs): Extension => [
-  indentUnit.of(INDENTS[prefs.indent] ?? INDENTS.four),
+  indentUnit.of(INDENTS[prefs.indent] ?? INDENTS.two),
   prefs.readable ? readable : [],
   prefs.lineNumbers ? numbered : [],
 ];

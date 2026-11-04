@@ -13,7 +13,7 @@
   import { Prec, type Extension } from "@codemirror/state";
   import { keymap, type EditorView } from "@codemirror/view";
   import { onMount } from "svelte";
-  import { insertSymbol, makeEditor, replaceText, setRules } from "$lib/editor";
+  import { PREFS, insertSymbol, makeEditor, replaceText, setPrefs, setRules, type EditorPrefs } from "$lib/editor";
   import SymbolList from "$lib/SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "$lib/symbols";
 
@@ -23,6 +23,7 @@
     mono = false,
     extensions = [],
     symbols = [],
+    prefs = PREFS,
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
@@ -38,6 +39,8 @@
     extensions?: Extension[];
     /** the user's own sequences typed that become symbols, and the defaults they turn off (Markdown only) */
     symbols?: [string, string][];
+    /** what the editor takes from the settings */
+    prefs?: EditorPrefs;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -64,6 +67,10 @@
     const now = rules;
     if (editor) setRules(editor, now);
   });
+  $effect(() => {
+    const now = prefs;
+    if (editor) setPrefs(editor, now);
+  });
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const text = () => editor?.state.doc.toString() ?? "";
@@ -76,7 +83,7 @@
   function show(file: { path: string; text: string }) {
     [path, written, conflict] = [file.path, file.text, false];
     if (editor) replaceText(editor, file.text);
-    else editor = makeEditor(host, file.text, typed, { mono, rules, extensions: mono ? extensions : [...extensions, listKey] });
+    else editor = makeEditor(host, file.text, typed, { mono, rules, prefs, extensions: mono ? extensions : [...extensions, listKey] });
     onchange?.(file.text);
     [status, error] = ["saved", ""];
   }

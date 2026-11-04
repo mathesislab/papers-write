@@ -2,10 +2,10 @@
 // the emphasis, the quotes drawn as they read, the page and line of a quote coloured), in the system font; or plain
 // text in monospace. The font and size of the Markdown follow the settings, through --editor-font and --editor-size.
 
-import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentLess, indentMore, isolateHistory } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
-import { EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
+import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { Compartment, EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -21,7 +21,7 @@ import { difference } from "./difference";
 import { locationPrefix } from "./quote";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
-import type { EditorFont } from "./types";
+import type { EditorFont, Indent, Settings } from "./types";
 
 const style = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "650", color: "var(--md-heading)" },
@@ -195,6 +195,28 @@ const latexTab = (view: EditorView) => {
   return !!hit;
 };
 
+/** Tab: the indent of the settings at the cursor; with text selected, the lines of the selection indented. */
+const tab = (view: EditorView) => {
+  const { state } = view;
+  if (state.selection.ranges.some((r) => !r.empty)) return indentMore(view);
+  view.dispatch(state.replaceSelection(state.facet(indentUnit)), { scrollIntoView: true, userEvent: "input.indent" });
+  return true;
+};
+
+/** What the editors take from the settings: what Tab puts in. */
+export type EditorPrefs = { indent: Indent };
+export const PREFS: EditorPrefs = { indent: "four" };
+export const prefsFrom = (s: Settings): EditorPrefs => ({ indent: s.indent ?? PREFS.indent });
+
+const INDENTS: Record<Indent, string> = { four: "    ", two: "  ", tab: "\t" };
+const prefsSlot = new Compartment();
+const prefsOf = (prefs: EditorPrefs): Extension => [indentUnit.of(INDENTS[prefs.indent] ?? INDENTS.four)];
+
+/** The settings of the editor changed. */
+export function setPrefs(view: EditorView, prefs: EditorPrefs) {
+  view.dispatch({ effects: prefsSlot.reconfigure(prefsOf(prefs)) });
+}
+
 /** A symbol put in at the cursor, in place of the selection. */
 export function insertSymbol(view: EditorView, symbol: string) {
   view.dispatch(view.state.replaceSelection(symbol), { userEvent: "input.symbol", scrollIntoView: true });
@@ -202,8 +224,8 @@ export function insertSymbol(view: EditorView, symbol: string) {
 }
 
 /** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `rules` are the sequences
- *  that become symbols as they are typed (Markdown only); `extensions` are more. */
-export type Options = { mono?: boolean; rules?: readonly Rule[]; extensions?: Extension[] };
+ *  that become symbols as they are typed (Markdown only); `prefs` those of the settings; `extensions` are more. */
+export type Options = { mono?: boolean; rules?: readonly Rule[]; prefs?: EditorPrefs; extensions?: Extension[] };
 
 /** An editor of `text` in `parent`; `changed` with the text after each change typed. */
 export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, options: Options = {}) {
@@ -215,7 +237,13 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
       extensions: [
         history(),
         drawSelection(),
-        keymap.of([...(mono ? [] : [{ key: "Tab", run: latexTab }]), ...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([
+          ...(mono ? [] : [{ key: "Tab", run: latexTab }]),
+          { key: "Tab", run: tab, shift: indentLess },
+          ...defaultKeymap,
+          ...historyKeymap,
+        ]),
+        prefsSlot.of(prefsOf(options.prefs ?? PREFS)),
         ...(mono
           ? []
           : [

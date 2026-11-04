@@ -2,25 +2,36 @@
 // the emphasis, the quotes drawn as they read, the page and line of a quote coloured), in the system font; or plain
 // text in monospace. The font and size of the Markdown follow the settings, through --editor-font and --editor-size.
 
-import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentLess,
+  indentMore,
+  isolateHistory,
+  redoSelection,
+  undoSelection,
+} from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
-import { EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
+import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { Compartment, EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
   ViewPlugin,
   drawSelection,
   keymap,
+  lineNumbers,
   placeholder,
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { difference } from "./difference";
 import { locationPrefix } from "./quote";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
-import type { EditorFont } from "./types";
+import type { EditorFont, Indent, Settings } from "./types";
 
 const style = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "650", color: "var(--md-heading)" },
@@ -93,6 +104,60 @@ function mark(view: EditorView): DecorationSet {
   }
   return Decoration.set(ranges);
 }
+
+/** The band at the top and foot of the editor where a selection being made with the mouse scrolls, in px. */
+const EDGE = 24;
+
+/** A selection made with the mouse scrolls the text at the top and foot of the editor, faster the further into the
+ *  edge and the longer it is held there. CodeMirror's own scrolling goes only with the distance past the edge: the
+ *  pane at the foot of the screen leaves little room below it, and the text crept down while it flew up. The
+ *  selection follows each step, as a move of the mouse where it is. */
+const dragScroll = ViewPlugin.fromClass(
+  class {
+    timer: ReturnType<typeof setInterval> | undefined;
+    /** how long the mouse has been in the edge, in ms */
+    held = 0;
+    last: MouseEvent | null = null;
+    constructor(readonly view: EditorView) {
+      view.contentDOM.addEventListener("mousedown", this.down);
+    }
+    down = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      this.stop();
+      [this.last, this.held] = [e, 0];
+      const doc = this.view.contentDOM.ownerDocument;
+      doc.addEventListener("mousemove", this.move);
+      doc.addEventListener("mouseup", this.stop);
+      this.timer = setInterval(this.step, 50);
+    };
+    move = (e: MouseEvent) => {
+      if (e.isTrusted) this.last = e;
+    };
+    step = () => {
+      const e = this.last;
+      if (!e || e.buttons === 0) return this.stop();
+      const { top, bottom } = this.view.scrollDOM.getBoundingClientRect();
+      const into = e.clientY < top + EDGE ? e.clientY - top - EDGE : e.clientY > bottom - EDGE ? e.clientY - bottom + EDGE : 0;
+      // a click held still is no selection
+      if (!into || this.view.state.selection.main.empty) return void (this.held = 0);
+      this.held += 50;
+      this.view.scrollDOM.scrollTop += Math.sign(into) * (4 + 0.5 * Math.abs(into)) * Math.min(6, 1 + this.held / 300);
+      const { clientX, clientY, buttons, shiftKey, altKey, metaKey } = e;
+      e.view?.document.dispatchEvent(new MouseEvent("mousemove", { clientX, clientY, buttons, shiftKey, altKey, metaKey, bubbles: true }));
+    };
+    stop = () => {
+      clearInterval(this.timer);
+      this.timer = undefined;
+      const doc = this.view.contentDOM.ownerDocument;
+      doc.removeEventListener("mousemove", this.move);
+      doc.removeEventListener("mouseup", this.stop);
+    };
+    destroy() {
+      this.stop();
+      this.view.contentDOM.removeEventListener("mousedown", this.down);
+    }
+  },
+);
 
 /** The section shown alone (its index), or the whole text (null). */
 const showEffect = StateEffect.define<number | null>();
@@ -194,15 +259,73 @@ const latexTab = (view: EditorView) => {
   return !!hit;
 };
 
+/** Tab: the indent of the settings at the cursor; with text selected, the lines of the selection indented. */
+const tab = (view: EditorView) => {
+  const { state } = view;
+  if (state.selection.ranges.some((r) => !r.empty)) return indentMore(view);
+  view.dispatch(state.replaceSelection(state.facet(indentUnit)), { scrollIntoView: true, userEvent: "input.indent" });
+  return true;
+};
+
+/** What the editors take from the settings: what Tab puts in, whether the text is a column of a readable width, and
+ *  whether its lines are numbered. */
+export type EditorPrefs = { indent: Indent; readable: boolean; lineNumbers: boolean };
+export const PREFS: EditorPrefs = { indent: "two", readable: true, lineNumbers: false };
+export const prefsFrom = (s: Settings): EditorPrefs => ({
+  indent: s.indent ?? PREFS.indent,
+  readable: s.readable_width ?? PREFS.readable,
+  lineNumbers: s.line_numbers ?? PREFS.lineNumbers,
+});
+
+/** The numbers of the lines, quiet, on the page's background. */
+const numbered = [
+  lineNumbers(),
+  EditorView.theme({
+    ".cm-gutters": { background: "transparent", border: "none", color: "var(--muted)" },
+    ".cm-lineNumbers .cm-gutterElement": { padding: "0 4px 0 10px", fontSize: "0.85em", fontVariantNumeric: "tabular-nums" },
+  }),
+];
+
+const INDENTS: Record<Indent, string> = { two: "  ", four: "    ", tab: "\t" };
+
+/** The width of the column of text when it is readable, and the room the line numbers take beside it. */
+const COLUMN = "46em";
+const GUTTER = "3.5em";
+/** The text as a column of `COLUMN` at most, in the middle, as Obsidian has it: the room left is a margin on each
+ *  side (of the lines, so that a click there still goes into the text), down to the usual padding in a narrow window.
+ *  With the line numbers, they stand beside the column. */
+const readable = EditorView.theme({
+  "&": { containerType: "inline-size" },
+  // more specific than the theme's padding of the lines, which it overrides
+  ".cm-content .cm-line": { paddingInline: `max(18px, calc((100cqw - ${COLUMN}) / 2))` },
+  ".cm-gutters": { paddingLeft: `max(0px, calc((100cqw - ${COLUMN}) / 2 - ${GUTTER}))` },
+  ".cm-gutters ~ .cm-content .cm-line": { paddingLeft: "18px" },
+});
+
+const prefsSlot = new Compartment();
+const prefsOf = (prefs: EditorPrefs): Extension => [
+  indentUnit.of(INDENTS[prefs.indent] ?? INDENTS.two),
+  prefs.readable ? readable : [],
+  prefs.lineNumbers ? numbered : [],
+];
+
+/** The settings of the editor changed. */
+export function setPrefs(view: EditorView, prefs: EditorPrefs) {
+  view.dispatch({ effects: prefsSlot.reconfigure(prefsOf(prefs)) });
+}
+
 /** A symbol put in at the cursor, in place of the selection. */
 export function insertSymbol(view: EditorView, symbol: string) {
   view.dispatch(view.state.replaceSelection(symbol), { userEvent: "input.symbol", scrollIntoView: true });
   view.focus();
 }
 
+/** The history's keys but ⌘U and ⇧⌘U (undo and redo the selection): ⌘U is the menu's Quote Selection. */
+const historyKeys = historyKeymap.filter((k) => k.run !== undoSelection && k.run !== redoSelection);
+
 /** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `rules` are the sequences
- *  that become symbols as they are typed (Markdown only); `extensions` are more. */
-export type Options = { mono?: boolean; rules?: readonly Rule[]; extensions?: Extension[] };
+ *  that become symbols as they are typed (Markdown only); `prefs` those of the settings; `extensions` are more. */
+export type Options = { mono?: boolean; rules?: readonly Rule[]; prefs?: EditorPrefs; extensions?: Extension[] };
 
 /** An editor of `text` in `parent`; `changed` with the text after each change typed. */
 export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, options: Options = {}) {
@@ -214,7 +337,14 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
       extensions: [
         history(),
         drawSelection(),
-        keymap.of([...(mono ? [] : [{ key: "Tab", run: latexTab }]), ...defaultKeymap, ...historyKeymap, indentWithTab]),
+        dragScroll,
+        keymap.of([
+          ...(mono ? [] : [{ key: "Tab", run: latexTab }]),
+          { key: "Tab", run: tab, shift: indentLess },
+          ...defaultKeymap,
+          ...historyKeys,
+        ]),
+        prefsSlot.of(prefsOf(options.prefs ?? PREFS)),
         ...(mono
           ? []
           : [
@@ -239,12 +369,12 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
   });
 }
 
-/** The whole text replaced (read again from the file), not to be undone into. */
+/** The text replaced by `text` (read again from the file), not to be undone into: only the part that differs, so
+ *  that the cursor and the history of what was typed elsewhere stay where they were. */
 export function replaceText(view: EditorView, text: string) {
-  view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: text },
-    annotations: Transaction.addToHistory.of(false),
-  });
+  const change = difference(view.state.doc.toString(), text);
+  if (change.from === change.to && !change.insert) return;
+  view.dispatch({ changes: change, annotations: Transaction.addToHistory.of(false) });
 }
 
 /** A quote put in at the cursor as a paragraph of its own, the cursor after it to write what it is about. */
@@ -268,3 +398,13 @@ export function insertQuote(view: EditorView, quote: string) {
 
 /** The words of a text. */
 export const wordsOf = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w)).length;
+
+/** The words selected, in all the ranges of the selection. */
+export const selectedWords = (state: EditorState) =>
+  state.selection.ranges.reduce((n, r) => n + (r.empty ? 0 : wordsOf(state.sliceDoc(r.from, r.to))), 0);
+
+/** "1,234 words", or "56 of 1,234 words" with words selected. */
+export function wordCount(words: number, selected = 0): string {
+  const all = `${words.toLocaleString()} word${words === 1 ? "" : "s"}`;
+  return selected ? `${selected.toLocaleString()} of ${all}` : all;
+}

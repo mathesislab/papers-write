@@ -11,9 +11,9 @@
 
   import { indentLess, indentMore, redo as stepForward, undo as stepBack } from "@codemirror/commands";
   import { Prec, type Extension } from "@codemirror/state";
-  import { keymap, type EditorView } from "@codemirror/view";
+  import { EditorView, keymap } from "@codemirror/view";
   import { onMount } from "svelte";
-  import { insertSymbol, makeEditor, replaceText, setRules } from "$lib/editor";
+  import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "$lib/editor";
   import SymbolList from "$lib/SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "$lib/symbols";
 
@@ -23,10 +23,12 @@
     mono = false,
     extensions = [],
     symbols = [],
+    prefs = PREFS,
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
     path = $bindable(""),
+    selected = $bindable(0),
   }: {
     /** the file read: its path, and its text */
     load: () => Promise<{ path: string; text: string }>;
@@ -38,6 +40,8 @@
     extensions?: Extension[];
     /** the user's own sequences typed that become symbols, and the defaults they turn off (Markdown only) */
     symbols?: [string, string][];
+    /** what the editor takes from the settings */
+    prefs?: EditorPrefs;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -45,6 +49,8 @@
     error?: string;
     /** the path of the file as last read */
     path?: string;
+    /** the words selected */
+    selected?: number;
   } = $props();
 
   let host: HTMLElement;
@@ -60,9 +66,16 @@
   const entries = $derived([...rules, ...[...LATEX].map(([keys, insert]) => ({ keys, insert }))]);
   // ⌘/ in the editor lists the symbols (the menu's Symbols… has the key first, in the app)
   const listKey = Prec.high(keymap.of([{ key: "Mod-/", run: () => (list(), true) }]));
+  const selection = EditorView.updateListener.of((u) => {
+    if (u.selectionSet || u.docChanged) selected = selectedWords(u.state);
+  });
   $effect(() => {
     const now = rules;
     if (editor) setRules(editor, now);
+  });
+  $effect(() => {
+    const now = prefs;
+    if (editor) setPrefs(editor, now);
   });
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -76,7 +89,12 @@
   function show(file: { path: string; text: string }) {
     [path, written, conflict] = [file.path, file.text, false];
     if (editor) replaceText(editor, file.text);
-    else editor = makeEditor(host, file.text, typed, { mono, rules, extensions: mono ? extensions : [...extensions, listKey] });
+    else editor = makeEditor(host, file.text, typed, {
+        mono,
+        rules,
+        prefs,
+        extensions: [...extensions, selection, ...(mono ? [] : [listKey])],
+      });
     onchange?.(file.text);
     [status, error] = ["saved", ""];
   }
@@ -122,7 +140,11 @@
     try {
       const file = await load();
       if (gone || file.path !== path || file.text === written) return;
-      if (text() === written) show(file);
+      // what is in the editor already: it is what was written
+      if (file.text === text()) {
+        written = file.text;
+        [status, error] = ["saved", ""];
+      } else if (text() === written) show(file);
       else conflict = true;
     } catch (e) {
       failed(e);

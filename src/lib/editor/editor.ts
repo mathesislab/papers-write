@@ -95,6 +95,60 @@ function mark(view: EditorView): DecorationSet {
   return Decoration.set(ranges);
 }
 
+/** The band at the top and foot of the editor where a selection being made with the mouse scrolls, in px. */
+const EDGE = 24;
+
+/** A selection made with the mouse scrolls the text at the top and foot of the editor, faster the further into the
+ *  edge and the longer it is held there. CodeMirror's own scrolling goes only with the distance past the edge: the
+ *  pane at the foot of the screen leaves little room below it, and the text crept down while it flew up. The
+ *  selection follows each step, as a move of the mouse where it is. */
+const dragScroll = ViewPlugin.fromClass(
+  class {
+    timer: ReturnType<typeof setInterval> | undefined;
+    /** how long the mouse has been in the edge, in ms */
+    held = 0;
+    last: MouseEvent | null = null;
+    constructor(readonly view: EditorView) {
+      view.contentDOM.addEventListener("mousedown", this.down);
+    }
+    down = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      this.stop();
+      [this.last, this.held] = [e, 0];
+      const doc = this.view.contentDOM.ownerDocument;
+      doc.addEventListener("mousemove", this.move);
+      doc.addEventListener("mouseup", this.stop);
+      this.timer = setInterval(this.step, 50);
+    };
+    move = (e: MouseEvent) => {
+      if (e.isTrusted) this.last = e;
+    };
+    step = () => {
+      const e = this.last;
+      if (!e || e.buttons === 0) return this.stop();
+      const { top, bottom } = this.view.scrollDOM.getBoundingClientRect();
+      const into = e.clientY < top + EDGE ? e.clientY - top - EDGE : e.clientY > bottom - EDGE ? e.clientY - bottom + EDGE : 0;
+      // a click held still is no selection
+      if (!into || this.view.state.selection.main.empty) return void (this.held = 0);
+      this.held += 50;
+      this.view.scrollDOM.scrollTop += Math.sign(into) * (4 + 0.5 * Math.abs(into)) * Math.min(6, 1 + this.held / 300);
+      const { clientX, clientY, buttons, shiftKey, altKey, metaKey } = e;
+      e.view?.document.dispatchEvent(new MouseEvent("mousemove", { clientX, clientY, buttons, shiftKey, altKey, metaKey, bubbles: true }));
+    };
+    stop = () => {
+      clearInterval(this.timer);
+      this.timer = undefined;
+      const doc = this.view.contentDOM.ownerDocument;
+      doc.removeEventListener("mousemove", this.move);
+      doc.removeEventListener("mouseup", this.stop);
+    };
+    destroy() {
+      this.stop();
+      this.view.contentDOM.removeEventListener("mousedown", this.down);
+    }
+  },
+);
+
 /** The section shown alone (its index), or the whole text (null). */
 const showEffect = StateEffect.define<number | null>();
 
@@ -237,6 +291,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
       extensions: [
         history(),
         drawSelection(),
+        dragScroll,
         keymap.of([
           ...(mono ? [] : [{ key: "Tab", run: latexTab }]),
           { key: "Tab", run: tab, shift: indentLess },

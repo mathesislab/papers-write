@@ -15,4 +15,4 @@ pub mod protect;
 mod testing;
 
 pub use export::{Export, markdown_with_changes};
-pub use import::{Imported, import};
+pub use import::{Imported, Untracked, import};

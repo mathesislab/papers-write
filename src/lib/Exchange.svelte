@@ -9,9 +9,10 @@
   // Export as Word with Changes…: where to save the .docx (a dialog), then a sheet that says how many tracked changes
   // and comments it has and lists what could not go to Word (suggestions that overlap, in the front matter).
   //
-  // Import Word Review…: a .docx (a dialog), and whose the changes are that were made with Track Changes off (they
-  // are found by comparing with the text; Word names no one). The tracked changes and comments come in under their
-  // authors' names; a sheet says how many, and lists what could not be placed in the text.
+  // Import Word Review…: a .docx (a dialog). The tracked changes and comments come in under their authors' names. Changes
+  // made with Track Changes off are looked for only when asked (the whole text is compared, with the document made
+  // into a .docx as an export does; Word names no one for them, so the sheet asks whose they are). A sheet says how
+  // many came in, and lists what could not be placed in the text.
 
   import { invoke } from "@tauri-apps/api/core";
 
@@ -26,7 +27,7 @@
   let exported = $state<Exported | null>(null);
   type Imported = { suggestions: number; comments: number; authors: string[]; unplaced: string[] };
   /** the sheet of an import: the file, the author of untracked changes, and what came of it */
-  let importing = $state<{ file: string; author: string; busy: boolean; result: Imported | null } | null>(null);
+  let importing = $state<{ file: string; untracked: boolean; author: string; busy: boolean; result: Imported | null } | null>(null);
   let problem = $state("");
 
   /** The menu's items: "compare", "word-export", "word-import". */
@@ -35,7 +36,7 @@
     problem = "";
     await flush();
     if (what === "word-import") {
-      importing = { file: "", author: "", busy: false, result: null };
+      importing = { file: "", untracked: false, author: "", busy: false, result: null };
       return chooseWord();
     }
     if (what === "word-export") {
@@ -105,7 +106,7 @@
     if (!i || !i.file || i.busy) return;
     [i.busy, problem] = [true, ""];
     try {
-      i.result = await invoke<Imported>("import_word", { path: i.file, fallbackAuthor: i.author.trim() });
+      i.result = await invoke<Imported>("import_word", { path: i.file, alsoUntracked: i.untracked, fallbackAuthor: i.author.trim() });
     } catch (e) {
       problem = String(e);
     }
@@ -193,10 +194,16 @@
       <button onclick={chooseWord}>Choose .docx…</button>
       {#if importing.file}<span class="where" title={importing.file}>{nameOf(importing.file)}</span>{/if}
     </div>
-    <label>
-      Changes made with Track Changes off are by
-      <input bind:value={importing.author} placeholder="Word" spellcheck="false" />
+    <label class="check">
+      <input type="checkbox" bind:checked={importing.untracked} />
+      Also changes made with Track Changes off (compares the whole text; may find differences that are only formatting)
     </label>
+    {#if importing.untracked}
+      <label>
+        Those changes are by
+        <input bind:value={importing.author} placeholder="Word" spellcheck="false" />
+      </label>
+    {/if}
     <p class="where">Tracked changes and comments come in under the names Word has for them; the text only, not Word's formatting.</p>
     <div class="buttons"><button class="go" disabled={!importing.file || importing.busy || !!importing.result} onclick={importWord}>Import</button></div>
     {#if importing.result}
@@ -264,6 +271,16 @@
   label {
     display: block;
     margin-top: 8px;
+  }
+  label.check {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  label.check input {
+    display: inline;
+    width: auto;
+    flex: none;
   }
   select,
   input {

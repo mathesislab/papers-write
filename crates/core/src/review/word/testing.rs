@@ -54,3 +54,16 @@ pub fn docx_cited(markdown: &str, dir: &Path) -> PathBuf {
 pub fn plain_cited(markdown: &str, dir: &Path) -> String {
     run_in(&["-f", "markdown", "-t", "plain", "--wrap=none", "--citeproc"], markdown, dir)
 }
+
+/// The Markdown as the .docx's own text is: made into a .docx (with citations resolved if `citeproc`; the
+/// bibliography is in `dir`) and read back as plain text.
+pub fn plain_via_docx(markdown: &str, dir: &Path, citeproc: bool) -> String {
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("current.docx");
+    let mut args = vec!["-f", "markdown", "-t", "docx", "-o", path.to_str().unwrap()];
+    if citeproc {
+        args.push("--citeproc");
+    }
+    run_in(&args, markdown, dir);
+    run(&[path.to_str().unwrap(), "--track-changes=reject", "-t", "plain", "--wrap=none"], "")
+}

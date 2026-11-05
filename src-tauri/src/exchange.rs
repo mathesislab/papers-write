@@ -172,34 +172,37 @@ pub struct Exported {
     pub notes: Vec<String>,
 }
 
+/// pandoc makes the .docx `to` of `markdown` in `dir` (so `bibliography:` and the images resolve).
+fn docx_with(markdown: &str, dir: &Path, to: &Path, citeproc: bool) -> Result<(), String> {
+    let resource = format!("--resource-path={}", dir.display());
+    let mut args = vec!["-f", "markdown", "-t", "docx", "-o", to.to_str().ok_or("not a text path")?, resource.as_str()];
+    if citeproc {
+        args.push("--citeproc");
+    }
+    pandoc(&args, dir, markdown.as_bytes()).map(drop)
+}
+
+/// The .docx `to` of `markdown`: citations resolved when the text names a bibliography, left as typed (and a note
+/// of why) when that does not work.
+fn docx_of(markdown: &str, text: &str, dir: &Path, to: &Path) -> Result<Option<String>, String> {
+    match docx_with(markdown, dir, to, cites(text)) {
+        Ok(()) => Ok(None),
+        Err(e) if cites(text) => {
+            // a bibliography that is missing or does not parse
+            docx_with(markdown, dir, to, false)?;
+            Ok(Some(format!("Citations left as typed: {}", e.lines().next().unwrap_or(""))))
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// The .docx of `current` with `items` (the open ones) as tracked changes and comments, written to `to`.
 fn export(doc: &Path, current: &str, to: &Path) -> Result<Exported, String> {
     let items = Review::load(doc).map_err(|e| e.to_string())?.items(current);
     let made = review::word::markdown_with_changes(current, &items);
     let dir = doc.parent().ok_or("no folder")?;
-    let out = to.to_string_lossy().into_owned();
-    let resource = format!("--resource-path={}", dir.display());
-    let mut notes = Vec::new();
-    let args = |citeproc: bool| {
-        let mut a = vec!["-f", "markdown", "-t", "docx", "-o", out.as_str(), resource.as_str()];
-        if citeproc {
-            a.push("--citeproc");
-        }
-        a.into_iter().map(String::from).collect::<Vec<_>>()
-    };
-    let run = |citeproc: bool| {
-        let a = args(citeproc);
-        pandoc(&a.iter().map(String::as_str).collect::<Vec<_>>(), dir, made.markdown.as_bytes())
-    };
-    if let Err(e) = run(cites(current)) {
-        if !cites(current) {
-            return Err(e);
-        }
-        // a bibliography that is missing or does not parse: the citations stay as typed
-        run(false)?;
-        notes.push(format!("Citations left as typed: {}", e.lines().next().unwrap_or("")));
-    }
-    Ok(Exported { path: out, suggestions: made.suggestions, comments: made.comments, skipped: made.skipped, notes })
+    let notes = docx_of(&made.markdown, current, dir, to)?.into_iter().collect();
+    Ok(Exported { path: to.to_string_lossy().into_owned(), suggestions: made.suggestions, comments: made.comments, skipped: made.skipped, notes })
 }
 
 /// The window's document as a .docx with its open suggestions and comments as tracked changes and comments, at
@@ -242,30 +245,51 @@ pub struct Imported {
     pub unplaced: Vec<String>,
 }
 
-/// The suggestions and comments of the .docx at `docx` written to the review of `doc`, each person's to their own
-/// file; `current` is the text of `doc`. Changes made with tracking off are `fallback_author`'s ("Word" when empty).
-fn import(doc: &Path, current: &str, docx: &Path, fallback_author: &str) -> Result<Imported, String> {
-    let dir = doc.parent().ok_or("no folder")?;
+/// A .docx's text as pandoc reads it with the tracked changes rejected or accepted, or all of it as JSON.
+fn read_docx(docx: &Path, dir: &Path, mode: &str, to: &str) -> Result<String, String> {
     let file = docx.to_string_lossy().into_owned();
-    let read = |mode: &str, to: &str| {
-        let mode = format!("--track-changes={mode}");
-        let mut args = vec![file.as_str(), mode.as_str(), "-t", to];
-        if to == "plain" {
-            args.push("--wrap=none");
+    let mode = format!("--track-changes={mode}");
+    let mut args = vec![file.as_str(), mode.as_str(), "-t", to];
+    if to == "plain" {
+        args.push("--wrap=none");
+    }
+    pandoc(&args, dir, b"").map(|b| String::from_utf8_lossy(&b).into_owned())
+}
+
+/// `current` as plain text the way the .docx's own text is: made into a .docx by the export's pipeline and read back,
+/// with citations resolved and as typed (a .docx that was made elsewhere may have either).
+fn renderings(current: &str, dir: &Path) -> Result<Vec<String>, String> {
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+    let to = std::env::temp_dir().join(format!("pw-compare-{}-{nonce}.docx", std::process::id()));
+    let mut out = Vec::new();
+    let mut variants = vec![false];
+    if cites(current) {
+        variants.push(true);
+    }
+    for citeproc in variants {
+        match docx_with(current, dir, &to, citeproc).and_then(|()| read_docx(&to, dir, "reject", "plain")) {
+            Ok(text) => out.push(text),
+            // a bibliography that does not work: the other rendering is there
+            Err(e) if citeproc => drop(e),
+            Err(e) => {
+                let _ = std::fs::remove_file(&to);
+                return Err(e);
+            }
         }
-        pandoc(&args, dir, b"").map(|b| String::from_utf8_lossy(&b).into_owned())
-    };
-    let (all, reject, accept) = (read("all", "json")?, read("reject", "plain")?, read("accept", "plain")?);
-    // the document as plain text, as the .docx's own is (citations resolved if the export did)
-    let render = |citeproc: bool| {
-        let mut args = vec!["-f", "markdown", "-t", "plain", "--wrap=none"];
-        if citeproc {
-            args.push("--citeproc");
-        }
-        pandoc(&args, dir, current.as_bytes()).map(|b| String::from_utf8_lossy(&b).into_owned())
-    };
-    let plain = render(cites(current)).or_else(|e| if cites(current) { render(false) } else { Err(e) })?;
-    let found = review::word::import(current, &all, &reject, &accept, &plain, fallback_author);
+    }
+    let _ = std::fs::remove_file(&to);
+    Ok(out)
+}
+
+/// The suggestions and comments of the .docx at `docx` written to the review of `doc`, each person's to their own
+/// file; `current` is the text of `doc`. With `also_untracked`, changes made with tracking off are found too (the
+/// whole text compared) and are `fallback_author`'s ("Word" when empty).
+fn import(doc: &Path, current: &str, docx: &Path, also_untracked: bool, fallback_author: &str) -> Result<Imported, String> {
+    let dir = doc.parent().ok_or("no folder")?;
+    let (all, reject, accept) = (read_docx(docx, dir, "all", "json")?, read_docx(docx, dir, "reject", "plain")?, read_docx(docx, dir, "accept", "plain")?);
+    let rendered = if also_untracked { renderings(current, dir)? } else { Vec::new() };
+    let untracked = also_untracked.then(|| review::word::Untracked { author: fallback_author, renderings: &rendered });
+    let found = review::word::import(current, &all, &reject, &accept, untracked);
 
     let round = format!("Word review: {}", docx.file_name().unwrap_or_default().to_string_lossy());
     let mut made = Imported { suggestions: found.suggestions.len(), comments: found.comments.len(), unplaced: found.unplaced, ..Default::default() };
@@ -293,12 +317,12 @@ pub async fn choose_word_file(app: AppHandle, window: WebviewWindow) -> Result<O
 }
 
 /// The .docx at `path` read as a review of the window's document: its tracked changes and comments as suggestions and
-/// comments, each under the name of whoever made it (their own review file); what was changed with tracking off under
-/// `fallback_author`. What could not be placed in the text is returned, not written.
+/// comments, each under the name of whoever made it (their own review file); with `also_untracked`, what was changed
+/// with tracking off under `fallback_author`. What could not be placed in the text is returned, not written.
 #[tauri::command]
-pub async fn import_word(app: AppHandle, window: WebviewWindow, path: String, fallback_author: String) -> Result<Imported, String> {
+pub async fn import_word(app: AppHandle, window: WebviewWindow, path: String, also_untracked: bool, fallback_author: String) -> Result<Imported, String> {
     let doc = document_of(&window)?;
-    let made = tauri::async_runtime::spawn_blocking(move || import(&doc, &read(&doc)?, Path::new(&path), &fallback_author))
+    let made = tauri::async_runtime::spawn_blocking(move || import(&doc, &read(&doc)?, Path::new(&path), also_untracked, &fallback_author))
         .await
         .map_err(|e| e.to_string())??;
     if made.suggestions + made.comments > 0 {
@@ -386,7 +410,7 @@ mod tests {
         let other = folder("roundtrip-other");
         let doc2 = other.join("paper.md");
         std::fs::write(&doc2, current).unwrap();
-        let made = import(&doc2, current, &to, "Me").unwrap();
+        let made = import(&doc2, current, &to, false, "Me").unwrap();
         assert_eq!((made.suggestions, made.comments), (2, 0));
         assert!(made.unplaced.is_empty(), "{:?}", made.unplaced);
         assert_eq!(made.authors, ["Jane Doe"]);

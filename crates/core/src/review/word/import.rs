@@ -8,7 +8,8 @@
 //!   in the Markdown by its quote (see `places`), and given to the author of the insertion or deletion of the JSON
 //!   that has its words, else "Word".
 //! - What was changed with tracking off is the difference from the Markdown to the reject text, both as plain text
-//!   (`current_plain`, the Markdown rendered by pandoc). Those hunks are given to the author the importer names.
+//!   (the Markdown rendered as the .docx's own text is). It is looked for only when asked (`Untracked`), the hunks
+//!   are given to the author the importer names, and a change the tracked pass has is not found again.
 //! - A comment is placed by the words it covers, and is made as it was written.
 //!
 //! What cannot be placed (the words are not found, or are in two places that the words around do not tell apart) is
@@ -260,10 +261,19 @@ fn author_of(spans: &mut [(Tracked, bool)], old: &[&str], new: &[&str]) -> Strin
     author
 }
 
+/// Changes made with tracking off are looked for: the text compared is the Markdown rendered like the .docx's own.
+#[derive(Clone, Copy, Debug)]
+pub struct Untracked<'a> {
+    /// the author of those changes
+    pub author: &'a str,
+    /// `current` as plain text, as the .docx's own text is; each rendering the pipeline may have made of it (with and
+    /// without citations resolved, say): the one the .docx's text is nearest to is compared
+    pub renderings: &'a [String],
+}
+
 /// The Word review in `docx_all_json`, `docx_reject_text` and `docx_accept_text` as suggestions and comments on
-/// `current`. `current_plain` is `current` rendered to plain text by pandoc (the same way as the docx's text; empty:
-/// changes made with tracking off are not looked for), `importer` the author of those.
-pub fn import(current: &str, docx_all_json: &str, docx_reject_text: &str, docx_accept_text: &str, current_plain: &str, importer: &str) -> Imported {
+/// `current`. With `untracked` the changes made with Track Changes off are found too (by comparing the whole text).
+pub fn import(current: &str, docx_all_json: &str, docx_reject_text: &str, docx_accept_text: &str, untracked: Option<Untracked>) -> Imported {
     let mut out = Imported::default();
     let mut stream = Stream::default();
     match serde_json::from_str::<Value>(docx_all_json) {
@@ -271,7 +281,7 @@ pub fn import(current: &str, docx_all_json: &str, docx_reject_text: &str, docx_a
         Err(e) => out.unplaced.push(format!("the document's own record of the changes could not be read ({e}): authors are \"{WORD}\"")),
     }
     let index = Index::new(current);
-    let (reject, accept, plain_current) = (collapse(docx_reject_text), collapse(docx_accept_text), collapse(current_plain));
+    let (reject, accept) = (collapse(docx_reject_text), collapse(docx_accept_text));
 
     // what was changed with tracking on
     let mut spans: Vec<(Tracked, bool)> = std::mem::take(&mut stream.tracked).into_iter().map(|t| (t, false)).collect();
@@ -289,18 +299,25 @@ pub fn import(current: &str, docx_all_json: &str, docx_reject_text: &str, docx_a
     }
 
     // what was changed with tracking off
-    if !plain_current.trim().is_empty() {
-        let who = if importer.trim().is_empty() { WORD } else { importer.trim() };
-        let mut floor = 0;
-        for h in hunks(&plain_current, &reject) {
-            let after_previous = std::mem::replace(&mut floor, h.old.end);
-            // punctuation and white space alone: what pandoc's plain text of the two differs in
-            if words(&plain_current[h.old.clone()]).is_empty() && words(&reject[h.new.clone()]).is_empty() {
-                continue;
-            }
-            match placed(&index, &plain_current, &reject, &h, after_previous) {
-                Ok(s) => out.suggestions.push((who.to_string(), s)),
-                Err(why) => out.unplaced.push(format!("{who}: {} ({why}; changed with tracking off)", say_change(&plain_current[h.old.clone()], &reject[h.new.clone()]))),
+    if let Some(Untracked { author, renderings }) = untracked {
+        let who = if author.trim().is_empty() { WORD } else { author.trim() };
+        let tracked: Vec<(usize, usize)> = out.suggestions.iter().map(|(_, s)| (s.from, s.to)).collect();
+        let renderings: Vec<String> = renderings.iter().map(|r| collapse(r)).filter(|r| !r.trim().is_empty()).collect();
+        // like with like: the rendering the .docx's text is nearest to (citations resolved or not, say)
+        if let Some((rendered, list)) = renderings.iter().map(|r| (r, hunks(r, &reject))).min_by_key(|(_, hs)| hs.len()) {
+            let mut floor = 0;
+            for h in list {
+                let after_previous = std::mem::replace(&mut floor, h.old.end);
+                // punctuation and white space alone: what pandoc's plain text of the two differs in
+                if words(&rendered[h.old.clone()]).is_empty() && words(&reject[h.new.clone()]).is_empty() {
+                    continue;
+                }
+                match placed(&index, rendered, &reject, &h, after_previous) {
+                    // a change the tracked pass has is not found again
+                    Ok(s) if tracked.iter().any(|&(a, b)| (s.from < b && a < s.to) || (s.from, s.to) == (a, b)) => drop(s),
+                    Ok(s) => out.suggestions.push((who.to_string(), s)),
+                    Err(why) => out.unplaced.push(format!("{who}: {} ({why}; changed with tracking off)", say_change(&rendered[h.old.clone()], &reject[h.new.clone()]))),
+                }
             }
         }
     }
@@ -332,7 +349,7 @@ pub fn import(current: &str, docx_all_json: &str, docx_reject_text: &str, docx_a
 #[cfg(test)]
 mod tests {
     use super::super::export::markdown_with_changes;
-    use super::super::testing::{docx, docx_cited, pandoc, plain, plain_cited, read};
+    use super::super::testing::{docx, docx_cited, pandoc, plain, plain_cited, plain_via_docx, read};
     use super::*;
     use crate::review::fold::Item;
     use crate::review::ops::NewRecord;
@@ -374,7 +391,7 @@ The ice shelf [thins]{.deletion author="Bob" date="2026-11-05T14:00:00Z"}[thicke
 "#;
         let file = docx(tracked, &dir("a"));
         let (json, reject, accept) = read(&file);
-        let got = import(CURRENT, &json, &reject, &accept, &plain(CURRENT), "Me");
+        let got = import(CURRENT, &json, &reject, &accept, None);
         assert!(got.unplaced.is_empty(), "{:?}", got.unplaced);
         assert_eq!(got.suggestions.len(), 2, "{:?}", got.suggestions);
         let (author, s) = &got.suggestions[0];
@@ -397,7 +414,7 @@ The ice shelf thins [and the ice sheet]{.deletion author="Bob"} stays, as $x^2$ 
 "#;
         let file = docx(tracked, &dir("b"));
         let (json, reject, accept) = read(&file);
-        let got = import(CURRENT, &json, &reject, &accept, &plain(CURRENT), "Me");
+        let got = import(CURRENT, &json, &reject, &accept, None);
         assert!(got.unplaced.is_empty(), "{:?}", got.unplaced);
         let authors: Vec<&str> = got.suggestions.iter().map(|(a, _)| a.as_str()).collect();
         assert_eq!(authors, ["Jane Doe", "Bob"]);
@@ -417,7 +434,7 @@ The ice shelf thins [and the ice sheet]{.deletion author="Bob"} stays, as $x^2$ 
         let file = docx(&edited, &dir("c"));
         let (json, reject, accept) = read(&file);
         assert_eq!(reject, accept);
-        let got = import(CURRENT, &json, &reject, &accept, &plain(CURRENT), "Dana");
+        let got = import(CURRENT, &json, &reject, &accept, Some(Untracked { author: "Dana", renderings: &[plain(CURRENT)] }));
         assert!(got.unplaced.is_empty(), "{:?}", got.unplaced);
         assert_eq!(got.suggestions.len(), 1, "{:?}", got.suggestions);
         let (author, s) = &got.suggestions[0];
@@ -433,7 +450,7 @@ The ice shelf thins [and the ice sheet]{.deletion author="Bob"} stays, as $x^2$ 
 "#;
         let file = docx(tracked, &dir("d"));
         let (json, reject, accept) = read(&file);
-        let got = import(CURRENT, &json, &reject, &accept, "", "Me");
+        let got = import(CURRENT, &json, &reject, &accept, None);
         assert!(got.suggestions.is_empty());
         assert_eq!(got.unplaced.len(), 1);
         assert!(got.unplaced[0].starts_with("Bob: replace “one” with “two”"), "{:?}", got.unplaced);
@@ -469,7 +486,7 @@ The ice shelf thins [and the ice sheet]{.deletion author="Bob"} stays, as $x^2$ 
         assert!(made.skipped.is_empty(), "{:?}", made.skipped);
         let file = docx(&made.markdown, &dir("e"));
         let (json, reject, accept) = read(&file);
-        let got = import(CURRENT, &json, &reject, &accept, &plain(CURRENT), "Importer");
+        let got = import(CURRENT, &json, &reject, &accept, None);
         assert!(got.unplaced.is_empty(), "{:?}", got.unplaced);
         assert!(got.suggestions.iter().all(|(a, _)| a == "Jane Doe"), "nothing untracked: {:?}", got.suggestions);
         // the same text comes of them
@@ -500,10 +517,39 @@ The ice shelf thins [and the ice sheet]{.deletion author="Bob"} stays, as $x^2$ 
         let file = docx_cited(&made.markdown, &d);
         let (json, reject, accept) = read(&file);
         assert!(reject.contains("Smith"), "citeproc ran: {reject}");
-        let got = import(current, &json, &reject, &accept, &plain_cited(current, &d), "Importer");
+        let got = import(current, &json, &reject, &accept, Some(Untracked { author: "Importer", renderings: &[plain_cited(current, &d)] }));
         assert!(got.unplaced.is_empty(), "{:?}", got.unplaced);
         assert_eq!(got.suggestions.len(), 2, "{:?}", got.suggestions);
         assert_eq!(on(current, &got.suggestions[0].1), "rapidly");
         assert_eq!(on(current, &got.comments[0].1), "when the *bed* slopes");
+    }
+
+    /// pandoc's own docx of the paper (no citeproc), and the Markdown it was made from as it is open in the app.
+    fn fixture() -> (String, String, String, String) {
+        let d = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/word");
+        let current = std::fs::read_to_string(d.join("paper-at-import.md")).unwrap();
+        let (json, reject, accept) = read(&d.join("paper-bob.docx"));
+        (current, json, reject, accept)
+    }
+
+    #[test]
+    fn the_whole_text_compared_has_no_front_matter_headings_or_citations_in_it() {
+        if pandoc().is_none() {
+            return;
+        }
+        let (current, json, reject, accept) = fixture();
+        let d = dir("g");
+        std::fs::create_dir_all(&d).unwrap();
+        let bib: String = ["schoof2007", "weertman1974", "pattyn2018", "joughin2019", "blasco2026"]
+            .iter()
+            .map(|k| format!("@article{{{k}, author={{Doe, Jane}}, title={{Ice}}, journal={{J. Ice}}, year={{2019}}}}\n"))
+            .collect();
+        std::fs::write(d.join("references.bib"), bib).unwrap();
+        let renderings = [plain_via_docx(&current, &d, false), plain_via_docx(&current, &d, true)];
+        let got = import(&current, &json, &reject, &accept, Some(Untracked { author: "Word", renderings: &renderings }));
+        let noise = |t: &str| ["Abstract", "A test", "Introduction", "Joughin", "joughin", "Schoof", "schoof"].iter().any(|n| t.contains(n));
+        let mine: Vec<String> = got.suggestions.iter().filter(|(a, _)| a == "Word").map(|(_, s)| on(&current, s).to_string()).collect();
+        assert!(!mine.iter().any(|t| noise(t)), "{mine:?}");
+        assert!(!got.unplaced.iter().any(|t| noise(t)), "{:?}", got.unplaced);
     }
 }

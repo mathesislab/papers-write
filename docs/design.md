@@ -369,8 +369,10 @@ text both show; accepting one leaves the other outdated, to be dealt with.
   real tracked changes and comments (pandoc; the math as Word equations).
   They edit with Track Changes on and send it back; Import Word Review reads
   their changes and comments as theirs, anchored on the text around them.
-  Edits made with tracking off are found by comparing the text with the
-  base, and come in too. Only the text comes back: formatting Word adds is
+  Edits made with tracking off are found only if asked (a box in the sheet):
+  the whole text is compared with the base made into a .docx by the same
+  pipeline as the export, so front matter, headings and citations are alike on
+  both sides. Only the text comes back: formatting Word adds is
   dropped, and what pandoc cannot carry is listed.
   Each change is placed by its quote, found by words: the words that changed
   with those around them, ignoring the Markdown's punctuation and markup (the

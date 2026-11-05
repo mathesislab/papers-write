@@ -72,9 +72,11 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   name Word has for its author (their own review file). Each is placed in the
   Markdown by the words it concerns and the words around them, ignoring the
   Markdown's punctuation (`*`, `[@key]`, `$..$`), so it finds its place
-  whatever the markup; changes made with Track Changes off are found by
-  comparing the text with the document's, and are given to the author named in
-  the sheet ("Word" if none). A sheet lists what could not be placed (words
+  whatever the markup. Changes made with Track Changes off are looked for only
+  if the sheet's box is ticked: the whole text is compared with the document
+  made into a .docx as an export does (citations resolved or as typed), a
+  change the tracked pass has is not found again, and the rest are given to
+  the author named in the sheet ("Word" if none). A sheet lists what could not be placed (words
   not found, or in two places the words around do not tell apart): those are
   not guessed. Only the text comes back: Word's formatting is dropped, and a
   change that takes in a citation, math or markup is placed on the words

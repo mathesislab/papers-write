@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use crate::sheet::Level;
 use crate::settings::Settings;
 use write_core::review::text::slug;
 use write_core::review::{Cleanup, Decision, Item, NewRecord, Person, Review, cleanup, cleanup_plan, store, utf16_of};
@@ -294,13 +294,8 @@ pub fn review_view(window: WebviewWindow, view: String) {
 /// Asks before a step that cannot be taken back (Accept All, Reject All): true if the user went on.
 #[tauri::command]
 pub async fn review_confirm(window: WebviewWindow, message: String, ok: String) -> bool {
-    window
-        .dialog()
-        .message(message)
-        .title("Review")
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(ok, "Cancel".into()))
-        .blocking_show()
+    let app = window.app_handle().clone();
+    crate::sheet::ask(&app, Some(&window), "Review", message, Level::Warning, &[&ok, "Cancel"]).await.as_deref() == Some(ok.as_str())
 }
 
 fn sync_menu(app: &AppHandle, suggesting: bool) {

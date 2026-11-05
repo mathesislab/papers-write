@@ -10,7 +10,8 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use crate::sheet::{self, Level};
+use tauri_plugin_dialog::DialogExt;
 use write_core::colour::Colour;
 use write_core::project::{self, Manifest, Project};
 use write_core::review::{Kind, Review, State};
@@ -304,7 +305,7 @@ pub fn open(app: &AppHandle, root: &Path) -> Result<(), String> {
 /// A project of Open Recent opened as Open Project… opens one; what went wrong is told in a dialog.
 pub fn open_reporting(app: &AppHandle, root: &Path) {
     if let Err(e) = open(app, root) {
-        app.dialog().message(e).title("Open Project").kind(MessageDialogKind::Error).show(|_| {});
+        sheet::tell(app, None, "Open Project", e, Level::Error);
     }
 }
 

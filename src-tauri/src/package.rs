@@ -16,7 +16,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use crate::sheet::{self, Level};
+use tauri_plugin_dialog::DialogExt;
 use write_core::review::package::{self, Merged, Opened, PackageKind};
 use write_core::review::text::slug;
 use write_core::review::{Person, store};
@@ -174,7 +175,7 @@ pub fn open(app: &AppHandle, file: PathBuf) {
     let app = app.clone();
     std::thread::spawn(move || {
         if let Err(e) = open_now(&app, &file) {
-            app.dialog().message(e).title("Open").kind(MessageDialogKind::Error).show(|_| {});
+            sheet::tell(&app, None, "Open", e, Level::Error);
         }
     });
 }
@@ -225,7 +226,7 @@ fn ask(app: &AppHandle, opened: &Opened) -> Option<PathBuf> {
         "{} sent back a review of {} ({}), which is not open here. Choose the document it is a review of.",
         m.from.name, m.document, m.round
     );
-    app.dialog().message(said).title("Review").kind(MessageDialogKind::Info).blocking_show();
+    sheet::ask_blocking(app, None, "Review", said, Level::Info, &["Choose…"]);
     app.dialog().file().set_title(format!("The document {} reviewed", m.document)).blocking_pick_file().and_then(|f| f.into_path().ok())
 }
 
@@ -241,7 +242,8 @@ fn join(app: &AppHandle, opened: &Opened) -> Result<(), String> {
         }
         None => documents::open_file(app, &doc)?,
     }
-    app.dialog().message(said(&merged, &opened.manifest.from.name)).title("Review received").kind(MessageDialogKind::Info).show(|_| {});
+    let window = documents::label_of(app, &doc).and_then(|l| app.get_webview_window(&l));
+    sheet::tell(app, window.as_ref(), "Review received", said(&merged, &opened.manifest.from.name), Level::Info);
     Ok(())
 }
 

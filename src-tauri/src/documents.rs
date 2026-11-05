@@ -12,7 +12,8 @@ use tauri::{
     AppHandle, CloseRequestApi, Emitter, EventTarget, Manager, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder, Window,
 };
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use crate::sheet::{self, Level};
+use tauri_plugin_dialog::DialogExt;
 
 use write_core::review::package;
 
@@ -309,11 +310,7 @@ pub fn ready(app: &AppHandle) {
 pub fn open_files(app: &AppHandle, paths: &[PathBuf]) {
     for path in paths {
         if let Err(e) = open_file(app, path) {
-            app.dialog()
-                .message(e)
-                .title("Open")
-                .kind(MessageDialogKind::Error)
-                .show(|_| {});
+            sheet::tell(app, None, "Open", e, Level::Error);
         }
     }
 }
@@ -401,17 +398,13 @@ pub fn confirm_quit(app: &AppHandle) -> bool {
         return true;
     }
     let handle = app.clone();
-    app.dialog()
-        .message(format!("{} Quit and discard it?", quit_message(n)))
-        .title("Quit")
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom("Quit and discard".into(), "Cancel".into()))
-        .show(move |discard| {
-            handle.state::<Documents>().asking_quit.store(false, Ordering::SeqCst);
-            if discard {
-                handle.exit(0);
-            }
-        });
+    // a sheet on the window in front
+    sheet::ask_then(app, None, "Quit", format!("{} Quit and discard it?", quit_message(n)), Level::Warning, &["Quit and discard", "Cancel"], move |button| {
+        handle.state::<Documents>().asking_quit.store(false, Ordering::SeqCst);
+        if button.as_deref() == Some("Quit and discard") {
+            handle.exit(0);
+        }
+    });
     true
 }
 
@@ -429,20 +422,21 @@ pub fn closing(window: &Window, api: &CloseRequestApi) {
     }
     api.prevent_close();
     let window = window.clone();
-    window
-        .dialog()
-        .message("This window has text that was never saved. Close it and discard the text?")
-        .title("Close")
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            "Discard".into(),
-            "Cancel".into(),
-        ))
-        .show(move |discard| {
-            if discard {
+    let app = window.app_handle().clone();
+    let webview = app.get_webview_window(window.label());
+    sheet::ask_then(
+        &app,
+        webview.as_ref(),
+        "Close",
+        "This window has text that was never saved. Close it and discard the text?",
+        Level::Warning,
+        &["Discard", "Cancel"],
+        move |button| {
+            if button.as_deref() == Some("Discard") {
                 let _ = window.destroy();
             }
-        });
+        },
+    );
 }
 
 #[cfg(test)]

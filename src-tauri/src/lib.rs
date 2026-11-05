@@ -13,6 +13,7 @@ mod projects;
 mod refs;
 mod review;
 mod settings;
+mod sheet;
 mod spelling;
 mod state;
 mod tabs;

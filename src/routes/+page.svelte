@@ -29,6 +29,7 @@
   //
   // View ▸ Show Preview (⇧⌘P, `preview`) toggles the pane at the right of a Markdown document: pandoc's HTML of the text
   // as typed (`preview`), asked 300 ms after the typing stops, and scrolled to the block the cursor is in.
+  // View ▸ Show Outline (⌥⌘O, `outline`) toggles the column of headings at the left of a Markdown or LaTeX document.
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, untrack } from "svelte";
@@ -119,6 +120,23 @@
   })();
   let width = $state(stored >= 240 ? stored : 0);
   let panes = $state<HTMLElement>();
+  /** the outline of the headings at the left of the text: shown, kept for the next window */
+  let outlining = $state(
+    (() => {
+      try {
+        return localStorage.getItem("outline") === "1";
+      } catch {
+        return false;
+      }
+    })(),
+  );
+  function toggleOutline() {
+    outlining = !outlining;
+    try {
+      localStorage.setItem("outline", outlining ? "1" : "0");
+    } catch {}
+    if (!outlining) editor?.focus();
+  }
   const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), decided: (m) => (offered = m) });
   /** the review panel at the right: shown (the preview is not while it is) */
   let panel = $state(false);
@@ -494,6 +512,7 @@
       listen<string>("git-menu", (e) => git?.run(e.payload)),
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", togglePreview),
+      listen("outline", toggleOutline),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
       listen("references-changed", () => version++),
     ];
@@ -530,6 +549,7 @@
         {symbols}
         {completion}
         {hover}
+        outline={outlining && (markdown || latex)}
         autofocus
         extensions={[cursor]}
         review={session.handlers}

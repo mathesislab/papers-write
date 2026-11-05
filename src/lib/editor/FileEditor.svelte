@@ -16,6 +16,8 @@
   import { onMount } from "svelte";
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "./editor";
   import type { Completion, HoverSources } from "./types";
+  import Outline from "./Outline.svelte";
+  import { currentHeading, outline as outlineOf, type Heading } from "./outline";
   import {
     accept as acceptItem,
     redoSuggestion,
@@ -38,6 +40,7 @@
     extensions = [],
     completion,
     hover,
+    outline = false,
     review,
     placeholder,
     autofocus = false,
@@ -64,6 +67,8 @@
     /** what the tooltips over formulas, citation keys and images take from the app (cross-references need none; no
      *  tooltips without it) */
     hover?: HoverSources;
+    /** the outline of the headings in a column at the left of the text (Markdown and LaTeX) */
+    outline?: boolean;
     /** what the review asks of the app: with it, the items given by `setReview` are drawn over the text and typing in
      *  suggest mode (`setMode`) makes the user's suggestions (none without it) */
     review?: ReviewHandlers;
@@ -99,9 +104,32 @@
   const entries = $derived([...rules, ...[...LATEX].map(([keys, insert]) => ({ keys, insert }))]);
   // ⌘/ in the editor lists the symbols (the menu's Symbols… has the key first, in the app)
   const listKey = Prec.high(keymap.of([{ key: "Mod-/", run: () => (list(), true) }]));
+  /** the headings of the text and the one the cursor is under (kept while the outline is shown) */
+  let headings = $state.raw<Heading[]>([]);
+  let here = $state(-1);
   const selection = EditorView.updateListener.of((u) => {
     if (u.selectionSet || u.docChanged) selected = selectedWords(u.state);
+    if (outline && (u.docChanged || u.selectionSet || u.viewportChanged)) {
+      if (u.docChanged) headings = outlineOf(u.state);
+      here = currentHeading(headings, u.state.selection.main.head);
+    }
   });
+  function readHeadings() {
+    if (!outline || !editor) return;
+    headings = outlineOf(editor.state);
+    here = currentHeading(headings, editor.state.selection.main.head);
+  }
+  // shown: the headings of the text as it is
+  $effect(() => {
+    outline;
+    readHeadings();
+  });
+  /** A heading chosen in the outline: the cursor there, its line near the top. */
+  function goTo(heading: Heading) {
+    if (!editor) return;
+    editor.dispatch({ selection: { anchor: heading.from }, effects: EditorView.scrollIntoView(heading.from, { y: "start", yMargin: 12 }) });
+    editor.focus();
+  }
   $effect(() => {
     const now = rules;
     if (editor) setRules(editor, now);
@@ -157,6 +185,7 @@
       if (shownView !== "markup") setReviewView(editor, shownView);
       if (items) showReview(editor, items);
     }
+    readHeadings();
     onchange?.(file.text);
     [status, error] = ["saved", ""];
     if (autofocus && !editor.hasFocus) editor.focus();
@@ -291,7 +320,10 @@
       >
     </div>
   {/if}
-  <div class="host" bind:this={host}></div>
+  <div class="body">
+    {#if outline}<Outline {headings} current={here} onselect={goTo} />{/if}
+    <div class="host" bind:this={host}></div>
+  </div>
   {#if listing}
     <SymbolList {entries} oninsert={chosen} onclose={() => ((listing = false), editor?.focus())} />
   {/if}
@@ -304,8 +336,14 @@
     display: flex;
     flex-direction: column;
   }
+  .body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
   .host {
     flex: 1;
+    min-width: 0;
     min-height: 0;
   }
   .conflict {

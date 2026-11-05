@@ -6,6 +6,7 @@
 import { language, syntaxTree } from "@codemirror/language";
 import type { EditorState, Extension } from "@codemirror/state";
 import { EditorView, hoverTooltip, type Tooltip } from "@codemirror/view";
+import { headingTitle } from "./outline.ts";
 import type { HoverSources } from "./types.ts";
 
 type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>["resolve"]>;
@@ -78,15 +79,6 @@ const short = (text: string) => {
   const one = text.replace(/\s+/g, " ").trim();
   return one.length > SHORT ? `${one.slice(0, SHORT - 1)}…` : one;
 };
-
-/** The text of a heading line without its marks and attributes. */
-const headingTitle = (text: string) =>
-  text
-    .split("\n")[0]
-    .replace(/^#{1,6}[ \t]+/, "")
-    .replace(/[ \t]*\{[^}]*\}[ \t]*$/, "")
-    .replace(/[ \t]+#+[ \t]*$/, "")
-    .trim();
 
 /** What the label at `node` (a LabelName of a Markdown file) stands for: the kind it is by the node it labels, and its text. */
 function markdownTarget(state: EditorState, node: SyntaxNode): { kind?: string; text: string } {

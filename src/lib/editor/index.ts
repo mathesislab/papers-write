@@ -23,6 +23,7 @@ export {
 export * from "./lang/index.ts";
 export { difference } from "./difference";
 export { citation, familyName, fullReference, initials, latex as latexCite, pandoc, splitName } from "./refs";
+export { currentHeading, headingTitle, outline, type Heading } from "./outline";
 export { sections, type Section } from "./sections";
 export { DEFAULTS, LATEX, find as findSymbols, latex, merged, typed, type Entry, type Rule } from "./symbols";
 export { completionSource } from "./completion";
@@ -45,5 +46,6 @@ export type {
 } from "./review/types";
 export { default as FileEditor } from "./FileEditor.svelte";
 export type { Status } from "./FileEditor.svelte";
+export { default as Outline } from "./Outline.svelte";
 export { default as RefList } from "./RefList.svelte";
 export { default as SymbolList } from "./SymbolList.svelte";

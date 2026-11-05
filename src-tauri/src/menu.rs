@@ -122,7 +122,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         app,
         "View",
         true,
-        &[&item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?],
+        &[
+            &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
+            &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
+        ],
     )?;
     let build = Submenu::with_items(
         app,
@@ -247,9 +250,9 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
-        "preview" => {
+        "preview" | "outline" => {
             if let Some(window) = documents::front(app) {
-                let _ = app.emit_to(EventTarget::webview(window.label()), "preview", ());
+                let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
             }
         }
         "zoom-in" | "zoom-out" | "zoom-fit" | "pdf-find" | "pdf-next" | "pdf-previous" => {

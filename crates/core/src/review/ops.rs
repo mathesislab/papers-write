@@ -44,7 +44,13 @@ impl NewRecord {
 /// The next id of `slug`'s file: `<slug>-<n>` with `n` above every one there.
 fn next_id(doc: &Path, slug: &str) -> Result<String> {
     let path = store::person_path(doc, slug);
-    let n = if path.exists() { store::parse(&path)?.record.iter().filter_map(|r| Record::number(&r.id)).max().unwrap_or(0) } else { 0 };
+    let n = if path.exists() {
+        let file = store::parse(&path)?;
+        let through = file.person.map_or(0, |p| p.through);
+        file.record.iter().filter_map(|r| Record::number(&r.id)).max().unwrap_or(0).max(through)
+    } else {
+        0
+    };
     Ok(format!("{slug}-{}", n + 1))
 }
 

@@ -9,9 +9,11 @@
 //! - [`package`]: a review sent in one `.review` file (the document, what it shows, the review) and sent back.
 //! - [`record`]: the records of a review file, and who writes it.
 //! - [`word`]: the Word round trip (tracked changes and comments out, back in).
+//! - [`cleanup`]: Clean Up Review: the resolved records of the user's own file and the bases nothing needs.
 //! - [`store`]: the files on disk, appended to and never rewritten.
 
 pub mod anchor;
+pub mod cleanup;
 pub mod compare;
 pub mod diff;
 pub mod fold;
@@ -23,6 +25,7 @@ pub mod text;
 pub mod word;
 
 pub use anchor::{Anchor, Status};
+pub use cleanup::{Cleanup, cleanup, cleanup_plan};
 pub use fold::{Item, State};
 pub use ops::{NewRecord, apply, apply_all};
 pub use record::{Decision, Kind, Person, Record};

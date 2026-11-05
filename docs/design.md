@@ -274,7 +274,7 @@ and `library` are kept but not yet used by the build and the references.
   own base. A round is a label on the records, for showing, accepting and
   sending one round.
 - Resolved records and the bases no record needs any more can be cleared
-  (Clean Up Review); git history keeps them.
+  (Clean Up Review, below); git history keeps them.
 
 ```toml
 [person]
@@ -316,6 +316,9 @@ on = "jane-doe-7"
 decision = "accepted"      # accepted | rejected | resolved | reopened | withdrawn
 ```
 
+The `[person]` header may also hold `through = 12`, set by Clean Up Review: the
+highest number of the ids it removed, so that new ids go above it.
+
 A reply has `on` (the record answered) and `text`. A counter-suggestion is a
 suggestion with `on` (the suggestion it answers) and its own base. A
 suggestion edited by its author is a new record with `supersedes`; the latest
@@ -330,6 +333,37 @@ The format is the app's own, documented, with MRSF's field names where they
 fit and an MRSF export. MRSF itself does not fit: one file per document,
 which conflicts in git when two people append, anchors by line and column,
 and no version or decisions.
+
+### Clean Up Review
+
+The one thing but appending that is done to a person's file, by its owner
+only (the file is written beside and moved over the old one). The rule:
+
+- Everybody cleans their own file; nobody's file is touched by anyone else. The
+  fold leaves decided items out already, so the review looks the same before
+  and after, for everybody.
+- Removed from the user's file: the suggestions and comments of items that are
+  resolved (accepted, rejected, resolved, withdrawn), with the older records of
+  an edited one and the replies in its thread, unless an open
+  counter-suggestion still answers it; and decisions and replies of the user
+  that name a record no file has any more.
+- A decision of the user on an item still in someone else's file stays:
+  without it the item is open again. It goes at the user's next clean-up after
+  the item's owner has cleaned up. (So an item decided by two people takes a
+  clean-up by each, the owner's first.)
+- Bases no record of any file names, other than the text of the document as it
+  is, are deleted: they belong to nobody, and the current text's is kept so
+  that a suggestion made in another clone on it still finds its base.
+- Nothing is done while a review file cannot be read.
+- `through` keeps the ids removed from being given again: a decision of
+  someone else naming one must not land on a new record.
+- Git has all of it in its history. A `.review` package made before the clean-up
+  can bring removed (decided) records back when it is merged.
+
+A sheet says what goes before: "Remove 3 resolved records of yours, 2 bases?
+The 4 resolved items of others stay in their files until they clean up. Git
+history keeps everything." In the core: `review::cleanup_plan(doc, me)` (what
+would go) and `review::cleanup(doc, me)`.
 
 ### A new version
 
@@ -368,7 +402,15 @@ text both show; accepting one leaves the other outdated, to be dealt with.
   core makes it on the text as the first would leave it).
 - Accept All takes the open suggestions that are exact or moved, from the end
   of the text backwards, leaving those that are outdated, answered by a
-  counter-suggestion or overlapping one taken.
+  counter-suggestion or overlapping one taken. The panel's foot does the same
+  (and Reject all) for the person and the round its filters show, "Accept all
+  of Jane Doe in round 'Draft of 5 Nov'"; the Review menu's act on everyone.
+- The views (Review ▸ All Markup ⌥⌘1, Accepted ⌥⌘2, Original ⌥⌘3, per window)
+  are decorations only: Accepted hides the replaced text (atomic ranges, so the
+  cursor skips it) and shows the insertions as plain text in the author's
+  colour; Original draws no suggestion, comments stay marked. Suggest mode is
+  All Markup only: choosing it sets the view back, choosing another view leaves
+  it.
 - The review folder is watched while a window shows its document; the page
   reloads the items (also after its own appends) 100 ms after the last change.
 

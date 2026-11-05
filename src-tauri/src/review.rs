@@ -23,7 +23,7 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use crate::settings::Settings;
 use write_core::review::text::slug;
-use write_core::review::{Decision, Item, NewRecord, Person, Review, store, utf16_of};
+use write_core::review::{Cleanup, Decision, Item, NewRecord, Person, Review, cleanup, cleanup_plan, store, utf16_of};
 
 const UNSAVED: &str = "Save the document first";
 
@@ -261,6 +261,20 @@ pub async fn review_decide(window: WebviewWindow, on: String, decision: Decision
 pub async fn review_counter(window: WebviewWindow, text: String, on: String, from: usize, to: usize, insert: String, note: Option<String>) -> Result<String, String> {
     let (doc, me) = setup(&window)?;
     counter(&doc, &me, &text, &Counter { on, from, to, insert, note })
+}
+
+/// What Clean Up Review would remove for the user: their resolved records, the bases nothing needs; nothing is written.
+#[tauri::command]
+pub async fn review_cleanup_plan(window: WebviewWindow) -> Result<Cleanup, String> {
+    let (doc, me) = setup(&window)?;
+    cleanup_plan(&doc, &me).map_err(|e| e.to_string())
+}
+
+/// Clean Up Review: the user's own file without its resolved records, the bases nothing needs deleted.
+#[tauri::command]
+pub async fn review_cleanup(window: WebviewWindow) -> Result<Cleanup, String> {
+    let (doc, me) = setup(&window)?;
+    cleanup(&doc, &me).map_err(|e| e.to_string())
 }
 
 /// The page says whether its window is suggesting: kept for the check mark of the menu.

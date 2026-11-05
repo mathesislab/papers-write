@@ -174,6 +174,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &separator()?,
             &item("next", "Next Change", Some("Alt+CmdOrCtrl+Down"))?,
             &item("previous", "Previous Change", Some("Alt+CmdOrCtrl+Up"))?,
+            &separator()?,
+            &item("cleanup", "Clean Up Review…", None)?,
         ],
     )?;
     let git = Submenu::with_items(
@@ -255,7 +257,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id);
             }
         }
-        "suggest" | "comment" | "panel" | "view-markup" | "view-accepted" | "view-original" | "accept-all" | "reject-all" | "next" | "previous" => {
+        "suggest" | "comment" | "panel" | "view-markup" | "view-accepted" | "view-original" | "accept-all" | "reject-all" | "next" | "previous" | "cleanup" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "review-menu", id);
             }

@@ -370,6 +370,7 @@
     else if (what === "comment") comment();
     else if (what === "accept-all") session.acceptAll().catch(() => {});
     else if (what === "reject-all") session.rejectAll().catch(() => {});
+    else if (what === "cleanup") void session.cleanUp();
     else if (what === "next" || what === "previous") session.step(what === "next");
   }
 

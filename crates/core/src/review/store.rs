@@ -109,6 +109,25 @@ pub(crate) fn append(path: &Path, me: &Person, record: &Record) -> Result<()> {
     f.write_all(out.as_bytes()).map_err(fail)
 }
 
+/// Writes the file `path` again with `records` only: the one thing but appending that is done to a person's file,
+/// by its owner (Clean Up Review). The same bytes as appending them one by one would leave; written beside the file
+/// and moved over it, so that the file is the old one or the new one, never half of either.
+pub(crate) fn rewrite(path: &Path, person: &Person, records: &[&Record]) -> Result<()> {
+    let fail = |e| Error::Io(path.to_path_buf(), e);
+    let format = |e: toml::ser::Error| Error::Format(path.to_path_buf(), e.to_string());
+    let mut out = toml::to_string(&Header { person }).map_err(format)?;
+    for r in records {
+        out.push('\n');
+        out.push_str(&toml::to_string(&Appended { record: [r] }).map_err(format)?);
+    }
+    let tmp = path.with_extension("toml.tmp");
+    fs::write(&tmp, out).map_err(fail)?;
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        fail(e)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -100,6 +100,8 @@ pub fn run() {
             review::review_mode,
             review::review_view,
             review::review_confirm,
+            review::review_cleanup_plan,
+            review::review_cleanup,
             projects::project_bar,
             projects::switch_project,
             projects::remove_from_bar,

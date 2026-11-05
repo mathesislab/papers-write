@@ -260,6 +260,30 @@ export class ReviewSession {
     }
   }
 
+  /** Review ▸ Clean Up Review…: the user's resolved records and the bases nothing needs removed, once the sheet has said
+   *  what goes. The files of the others are theirs to clean (papers-write-core's `review::cleanup`). */
+  async cleanUp() {
+    if (!this.me) return this.#deps.say("Save the document first, to review it");
+    try {
+      const plan = await this.#write(() => invoke<{ records: string[]; bases: string[]; others: number }>("review_cleanup_plan"));
+      if (!plan.records.length && !plan.bases.length) return this.#deps.say("Nothing to clean up");
+      const n = (k: number, one: string, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
+      const goes = [plan.records.length ? `${n(plan.records.length, "resolved record")} of yours` : "", plan.bases.length ? n(plan.bases.length, "base") : ""].filter(Boolean).join(", ");
+      const others = plan.others ? ` The ${n(plan.others, "resolved item")} of others stay in their files until they clean up.` : "";
+      const ok = await invoke<boolean>("review_confirm", {
+        message: `Remove ${goes}?${others} Git history keeps everything.`,
+        ok: "Clean Up",
+      });
+      if (!ok) return;
+      await this.#write(() => invoke("review_cleanup"));
+      this.#deps.say("Review cleaned up");
+    } catch {
+      // `problem` says what went wrong
+    } finally {
+      this.reload();
+    }
+  }
+
   /** Next or Previous Change: the open item after (before) the cursor, wrapping round, brought into view. */
   step(forward: boolean) {
     const editor = this.#deps.editor();

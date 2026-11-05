@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use serde::Serialize;
 use tauri::{
@@ -27,6 +27,9 @@ pub struct Documents {
     blank: Mutex<HashSet<String>>,
     /// the number of the next window
     next: AtomicUsize,
+    /// the app has finished launching: before, files handed over by macOS wait in `pending`
+    ready: AtomicBool,
+    pending: Mutex<Vec<PathBuf>>,
 }
 
 /// The document of a window, for its page.
@@ -189,6 +192,31 @@ pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {
 }
 
 /// Files opened, one after the other; what could not be is told in a dialog.
+/// Files handed over by macOS (Open With, the Dock, a double click): opened, or kept until the app is ready, as
+/// they may come while it is still launching, before any window can be made.
+pub fn opened(app: &AppHandle, paths: Vec<PathBuf>) {
+    let state = app.state::<Documents>();
+    if !state.ready.load(Ordering::SeqCst) {
+        state.pending.lock().unwrap().extend(paths);
+        return;
+    }
+    open_files(app, &paths);
+}
+
+/// The app launched: the files handed over until now, or else a window of untitled text.
+pub fn ready(app: &AppHandle) {
+    let state = app.state::<Documents>();
+    state.ready.store(true, Ordering::SeqCst);
+    let pending = std::mem::take(&mut *state.pending.lock().unwrap());
+    if !pending.is_empty() {
+        open_files(app, &pending);
+    } else if app.webview_windows().is_empty()
+        && let Err(e) = make(app, None)
+    {
+        eprintln!("{e}");
+    }
+}
+
 pub fn open_files(app: &AppHandle, paths: &[PathBuf]) {
     for path in paths {
         if let Err(e) = open_file(app, path) {

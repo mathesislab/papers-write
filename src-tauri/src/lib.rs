@@ -10,9 +10,10 @@ use tauri::{DragDropEvent, Manager, RunEvent, WindowEvent};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // managed before the app launches: macOS may hand over files to open before `setup` has run
+        .manage(documents::Documents::default())
+        .manage(files::Watched::default())
         .setup(|app| {
-            app.manage(documents::Documents::default());
-            app.manage(files::Watched::default());
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
             tray::build(app.handle())?;
@@ -37,14 +38,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building papers-write")
         .run(|app, event| match event {
-            // a window of untitled text, unless files were opened: if they come after this, they take the blank window
-            RunEvent::Ready => {
-                if app.webview_windows().is_empty()
-                    && let Err(e) = documents::make(app, None)
-                {
-                    eprintln!("{e}");
-                }
-            }
+            // the files handed over while launching, or else a window of untitled text; files that come after this
+            // take the blank window
+            RunEvent::Ready => documents::ready(app),
             // the last window closed: the app stays in the menu bar; Quit (⌘Q, the menu bar icon) ends it with a code
             RunEvent::ExitRequested {
                 code: None, api, ..
@@ -65,7 +61,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             RunEvent::Opened { urls } => {
                 let paths: Vec<_> = urls.iter().filter_map(|u| u.to_file_path().ok()).collect();
-                documents::open_files(app, &paths);
+                documents::opened(app, paths);
             }
             _ => {}
         });

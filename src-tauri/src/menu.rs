@@ -60,6 +60,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("check", "Check Citations…", None)?,
         ],
     )?;
+    let view = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[&item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?],
+    )?;
     let window = Submenu::with_items(
         app,
         "Window",
@@ -72,7 +78,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
-    Menu::with_items(app, &[&app_menu, &file, &edit, &window])
+    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window])
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
@@ -98,6 +104,11 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "cite-key" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
+            }
+        }
+        "preview" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "preview", ());
             }
         }
         "undo" | "redo" | "symbols" | "references" | "check" => {

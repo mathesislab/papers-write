@@ -3,6 +3,7 @@
 mod documents;
 mod files;
 mod menu;
+mod preview;
 mod refs;
 mod tabs;
 mod tray;
@@ -17,6 +18,7 @@ pub fn run() {
         .manage(documents::Documents::default())
         .manage(files::Watched::default())
         .manage(refs::Loaded::default())
+        .manage(preview::Runs::default())
         .setup(|app| {
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
@@ -39,6 +41,7 @@ pub fn run() {
             documents::save_untitled,
             files::read_text,
             files::write_text,
+            preview::preview,
             refs::references,
             refs::closest_references,
             refs::reference_sources,

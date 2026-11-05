@@ -75,6 +75,10 @@ export function shownItem(item: ReviewItem): Shown | null {
 /** What is drawn over the text: given by the parts of the review (the app's items; the user's suggestions). */
 export const shownFacet = Facet.define<(state: EditorState) => Shown[]>();
 
+/** The ids of the app's items drawn otherwise (the user's own suggestions, from what the editor holds) or done with:
+ *  not drawn from the app's items. */
+export const claimedFacet = Facet.define<(state: EditorState) => ReadonlySet<string>>();
+
 export const shownOf = (state: EditorState): Shown[] =>
   state.facet(shownFacet).flatMap((f) => f(state)).sort((a, b) => a.from - b.from || a.to - b.to);
 
@@ -277,18 +281,26 @@ const theme = EditorView.baseTheme({
 });
 
 /** The app's items, as drawn. */
-const appItems = shownFacet.of((state) =>
-  state.field(itemsField).flatMap((i) => {
-    const s = shownItem(i);
+const appItems = shownFacet.of((state) => {
+  const claimed = state.facet(claimedFacet).map((f) => f(state));
+  return state.field(itemsField).flatMap((i) => {
+    const s = claimed.some((c) => c.has(i.id)) ? null : shownItem(i);
     return s ? [s] : [];
-  }),
-);
+  });
+});
+
+/** The decorations, made again as the text or the review changes (any effect: cheaper to make than to tell). */
+const drawn = StateField.define<DecorationSet>({
+  create: decorations,
+  update: (deco, tr) => (tr.docChanged || tr.effects.length || tr.reconfigured ? decorations(tr.state) : deco),
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 /** The overlay: the items, their decorations, the tooltip and the clicks. */
 export const overlay: Extension = [
   itemsField,
   appItems,
-  EditorView.decorations.compute(["doc", itemsField, shownFacet], decorations),
+  drawn,
   tooltip,
   clicks,
   theme,

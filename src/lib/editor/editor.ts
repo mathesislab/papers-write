@@ -30,6 +30,7 @@ import { acceptCompletion, completion } from "./completion";
 import { literalAt, type Literal } from "./context";
 import { difference } from "./difference";
 import * as lang from "./lang/index.ts";
+import { suggesting } from "./review/mode.ts";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
 import type { Completion, EditorFont, Indent } from "./types";
@@ -224,7 +225,7 @@ function replaceBack(view: EditorView, back: number, insert: string) {
 /** A sequence typed that completes one of the rules: the character typed goes in, then the sequence is replaced. */
 const typedSymbols = EditorView.inputHandler.of((view, from, to, text, insert) => {
   const { state } = view;
-  if (view.composing || text.length !== 1 || from !== to || state.selection.ranges.length !== 1) return false;
+  if (view.composing || text.length !== 1 || from !== to || state.selection.ranges.length !== 1 || suggesting(state)) return false;
   const line = state.doc.lineAt(from);
   const hit = typed(line.text.slice(0, from - line.from), text, state.field(symbolRules));
   if (!hit || inCode(state, from) || literalIn(state, from)) return false;
@@ -236,7 +237,7 @@ const typedSymbols = EditorView.inputHandler.of((view, from, to, text, insert) =
 /** Tab after a LaTeX name (`\alpha`) gives its symbol; after anything else it is left to the indent. */
 const latexTab = (view: EditorView) => {
   const { main } = view.state.selection;
-  if (!main.empty || inCode(view.state, main.head) || literalIn(view.state, main.head)) return false;
+  if (!main.empty || suggesting(view.state) || inCode(view.state, main.head) || literalIn(view.state, main.head)) return false;
   const line = view.state.doc.lineAt(main.head);
   const hit = latex(line.text.slice(0, main.head - line.from));
   if (hit) replaceBack(view, hit.length, hit.insert);

@@ -7,6 +7,7 @@ import { syntaxTree } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { contextAt, labelsOf, nameOptions, refOptions } from "./context.ts";
+import { suggesting } from "./review/mode.ts";
 import type { Completion } from "./types.ts";
 
 /** Section names of the citations: those of the bibliography first. */
@@ -27,6 +28,8 @@ const put = (insert: string, after?: () => void): Option["apply"] => (view, opti
 /** The source of the options: it answers by what the text before the cursor is in. */
 export const completionSource = (app: Completion) => async (cx: CompletionContext): Promise<CompletionResult | null> => {
   const { state, pos } = cx;
+  // in suggest mode what is typed is not in the text before the cursor
+  if (suggesting(state)) return null;
   const line = state.doc.lineAt(pos);
   const context = contextAt(syntaxTree(state), pos, line.text.slice(0, pos - line.from));
   if (!context) return null;

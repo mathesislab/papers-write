@@ -4,6 +4,7 @@ mod documents;
 mod files;
 mod menu;
 mod refs;
+mod tabs;
 mod tray;
 
 use tauri::{DragDropEvent, Manager, RunEvent, WindowEvent};
@@ -24,6 +25,7 @@ pub fn run() {
         })
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => documents::closing(window, api),
+            WindowEvent::Focused(true) => documents::focused(window.app_handle(), window.label()),
             WindowEvent::Destroyed => documents::closed(window.app_handle(), window.label()),
             // files dropped on a window open in tabs of their own
             WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) => {

@@ -30,6 +30,8 @@ pub struct Documents {
     /// the app has finished launching: before, files handed over by macOS wait in `pending`
     ready: AtomicBool,
     pending: Mutex<Vec<PathBuf>>,
+    /// the window that last had the keys: the one in front (a tab chosen makes its window key)
+    focused: Mutex<Option<String>>,
 }
 
 /// The document of a window, for its page.
@@ -91,6 +93,7 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<()> {
         state.blank.lock().unwrap().insert(label.clone());
     }
     regular(app, true);
+    let joined = front(app);
     let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("/".into()))
         .title(title(path.as_deref()))
         .inner_size(900.0, 700.0)
@@ -103,7 +106,12 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<()> {
             return Err(e);
         }
     };
-    let _ = window.set_focus();
+    match joined {
+        Some(to) => crate::tabs::join(&window, &to),
+        None => {
+            let _ = window.set_focus();
+        }
+    }
     if let Some(path) = path {
         let _ = files::watch(app, &label, &path);
     }
@@ -133,6 +141,11 @@ pub fn closed(app: &AppHandle, label: &str) {
     let state = app.state::<Documents>();
     state.paths.lock().unwrap().remove(label);
     state.blank.lock().unwrap().remove(label);
+    let mut focused = state.focused.lock().unwrap();
+    if focused.as_deref() == Some(label) {
+        *focused = None;
+    }
+    drop(focused);
     files::unwatch(app, label);
     crate::refs::unload(app, label);
     // the window may still be among the windows as this is told
@@ -153,11 +166,20 @@ pub fn set_blank(window: WebviewWindow, blank: bool) {
     }
 }
 
-/// The window in front.
+/// A window that got the keys: the one in front from now on.
+pub fn focused(app: &AppHandle, label: &str) {
+    *app.state::<Documents>().focused.lock().unwrap() = Some(label.to_string());
+}
+
+/// The window in front: the last that got the keys, as the windows say whether they have them wrongly once they
+/// are tabs of one another.
 pub fn front(app: &AppHandle) -> Option<WebviewWindow> {
-    app.webview_windows()
-        .into_values()
-        .find(|w| w.is_focused().unwrap_or(false))
+    let last = app.state::<Documents>().focused.lock().unwrap().clone();
+    last.and_then(|label| app.get_webview_window(&label)).or_else(|| {
+        app.webview_windows()
+            .into_values()
+            .find(|w| w.is_focused().unwrap_or(false))
+    })
 }
 
 /// A file opened: its window brought forward when it has one; else the untitled blank window in front (or any) shows

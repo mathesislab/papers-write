@@ -12,11 +12,16 @@
   //
   // Pull is `git pull --ff-only`: if the branch cannot go forward, nothing is done and a sheet says so; the rest is for
   // a terminal. Push is `git push`, never forced, and needs an upstream.
+  //
+  // Review Branch…: the remotes fetched quietly, the branches that have commits touching the document that HEAD has not
+  // (with their authors, how many, the last date); the one chosen is compared as suggestions from where it left this
+  // branch (as File ▸ Exchange ▸ Compare as Suggestions does), each change under its commit's author.
 
   import { invoke } from "@tauri-apps/api/core";
-  import type { Changed } from "$lib/git";
+  import { said, type Added, type Changed } from "$lib/git";
 
   type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
+  type Branch = { name: string; authors: string[]; count: number; last: string };
   type Candidate = Changed & { kind: "document" | "bibliography" | "review" | "other"; ticked: boolean };
 
   let {
@@ -28,6 +33,7 @@
     onchange,
     onfocus,
     oncommitted,
+    onlog,
   }: {
     flush: () => unknown;
     /** the document as typed (it names its bibliography) */
@@ -42,22 +48,27 @@
     onfocus?: () => void;
     /** a commit made */
     oncommitted?: () => void;
+    /** what was done to the review, for the message of the next commit */
+    onlog?: (what: string) => void;
   } = $props();
 
   type Sheet = { files: Candidate[]; ticks: boolean[]; message: string; busy: boolean; error: string };
   let committing = $state<Sheet | null>(null);
   /** the sheet of Compare with Commit…: the revisions to choose from, the one chosen or typed */
   let comparing = $state<{ revisions: Revision[]; chosen: string; typed: string; busy: boolean; error: string } | null>(null);
+  /** the sheet of Review Branch…: the branches (none while they are fetched), the one chosen, what came of it */
+  let branching = $state<{ branches: Branch[] | null; chosen: string; busy: boolean; done: string; error: string } | null>(null);
   /** what a pull or a push could not do, as git says it */
   let failure = $state<{ what: string; error: string } | null>(null);
 
   /** The menu's items: "git-commit", "git-pull", "git-push"; `message` prefills the commit's. */
   export async function run(what: string, message = "") {
     failure = null;
-    if (!["git-commit", "git-pull", "git-push", "git-compare"].includes(what)) return;
+    if (!["git-commit", "git-pull", "git-push", "git-compare", "git-review-branch"].includes(what)) return;
     await flush();
     if (what === "git-commit") return open(message);
     if (what === "git-compare") return compareSheet();
+    if (what === "git-review-branch") return branchSheet();
     const [name, go, done] =
       what === "git-pull" ? (["Pull", "git_pull", "Pulled"] as const) : (["Push", "git_push", "Pushed"] as const);
     say(`${name}ing…`);
@@ -104,6 +115,34 @@
     }
   }
 
+  /** the number of the last sheet of Review Branch opened: an answer for an earlier one is dropped */
+  let opened = 0;
+  async function branchSheet() {
+    const n = ++opened;
+    branching = { branches: null, chosen: "", busy: false, done: "", error: "" };
+    try {
+      const branches = await invoke<Branch[]>("review_branches", { fetch: true });
+      if (branching && n === opened) [branching.branches, branching.chosen] = [branches, branches[0]?.name ?? ""];
+    } catch (e) {
+      if (branching && n === opened) branching.error = String(e);
+    }
+  }
+
+  async function reviewBranch() {
+    const b = branching;
+    if (!b || !b.chosen || b.busy) return;
+    [b.busy, b.done, b.error] = [true, "", ""];
+    try {
+      const made = await invoke<Added>("compare_as_suggestions", { source: { revision: b.chosen }, author: null });
+      b.done = said(made);
+      if (made.added) onlog?.(`review of ${b.chosen} as suggestions`);
+      onchange();
+    } catch (e) {
+      b.error = String(e);
+    }
+    b.busy = false;
+  }
+
   const chosen = $derived(committing ? committing.files.filter((_, i) => committing!.ticks[i]) : []);
   const ready = $derived(!!committing && !committing.busy && chosen.length > 0 && !!committing.message.trim());
 
@@ -127,6 +166,7 @@
   function close() {
     committing = null;
     comparing = null;
+    branching = null;
     failure = null;
     onfocus?.();
   }
@@ -195,6 +235,41 @@
     </div>
   </div>
 {/if}
+{#if branching}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="sheet" role="dialog" aria-label="Review Branch" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+    <header>
+      <b>Review Branch</b>
+      <button onclick={close}>{branching.done ? "Close" : "Cancel"}</button>
+    </header>
+    <p class="hint">
+      The edits of a branch since it left this one become suggestions, each under the author of its commit. What you wrote since stays: where you changed
+      the same words, the suggestion shows as outdated.
+    </p>
+    {#if !branching.branches}
+      {#if !branching.error}<p class="hint">Fetching…</p>{/if}
+    {:else if !branching.branches.length}
+      <p>No branch has edits of {docName()} that this branch has not.</p>
+    {:else}
+      <ul class="branches">
+        {#each branching.branches as b (b.name)}
+          <li>
+            <label>
+              <input type="radio" name="branch" value={b.name} bind:group={branching.chosen} />
+              <span class="path">{b.name}</span>
+            </label>
+            <small>{b.authors.join(", ")} · {b.count} commit{b.count === 1 ? "" : "s"} · {b.last}</small>
+          </li>
+        {/each}
+      </ul>
+      <div class="buttons">
+        <button class="primary" disabled={!branching.chosen || branching.busy} onclick={reviewBranch}>Review as Suggestions</button>
+      </div>
+    {/if}
+    {#if branching.done}<p>{branching.done}</p>{/if}
+    {#if branching.error}<p class="error">{branching.error}</p>{/if}
+  </div>
+{/if}
 {#if failure}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="sheet" role="dialog" aria-label={failure.what} tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
@@ -248,6 +323,15 @@
     align-items: center;
     gap: 6px;
     min-width: 0;
+  }
+  ul.branches li {
+    align-items: baseline;
+  }
+  ul.branches small {
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   li.other .path {
     color: var(--muted);

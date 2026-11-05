@@ -479,6 +479,63 @@ pub(crate) fn review_revision(doc: &Path, rev: &str) -> Result<Added, String> {
     Ok(as_suggestions(doc, base, &tip)?.1)
 }
 
+// ---- Review Branch…
+
+/// A branch with edits of the document that HEAD does not have.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Branch {
+    /// as git names it: "jane/edits", "origin/jane/edits"
+    pub name: String,
+    /// the authors of those commits, the latest first
+    pub authors: Vec<String>,
+    /// how many commits touched the document
+    pub count: usize,
+    /// the date of the latest, YYYY-MM-DD
+    pub last: String,
+}
+
+/// The local and remote branches that have commits touching `doc` that HEAD does not (`git log HEAD..<branch> --
+/// <doc>`), the latest first; a remote branch at the same commit as a local one is left out. With `fetch`, the remotes
+/// are fetched first, quietly (a failure is not told: what is there is listed).
+pub(crate) fn branches_of(doc: &Path, fetch: bool) -> Result<Vec<Branch>, String> {
+    let folder = folder_of(doc);
+    let top = toplevel(folder).ok_or("The document is not in a git repository")?;
+    if fetch {
+        let _ = git(&top, &["fetch", "--quiet"]);
+    }
+    let name = doc.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let refs = git(folder, &["for-each-ref", "--format=%(refname:short)%1f%(objectname)%1f%(symref)", "refs/heads", "refs/remotes"])?;
+    let mut seen = std::collections::HashSet::new();
+    let mut found = Vec::new();
+    for line in refs.lines() {
+        let mut f = line.split('\u{1f}');
+        let (Some(branch), Some(oid)) = (f.next(), f.next()) else { continue };
+        // origin/HEAD names another branch; the same commit is listed once
+        if !f.next().unwrap_or("").is_empty() || !seen.insert(oid.to_string()) {
+            continue;
+        }
+        let log = git(folder, &["log", "--format=%an%x1f%as", &format!("HEAD..{oid}"), "--", &name]).unwrap_or_default();
+        let commits: Vec<(&str, &str)> = log.lines().filter_map(|l| l.split_once('\u{1f}')).collect();
+        let Some(&(_, last)) = commits.first() else { continue };
+        let mut authors: Vec<String> = Vec::new();
+        for (a, _) in &commits {
+            if !authors.iter().any(|x| x == a) {
+                authors.push(a.to_string());
+            }
+        }
+        found.push(Branch { name: branch.to_string(), authors, count: commits.len(), last: last.to_string() });
+    }
+    found.sort_by(|a, b| b.last.cmp(&a.last));
+    Ok(found)
+}
+
+/// The branches with edits of the window's document that HEAD has not, for Git ▸ Review Branch… (fetched first).
+#[tauri::command]
+pub async fn review_branches(window: WebviewWindow, fetch: bool) -> Result<Vec<Branch>, String> {
+    let doc = doc_of(&window)?;
+    blocking(move || branches_of(&doc, fetch)).await?
+}
+
 // ---- Compare with Commit…
 
 /// A document as it was at a commit, with what changed since as tracked changes.
@@ -826,6 +883,27 @@ mod tests {
         let e = push(&dir.join("paper.md")).unwrap_err();
         assert!(e.contains("no upstream"), "{e}");
         assert!(pull(&dir.join("paper.md")).unwrap_err().contains("no upstream"));
+    }
+
+    #[test]
+    fn the_branches_with_edits_of_the_document() {
+        let (a, b) = clones("branches");
+        // jane's branch, pushed: edits of the document
+        sh(&b, &["checkout", "-q", "-b", "jane/edits"]);
+        commit_file(&b, "paper.md", "one, two\n");
+        sh(&b, &["push", "-q", "-u", "origin", "jane/edits"]);
+        // a branch that touches another file only, and one already merged
+        sh(&b, &["checkout", "-q", "-b", "notes", "main"]);
+        commit_file(&b, "notes.md", "n\n");
+        sh(&b, &["push", "-q", "origin", "notes"]);
+        sh(&a, &["branch", "old"]);
+        let found = branches_of(&a.join("paper.md"), true).unwrap();
+        let got: Vec<(&str, usize, &str)> = found.iter().map(|b| (b.name.as_str(), b.count, b.authors[0].as_str())).collect();
+        assert_eq!(got, vec![("origin/jane/edits", 1, "b")]);
+        // a local branch at the same commit is listed instead of the remote one
+        sh(&a, &["branch", "jane/edits", "origin/jane/edits"]);
+        let found = branches_of(&a.join("paper.md"), false).unwrap();
+        assert_eq!(found.iter().map(|b| b.name.as_str()).collect::<Vec<_>>(), vec!["jane/edits"]);
     }
 
     #[test]

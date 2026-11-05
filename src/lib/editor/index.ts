@@ -19,6 +19,7 @@ export {
   type EditorSettings,
   type Options,
 } from "./editor";
+export * from "./lang/index.ts";
 export { difference } from "./difference";
 export { citation, familyName, fullReference, initials, latex as latexCite, pandoc, splitName } from "./refs";
 export { sections, type Section } from "./sections";

@@ -27,6 +27,7 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { difference } from "./difference";
+import * as lang from "./lang/index.ts";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
 import type { EditorFont, Indent } from "./types";
@@ -41,6 +42,11 @@ const style = HighlightStyle.define([
   { tag: tags.link, color: "var(--accent)" },
   { tag: tags.url, color: "var(--muted)" },
   { tag: tags.monospace, fontFamily: "ui-monospace, Menlo, monospace", fontSize: "0.92em" },
+  // front matter: the fences and the keys; math and LaTeX: the marks and braces dimmed, the commands coloured
+  { tag: [lang.frontMatterMark, lang.mathMark, lang.mathBrace, lang.mathOperator, lang.latexBrace], color: "var(--muted)" },
+  { tag: lang.frontMatterKey, color: "var(--md-meta, var(--md-heading))" },
+  { tag: [lang.mathCommand, lang.latexCommand, lang.latexEnvName], color: "var(--md-math, var(--accent))" },
+  { tag: lang.mathNumber, color: "var(--md-math-number, var(--md-quote, var(--muted)))" },
 ]);
 
 /** The fonts of the settings. */
@@ -319,7 +325,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
         ...(mono
           ? []
           : [
-              markdown(),
+              markdown({ extensions: lang.paperMarkdown }),
               symbolRules.init(() => options.rules ?? DEFAULTS),
               typedSymbols,
               syntaxHighlighting(style),

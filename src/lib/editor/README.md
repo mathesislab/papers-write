@@ -44,4 +44,7 @@ The editor and the components use these, set by the app's theme (light and dark)
 | `--error` | an error shown | `#c4321f` / `#ff7a66` |
 | `--md-heading` | Markdown headings | `#2f6fde` / `#7ea6f5` |
 | `--md-quote` | Markdown quotes | `#5f5f66` / `#b4b4bc` |
+| `--md-meta` | the keys of the YAML front matter | `--md-heading` |
+| `--md-math` | the LaTeX commands, in math and in the text, and the names of environments | `--accent` |
+| `--md-math-number` | the numbers in math | `--md-quote`, else `--muted` |
 | `--editor-font`, `--editor-size` | the font and size of the Markdown (with a default); set by `setEditorFont` | |

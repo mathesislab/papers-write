@@ -16,10 +16,16 @@
       "types": "./src/lib/editor/index.ts",
       "svelte": "./src/lib/editor/index.ts",
       "default": "./src/lib/editor/index.ts"
+    },
+    "./project": {
+      "types": "./src/lib/project/index.ts",
+      "svelte": "./src/lib/project/index.ts",
+      "default": "./src/lib/project/index.ts"
     }
   },
   "files": [
-    "src/lib/editor"
+    "src/lib/editor",
+    "src/lib/project"
   ],
   "license": "MIT",
   "dependencies": {

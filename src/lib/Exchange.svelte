@@ -8,6 +8,10 @@
   //
   // Export as Word with Changes…: where to save the .docx (a dialog), then a sheet that says how many tracked changes
   // and comments it has and lists what could not go to Word (suggestions that overlap, in the front matter).
+  //
+  // Import Word Review…: a .docx (a dialog), and whose the changes are that were made with Track Changes off (they
+  // are found by comparing with the text; Word names no one). The tracked changes and comments come in under their
+  // authors' names; a sheet says how many, and lists what could not be placed in the text.
 
   import { invoke } from "@tauri-apps/api/core";
 
@@ -20,13 +24,20 @@
   type Exported = { path: string; suggestions: number; comments: number; skipped: string[]; notes: string[] };
   /** the sheet of an export: what it made */
   let exported = $state<Exported | null>(null);
+  type Imported = { suggestions: number; comments: number; authors: string[]; unplaced: string[] };
+  /** the sheet of an import: the file, the author of untracked changes, and what came of it */
+  let importing = $state<{ file: string; author: string; busy: boolean; result: Imported | null } | null>(null);
   let problem = $state("");
 
-  /** The menu's items: "compare", "word-export". */
+  /** The menu's items: "compare", "word-export", "word-import". */
   export async function run(what: string) {
-    if (what !== "compare" && what !== "word-export") return;
+    if (what !== "compare" && what !== "word-export" && what !== "word-import") return;
     problem = "";
     await flush();
+    if (what === "word-import") {
+      importing = { file: "", author: "", busy: false, result: null };
+      return chooseWord();
+    }
     if (what === "word-export") {
       try {
         exported = (await invoke<Exported | null>("export_word", { path: null })) ?? exported;
@@ -80,8 +91,30 @@
     c.busy = false;
   }
 
+  async function chooseWord() {
+    try {
+      const file = await invoke<string | null>("choose_word_file");
+      if (file && importing) importing.file = file;
+    } catch (e) {
+      problem = String(e);
+    }
+  }
+
+  async function importWord() {
+    const i = importing;
+    if (!i || !i.file || i.busy) return;
+    [i.busy, problem] = [true, ""];
+    try {
+      i.result = await invoke<Imported>("import_word", { path: i.file, fallbackAuthor: i.author.trim() });
+    } catch (e) {
+      problem = String(e);
+    }
+    i.busy = false;
+  }
+
   function close() {
     comparing = null;
+    importing = null;
     exported = null;
     problem = "";
     onfocus?.();
@@ -147,6 +180,37 @@
       <ul>{#each exported.skipped as line (line)}<li>{line}</li>{/each}</ul>
     {/if}
     <div class="buttons"><button onclick={() => invoke("reveal", { path }).catch((e) => (problem = String(e)))}>Reveal in Finder</button></div>
+  </div>
+{/if}
+{#if importing}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="sheet" role="dialog" aria-label="Import Word Review" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+    <header>
+      <b>Import Word Review</b>
+      <button onclick={close}>{importing.result ? "Close" : "Cancel"}</button>
+    </header>
+    <div class="row">
+      <button onclick={chooseWord}>Choose .docx…</button>
+      {#if importing.file}<span class="where" title={importing.file}>{nameOf(importing.file)}</span>{/if}
+    </div>
+    <label>
+      Changes made with Track Changes off are by
+      <input bind:value={importing.author} placeholder="Word" spellcheck="false" />
+    </label>
+    <p class="where">Tracked changes and comments come in under the names Word has for them; the text only, not Word's formatting.</p>
+    <div class="buttons"><button class="go" disabled={!importing.file || importing.busy || !!importing.result} onclick={importWord}>Import</button></div>
+    {#if importing.result}
+      {@const r = importing.result}
+      <p>
+        {r.suggestions} suggestion{r.suggestions === 1 ? "" : "s"} and {r.comments} comment{r.comments === 1 ? "" : "s"}{r.authors.length
+          ? ` by ${r.authors.join(", ")}`
+          : ""}.
+      </p>
+      {#if r.unplaced.length}
+        <p class="where">Not placed in the text ({r.unplaced.length}):</p>
+        <ul>{#each r.unplaced as line (line)}<li>{line}</li>{/each}</ul>
+      {/if}
+    {/if}
   </div>
 {/if}
 {#if problem}<button class="mark error" onclick={() => (problem = "")} title="Dismiss">{problem}</button>{/if}

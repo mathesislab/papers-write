@@ -8,6 +8,12 @@
 //! pandoc must not be given spans inside: math, code and raw LaTeX.
 
 pub mod export;
+pub mod import;
+mod json;
+mod places;
 pub mod protect;
+#[cfg(test)]
+mod testing;
 
 pub use export::{Export, markdown_with_changes};
+pub use import::{Imported, import};

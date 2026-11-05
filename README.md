@@ -67,6 +67,18 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   change cannot be put in, is a comment that says what it suggests. A sheet
   lists what was left out (a suggestion that overlaps an earlier one, one in
   the front matter).
+- File ▸ Exchange ▸ Import Word Review… reads a `.docx` back (pandoc): its
+  tracked changes and comments become suggestions and comments, each under the
+  name Word has for its author (their own review file). Each is placed in the
+  Markdown by the words it concerns and the words around them, ignoring the
+  Markdown's punctuation (`*`, `[@key]`, `$..$`), so it finds its place
+  whatever the markup; changes made with Track Changes off are found by
+  comparing the text with the document's, and are given to the author named in
+  the sheet ("Word" if none). A sheet lists what could not be placed (words
+  not found, or in two places the words around do not tell apart): those are
+  not guessed. Only the text comes back: Word's formatting is dropped, and a
+  change that takes in a citation, math or markup is placed on the words
+  around it.
 - The app stays in the menu bar when the last window closes (New, Open…,
   Quit); ⌘Q quits.
 - Edit ▸ References… (⇧⌘R) lists the references over the editor: the `.bib`

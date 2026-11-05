@@ -58,6 +58,8 @@ pub fn run() {
             exchange::revision_author,
             exchange::choose_edited_copy,
             exchange::export_word,
+            exchange::choose_word_file,
+            exchange::import_word,
             refs::references,
             refs::closest_references,
             refs::reference_sources,

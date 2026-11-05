@@ -372,6 +372,11 @@ text both show; accepting one leaves the other outdated, to be dealt with.
   Edits made with tracking off are found by comparing the text with the
   base, and come in too. Only the text comes back: formatting Word adds is
   dropped, and what pandoc cannot carry is listed.
+  Each change is placed by its quote, found by words: the words that changed
+  with those around them, ignoring the Markdown's punctuation and markup (the
+  text pandoc reads from the .docx is plain, the document is Markdown); what is
+  not found, or stands in two places the words around do not tell apart, is
+  listed unplaced, not guessed.
 - To read only: a single HTML page (the preview, changes coloured, comments
   in the margin), or the marked-up PDF (latexdiff, comments as margin
   notes).

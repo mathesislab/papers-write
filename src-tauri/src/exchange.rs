@@ -2,7 +2,8 @@
 //! git"). Compare as Suggestions turns an edited copy of the document, a commit or a branch into suggestions under
 //! the name of whoever made it. Export as Word with Changes makes a .docx of the document with the open suggestions
 //! and comments as Word's tracked changes and comments (pandoc: `brew install pandoc`). The document is the file of
-//! the window: the page has written it before it asks.
+//! the window: the page has written it before it asks. Import Word Review reads a .docx back (its tracked changes,
+//! the changes made with tracking off, its comments) as the suggestions and comments of their authors.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -228,6 +229,84 @@ pub async fn export_word(app: AppHandle, window: WebviewWindow, path: Option<Str
     tauri::async_runtime::spawn_blocking(move || export(&doc, &read(&doc)?, &to).map(Some)).await.map_err(|e| e.to_string())?
 }
 
+// ---- Import Word Review
+
+/// What an import made.
+#[derive(Serialize, Default)]
+pub struct Imported {
+    pub suggestions: usize,
+    pub comments: usize,
+    /// whose, each once
+    pub authors: Vec<String>,
+    /// what could not be placed in the text, one line each
+    pub unplaced: Vec<String>,
+}
+
+/// The suggestions and comments of the .docx at `docx` written to the review of `doc`, each person's to their own
+/// file; `current` is the text of `doc`. Changes made with tracking off are `fallback_author`'s ("Word" when empty).
+fn import(doc: &Path, current: &str, docx: &Path, fallback_author: &str) -> Result<Imported, String> {
+    let dir = doc.parent().ok_or("no folder")?;
+    let file = docx.to_string_lossy().into_owned();
+    let read = |mode: &str, to: &str| {
+        let mode = format!("--track-changes={mode}");
+        let mut args = vec![file.as_str(), mode.as_str(), "-t", to];
+        if to == "plain" {
+            args.push("--wrap=none");
+        }
+        pandoc(&args, dir, b"").map(|b| String::from_utf8_lossy(&b).into_owned())
+    };
+    let (all, reject, accept) = (read("all", "json")?, read("reject", "plain")?, read("accept", "plain")?);
+    // the document as plain text, as the .docx's own is (citations resolved if the export did)
+    let render = |citeproc: bool| {
+        let mut args = vec!["-f", "markdown", "-t", "plain", "--wrap=none"];
+        if citeproc {
+            args.push("--citeproc");
+        }
+        pandoc(&args, dir, current.as_bytes()).map(|b| String::from_utf8_lossy(&b).into_owned())
+    };
+    let plain = render(cites(current)).or_else(|e| if cites(current) { render(false) } else { Err(e) })?;
+    let found = review::word::import(current, &all, &reject, &accept, &plain, fallback_author);
+
+    let round = format!("Word review: {}", docx.file_name().unwrap_or_default().to_string_lossy());
+    let mut made = Imported { suggestions: found.suggestions.len(), comments: found.comments.len(), unplaced: found.unplaced, ..Default::default() };
+    for (author, record) in found.suggestions.into_iter().chain(found.comments) {
+        let me = Person::new(author.as_str(), "");
+        Review::add(doc, &me, current, record.round(round.clone())).map_err(|e| e.to_string())?;
+        if !made.authors.contains(&author) {
+            made.authors.push(author);
+        }
+    }
+    Ok(made)
+}
+
+/// The .docx to import, chosen in a dialog; none when it was cancelled.
+#[tauri::command]
+pub async fn choose_word_file(app: AppHandle, window: WebviewWindow) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut dialog = app.dialog().file().set_title("Word review").add_filter("Word", &["docx"]);
+    if let Ok(doc) = document_of(&window)
+        && let Some(folder) = doc.parent()
+    {
+        dialog = dialog.set_directory(folder);
+    }
+    Ok(dialog.blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned()))
+}
+
+/// The .docx at `path` read as a review of the window's document: its tracked changes and comments as suggestions and
+/// comments, each under the name of whoever made it (their own review file); what was changed with tracking off under
+/// `fallback_author`. What could not be placed in the text is returned, not written.
+#[tauri::command]
+pub async fn import_word(app: AppHandle, window: WebviewWindow, path: String, fallback_author: String) -> Result<Imported, String> {
+    let doc = document_of(&window)?;
+    let made = tauri::async_runtime::spawn_blocking(move || import(&doc, &read(&doc)?, Path::new(&path), &fallback_author))
+        .await
+        .map_err(|e| e.to_string())??;
+    if made.suggestions + made.comments > 0 {
+        changed(&app, &window);
+    }
+    Ok(made)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,6 +364,36 @@ mod tests {
         };
         assert!(read("reject").contains("retreats rapidly when"));
         assert!(read("accept").contains("retreats slowly when"));
+    }
+
+    #[test]
+    fn a_word_review_goes_out_and_comes_back_as_the_same_review() {
+        if preview::pandoc().is_err() {
+            return;
+        }
+        let dir = folder("roundtrip");
+        let doc = dir.join("paper.md");
+        let current = "The *grounding line* retreats rapidly [@smith2020] when the bed slopes.\n\nThe ice shelf thins.\n";
+        std::fs::write(&doc, current).unwrap();
+        let theirs = dir.join("theirs.md");
+        std::fs::write(&theirs, "The *grounding line* retreats slowly [@smith2020] when the bed slopes.\n\nThe ice shelf thickens.\n").unwrap();
+        let source = Source { file: Some(theirs.to_string_lossy().into_owned()), revision: None };
+        compare(&doc, current, &source, &Author { name: "Jane Doe".into(), email: None }).unwrap();
+        let to = dir.join("paper.docx");
+        export(&doc, current, &to).unwrap();
+
+        // the same document somewhere else, with no review: the .docx brings it back
+        let other = folder("roundtrip-other");
+        let doc2 = other.join("paper.md");
+        std::fs::write(&doc2, current).unwrap();
+        let made = import(&doc2, current, &to, "Me").unwrap();
+        assert_eq!((made.suggestions, made.comments), (2, 0));
+        assert!(made.unplaced.is_empty(), "{:?}", made.unplaced);
+        assert_eq!(made.authors, ["Jane Doe"]);
+        let items = Review::load(&doc2).unwrap().items(current);
+        assert!(items.iter().all(|i| i.author == "Jane Doe" && i.record.round.as_deref() == Some("Word review: paper.docx")));
+        let applied = review::apply_all(current, &items);
+        assert_eq!(applied.split_whitespace().collect::<Vec<_>>().join(" "), "The *grounding line* retreats slowly [@smith2020] when the bed slopes. The ice shelf thickens.");
     }
 
     #[test]

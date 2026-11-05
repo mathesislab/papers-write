@@ -1,6 +1,6 @@
 // Diagnostics: wavy underlines, with their reason on hover, under the keys the text cannot resolve. Cross-references to
 // a label the document does not define, and labels it defines twice, are found from the syntax tree (`labelProblems`);
-// citation keys the bibliography and the library lack are asked of the app (`Diagnostics.missingKeys`), 800 ms after
+// citation keys the document's bibliography lacks are asked of the app (`Diagnostics.missingKeys`), 800 ms after
 // the typing stops. Plain decorations, not @codemirror/lint. Opt-in: an editor without `diagnostics` draws none.
 
 import { syntaxTree } from "@codemirror/language";

@@ -468,12 +468,15 @@
   let symbols = $state<[string, string][]>([]);
   let colour = $state<number | null>(null);
   let follows = true;
+  /** the system's spelling on the prose (Settings ▸ Editor) */
+  let spelling = $state(true);
   let who = "";
   /** how often the colours were set: the text and the lists are drawn again with them */
   let coloured = $state(0);
 
   function apply(s: Settings) {
     prefs = applyEditor(s);
+    spelling = s.spelling;
     symbols = s.symbols;
     colour = s.review_colour;
     follows = s.preview_follow;
@@ -561,7 +564,7 @@
         {completion}
         {hover}
         {diagnostics}
-        spellcheck
+        spellcheck={spelling}
         outline={outlining && (markdown || latex)}
         autofocus
         extensions={[cursor]}

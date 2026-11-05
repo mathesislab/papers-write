@@ -173,7 +173,13 @@ pub async fn reference_of(window: WebviewWindow, key: String, text: String) -> O
 /// underlines them, 800 ms after the typing stops).
 #[tauri::command]
 pub async fn missing_keys(window: WebviewWindow, keys: Vec<String>, text: String) -> Vec<String> {
-    references_of(&window, &text).missing(&keys)
+    // an untitled text has no bibliography yet: nothing to say until it is saved
+    if crate::documents::path_of(window.app_handle(), window.label()).is_none() {
+        return Vec::new();
+    }
+    // the keys the document's own bibliography lacks (as the build sees them), whether the library has them or not
+    let own = References::load(own_bibs(&window, &text));
+    own.missing(&keys)
 }
 
 /// The keys cited in `text` against those of the `.bib` files its front matter names (not the papers library).

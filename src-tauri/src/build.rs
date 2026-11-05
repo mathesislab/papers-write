@@ -143,7 +143,7 @@ fn find_in(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
     dirs.iter().map(|d| d.join(name)).find(|p| p.is_file())
 }
 
-fn find_tool(name: &str) -> Result<PathBuf, String> {
+pub(crate) fn find_tool(name: &str) -> Result<PathBuf, String> {
     find_in(name, &search_dirs()).ok_or_else(|| match name {
         "texmark" => "texmark is not installed (pip install texmark); it was not found on PATH, in /opt/homebrew/Caskroom/miniforge/base/bin or ~/.local/bin".to_string(),
         "latexmk" | "latexdiff" | "pdflatex" => format!("{name} was not found: install MacTeX (https://tug.org/mactex/), which has it in /Library/TeX/texbin"),
@@ -418,7 +418,7 @@ pub fn run_build(file: &Path) -> Status {
 }
 
 /// The text of `file` as it was at `rev`.
-fn git_show(folder: &Path, name: &str, rev: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn git_show(folder: &Path, name: &str, rev: &str) -> Result<Vec<u8>, String> {
     let git = find_tool("git")?;
     let out = run_ok(&git, &["show".into(), format!("{rev}:./{name}")], folder)?;
     Ok(out.stdout)
@@ -630,7 +630,7 @@ pub fn marked_up(app: AppHandle, window: WebviewWindow, earlier: Earlier) -> Res
     Ok(())
 }
 
-fn git_lines(folder: &Path, args: &[&str]) -> Option<String> {
+pub(crate) fn git_lines(folder: &Path, args: &[&str]) -> Option<String> {
     let git = find_tool("git").ok()?;
     let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
     let out = run(&git, &args, folder).ok()?;

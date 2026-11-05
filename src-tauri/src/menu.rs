@@ -1,5 +1,5 @@
 //! The menu bar. New, Open…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
-//! front (event `edit`, the id of the item), Cite as [@key] to the list of references (event `cite-key`), and Save to its page (event `menu`).
+//! front (event `edit`, the id of the item), File ▸ Exchange to its page (event `exchange`), Cite as [@key] to the list of references (event `cite-key`), and Save to its page (event `menu`).
 //! The Review menu goes to the page of the window in front as `review-menu` with the id of the item.
 
 use tauri::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
@@ -28,6 +28,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("quit", "Quit Papers Write", Some("CmdOrCtrl+Q"))?,
         ],
     )?;
+    // a review that comes in or goes out without the app on the other side
+    let exchange = Submenu::with_items(
+        app,
+        "Exchange",
+        true,
+        &[&item("compare", "Compare as Suggestions…", None)?],
+    )?;
     let file = Submenu::with_items(
         app,
         "File",
@@ -38,6 +45,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &separator()?,
             &item("save", "Save", Some("CmdOrCtrl+S"))?,
             &item("close", "Close", Some("CmdOrCtrl+W"))?,
+            &separator()?,
+            &exchange,
         ],
     )?;
     let edit = Submenu::with_items(
@@ -149,6 +158,12 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "save" | "build" | "build-show" | "marked-up" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "menu", id);
+            }
+        }
+        // the page of the window asks what is needed (the revisions, a file, a name) and the backend does the rest
+        "compare" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "exchange", id);
             }
         }
         "cite-key" => {

@@ -51,6 +51,13 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   `build/diff/name-diff-<version>.pdf`, shown in a tab (the work is in
   `build/diff/old` and `build/diff/new`; the current version is built there in
   full, which takes a few seconds more than Build). Errors show as for a build.
+- File ▸ Exchange ▸ Compare as Suggestions… turns another version into
+  suggestions: a commit, tag or branch of the document in git, or an edited
+  copy of the file (any path). The word-level changes from this document to
+  that version become one suggestion each, under the name of whoever made it
+  (the commit's author, filled in; asked for a file) in a review file of their
+  own, with the round "Compared with <file or revision>". The author need not
+  have the app.
 - The app stays in the menu bar when the last window closes (New, Open…,
   Quit); ⌘Q quits.
 - Edit ▸ References… (⇧⌘R) lists the references over the editor: the `.bib`

@@ -2,6 +2,7 @@
 
 mod build;
 mod documents;
+mod exchange;
 mod files;
 mod menu;
 mod preview;
@@ -53,6 +54,9 @@ pub fn run() {
             build::earlier_file,
             build::reveal,
             build::open_document,
+            exchange::compare_as_suggestions,
+            exchange::revision_author,
+            exchange::choose_edited_copy,
             refs::references,
             refs::closest_references,
             refs::reference_sources,

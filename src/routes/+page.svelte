@@ -14,6 +14,8 @@
   // references from the text typed, which each call sends. Check Citations… lists in a sheet the keys cited that the
   // document's own bibliography lacks (each to add from the library) and the entries it never cites.
   //
+  // File ▸ Exchange (`exchange`) is Exchange: Compare as Suggestions… and the Word round trip.
+  //
   // View ▸ Show Preview (⇧⌘P, `preview`) toggles the pane at the right of a Markdown document: pandoc's HTML of the text
   // as typed (`preview`), asked 300 ms after the typing stops, and scrolled to the block the cursor is in.
 
@@ -41,6 +43,7 @@
     type Found,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
+  import Exchange from "$lib/Exchange.svelte";
   import { listen } from "$lib/events";
   import "$lib/theme.css";
 
@@ -54,6 +57,7 @@
   let path = $state<string | null | undefined>();
   let editor = $state<FileEditor>();
   let builds = $state<Build>();
+  let exchange = $state<Exchange>();
   let error = $state("");
   /** a save that failed, where the editor's own errors do not say */
   let problem = $state("");
@@ -336,6 +340,7 @@
       listen("review-changed", () => session.reload(100)),
       listen<string>("menu", (e) => (e.payload === "save" ? save() : builds?.run(e.payload))),
       listen<string>("edit", (e) => edit(e.payload)),
+      listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", togglePreview),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
       listen("references-changed", () => version++),
@@ -417,6 +422,7 @@
   {/if}
   <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
   {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
+  <Exchange bind:this={exchange} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
   {#if error || problem || session.problem}<p class="error">{problem || error || session.problem}</p>{:else if note}<p class="note">{note}</p>{/if}
 </main>
 

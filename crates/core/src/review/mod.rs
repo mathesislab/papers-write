@@ -4,11 +4,13 @@
 //! - [`diff`]: the word-level difference between two versions, and positions carried through it.
 //! - [`anchor`]: a record carried onto the current text (three-way merge, the quote when the base is lost).
 //! - [`fold`]: all the records folded into items.
+//! - [`compare`]: an edited copy, a commit or a branch as suggestions.
 //! - [`ops`]: add, reply, decide, supersede and counter-suggest (appending); apply a suggestion.
 //! - [`record`]: the records of a review file, and who writes it.
 //! - [`store`]: the files on disk, appended to and never rewritten.
 
 pub mod anchor;
+pub mod compare;
 pub mod diff;
 pub mod fold;
 pub mod ops;

@@ -1,13 +1,21 @@
 //! Suggestions and comments kept in files beside the document, each anchored to the version it was made on.
 //!
 //! - [`text`]: git's blob hash, UTF-16 positions, slugs and times.
+//! - [`diff`]: the word-level difference between two versions, and positions carried through it.
+//! - [`anchor`]: a record carried onto the current text (three-way merge, the quote when the base is lost).
+//! - [`fold`]: all the records folded into items.
 //! - [`record`]: the records of a review file, and who writes it.
 //! - [`store`]: the files on disk, appended to and never rewritten.
 
+pub mod anchor;
+pub mod diff;
+pub mod fold;
 pub mod record;
 pub mod store;
 pub mod text;
 
+pub use anchor::{Anchor, Status};
+pub use fold::{Item, State};
 pub use record::{Decision, Kind, Person, Record};
 pub use store::{Error, Result};
 pub use text::{blob_hash, byte_of, utf16_of};
@@ -90,5 +98,27 @@ pub(crate) mod testutil {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir.join(name)
+    }
+
+    use crate::review::record::{Kind, Record};
+    use crate::review::text::{after, before};
+
+    /// A suggestion or comment on the first occurrence of `needle` in `base`, with its quote.
+    pub fn make(id: &str, kind: Kind, base: &str, needle: &str, insert: Option<&str>) -> Record {
+        let start = if needle.is_empty() { 0 } else { base.find(needle).expect("needle in base") };
+        let end = start + needle.len();
+        let mut r = Record::blank(id.into(), kind);
+        r.time = "2026-11-05T14:00:00Z".into();
+        r.base = Some(crate::review::text::blob_hash(base));
+        r.start = Some(start);
+        r.end = Some(end);
+        r.prefix = Some(before(base, start, 32).into());
+        r.exact = Some(needle.into());
+        r.suffix = Some(after(base, end, 32).into());
+        r.insert = insert.map(Into::into);
+        if kind == Kind::Comment {
+            r.text = Some("a comment".into());
+        }
+        r
     }
 }

@@ -89,6 +89,15 @@ pub struct Project {
     document: DocumentMut,
 }
 
+/// The build folder of a document: that of its project (`build` of `write.toml`, relative to the project's folder,
+/// else `build`), else `build` beside the document. A project whose `write.toml` cannot be read counts as none.
+pub fn build_dir_of(document: &Path) -> PathBuf {
+    match Project::of(document) {
+        Ok(Some(project)) => project.build_dir(),
+        _ => document.parent().unwrap_or(Path::new(".")).join(BUILD),
+    }
+}
+
 /// The folder of the project `path` belongs to: the nearest folder that has a `write.toml`, from the folder of `path`
 /// (or `path` itself, a folder) upwards.
 pub fn find(path: &Path) -> Option<PathBuf> {
@@ -390,6 +399,29 @@ mod tests {
         assert_eq!(project.library(), Some(root.join("refs/all.bib")));
         // no name: the folder's
         assert_eq!(project.name(), root.file_name().unwrap().to_string_lossy());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_document_builds_into_its_projects_folder_else_beside_itself() {
+        let root = folder();
+        fs::create_dir_all(root.join("sections")).unwrap();
+        let doc = root.join("sections/intro.md");
+        // no project: beside the document
+        assert_eq!(build_dir_of(&doc), root.join("sections/build"));
+        // a project without `build`: its `build`, at its root
+        fs::write(root.join(MANIFEST), "").unwrap();
+        assert_eq!(build_dir_of(&doc), root.join("build"));
+        // with one: that, relative to the root, not to the document
+        fs::write(root.join(MANIFEST), "build = \"out/pdf\"\n").unwrap();
+        assert_eq!(build_dir_of(&doc), root.join("out/pdf"));
+        assert_eq!(build_dir_of(&root.join("paper.tex")), root.join("out/pdf"));
+        // the nearest project
+        fs::write(root.join("sections/write.toml"), "").unwrap();
+        assert_eq!(build_dir_of(&doc), root.join("sections/build"));
+        // a broken write.toml: beside the document
+        fs::write(root.join("sections/write.toml"), "colour = \"mauve\"").unwrap();
+        assert_eq!(build_dir_of(&doc), root.join("sections/build"));
         let _ = fs::remove_dir_all(&root);
     }
 

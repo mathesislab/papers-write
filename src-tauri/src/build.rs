@@ -2,12 +2,13 @@
 //! version (Marked-up PDF…): the earlier text and the current one each converted to LaTeX by texmark, compared by
 //! latexdiff, compiled by latexmk.
 //!
-//! A LaTeX document (`name.tex`) is built by latexmk itself, in its folder, with `-outdir=build` (as texmark's, so
+//! A LaTeX document (`name.tex`) is built by latexmk itself, in its folder, with `-outdir` the build folder (as texmark's, so
 //! `build/name.pdf` and `build/name.log`) and `-file-line-error`, so that the log's errors are `file:line:` and
 //! the ones in the document are lines of the editor's text. Its marked-up PDF is latexdiff of the earlier `.tex` and
 //! the current one (no texmark), compiled by latexmk in the folder with its output in `build/diff/`.
 //!
-//! Where things land, beside the document `name.md`: texmark's `build/name.tex`, `build/name.pdf` and `build/name.log`
+//! Where things land: in the build folder of the document's project (`build` of `write.toml`, relative to the
+//! project's folder), else in `build/` beside the document. Called `build/` below. For the document `name.md`: texmark's `build/name.tex`, `build/name.pdf` and `build/name.log`
 //! (its folder holds the journal's class files and the bibliography too); for the marked-up PDF `build/diff/old/`
 //! (the earlier text as LaTeX), `build/diff/new/` (the current text, built, and `diff.tex` with what latexmk makes of
 //! it) and the PDF `build/diff/name-diff-<earlier>.pdf`.
@@ -27,6 +28,7 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
+use write_core::project;
 
 use crate::documents;
 // the git helpers live in `git`; `exchange` reaches them through here
@@ -405,9 +407,9 @@ fn run_latex_build(file: &Path) -> Status {
     };
     let (start, clock) = (SystemTime::now() - Duration::from_secs(1), Instant::now());
     let (name, stem) = (name.to_string_lossy(), stem.to_string_lossy());
-    let out = run(&latexmk, &latexmk_document_args(&name, "build", None, false), folder);
+    let build = project::build_dir_of(file);
+    let out = run(&latexmk, &latexmk_document_args(&name, &s(&build), None, false), folder);
     let took = clock.elapsed();
-    let build = folder.join("build");
     let (log, pdf) = (build.join(format!("{stem}.log")), build.join(format!("{stem}.pdf")));
     match out {
         Ok(out) => {
@@ -450,13 +452,13 @@ pub fn run_build(file: &Path) -> Status {
     };
     let (start, clock) = (SystemTime::now() - Duration::from_secs(1), Instant::now());
     let stem = stem.to_string_lossy();
+    let build = project::build_dir_of(file);
     let out = run(
         &texmark,
-        &texmark_args(&name.to_string_lossy(), "build", None, true),
+        &texmark_args(&name.to_string_lossy(), &s(&build), None, true),
         folder,
     );
     let took = clock.elapsed();
-    let build = folder.join("build");
     let (log, pdf) = (
         build.join(format!("{stem}.log")),
         build.join(format!("{stem}.pdf")),
@@ -505,7 +507,7 @@ fn run_latex_diff(file: &Path, earlier: &Earlier) -> Status {
     };
     let (name, stem) = (name.to_string_lossy().into_owned(), stem.to_string_lossy().into_owned());
     let job = diff_job(&stem, earlier);
-    let diff = folder.join("build/diff");
+    let diff = project::build_dir_of(file).join("diff");
     let log = diff.join(format!("{job}.log"));
     let pdf = diff.join(format!("{job}.pdf"));
     let result = (|| -> Result<(), String> {
@@ -523,7 +525,7 @@ fn run_latex_diff(file: &Path, earlier: &Earlier) -> Status {
         let marked = run_ok(&latexdiff, &latexdiff_args(&s(&old), &name, flatten), folder)?;
         fs::write(diff.join("diff.tex"), marked.stdout).map_err(|e| format!("diff.tex: {e}"))?;
         // `-f`: latexmk goes on after errors, and the PDF is its result
-        run(&latexmk, &latexmk_document_args("build/diff/diff.tex", "build/diff", Some(&job), true), folder)?;
+        run(&latexmk, &latexmk_document_args(&s(&diff.join("diff.tex")), &s(&diff), Some(&job), true), folder)?;
         if !modified_since(&pdf, start) {
             return Err("latexmk made no PDF".into());
         }
@@ -555,7 +557,7 @@ pub fn run_diff(file: &Path, earlier: &Earlier) -> Status {
         stem.to_string_lossy().into_owned(),
     );
     let job = diff_job(&stem, earlier);
-    let diff = folder.join("build/diff");
+    let diff = project::build_dir_of(file).join("diff");
     let (old_dir, new_dir) = (diff.join("old"), diff.join("new"));
     let log = new_dir.join(format!("{job}.log"));
     let result = (|| -> Result<(), String> {
@@ -586,8 +588,8 @@ pub fn run_diff(file: &Path, earlier: &Earlier) -> Status {
             &texmark,
             &texmark_args(
                 &earlier_input,
-                "build/diff/old",
-                Some("build/diff/old/old.tex"),
+                &s(&old_dir),
+                Some(&s(&old_tex)),
                 false,
             ),
             folder,
@@ -597,8 +599,8 @@ pub fn run_diff(file: &Path, earlier: &Earlier) -> Status {
             &texmark,
             &texmark_args(
                 &name,
-                "build/diff/new",
-                Some("build/diff/new/new.tex"),
+                &s(&new_dir),
+                Some(&s(&new_tex)),
                 true,
             ),
             folder,

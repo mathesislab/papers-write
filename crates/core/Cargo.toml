@@ -1,0 +1,17 @@
+[package]
+name = "papers-write-core"
+version = "0.1.0"
+description = "The references of a paper written in Markdown (its .bib files, the papers library) and the bibliography that grows as keys are cited"
+authors = ["Alexander Robinson"]
+edition = "2024"
+license = "MIT"
+
+[lib]
+name = "write_core"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# the references: the .bib files loaded and searched (papers-core, in papers-desktop), and where papers keeps its
+# library (papers-rs, at the commit papers-desktop builds with)
+papers-core = { git = "https://github.com/mathesislab/papers-desktop", tag = "v0.9.0" }
+papers-rs = { git = "https://github.com/mathesislab/papers-rs", rev = "40d17b600c18c1f615e256ea7969ebf1f56e1641" }

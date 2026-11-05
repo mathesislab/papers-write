@@ -68,8 +68,78 @@ pub fn cite(markdown_path: &Path, markdown_text: &str, key: &str, references: &R
         return Ok(Cited { bib: target, added: false, markdown });
     }
     let entry = references.entry(key).ok_or_else(|| Error::NotFound { key: key.to_string() })?;
-    append(&target, &entry.bibtex)?;
+    append(&target, &without(&entry.bibtex, PERSONAL))?;
     Ok(Cited { bib: target, added: true, markdown })
+}
+
+/// The fields of a library's entry that are its owner's, not the paper's: dropped as the entry is copied into the
+/// document's bibliography (a `.bib` that goes to co-authors and journals).
+const PERSONAL: &[&str] = &["file"];
+
+/// A BibTeX entry without the fields `names` (case ignored): each field from its name to the end of its value,
+/// braced, quoted or bare, and the comma after it. The rest of the text is kept as it is.
+fn without(entry: &str, names: &[&str]) -> String {
+    let bytes = entry.as_bytes();
+    // the fields are at depth 1, inside the entry's braces
+    let Some(open) = entry.find(['{', '(']) else {
+        return entry.to_string();
+    };
+    let mut out = String::with_capacity(entry.len());
+    out.push_str(&entry[..=open]);
+    let mut i = open + 1;
+    let mut kept = open + 1;
+    while i < bytes.len() {
+        // the start of a field: after `,` or the opening, spaces, a name, spaces, `=`
+        let line_start = i;
+        let mut j = i;
+        while j < bytes.len() && (bytes[j] as char).is_whitespace() {
+            j += 1;
+        }
+        let name_start = j;
+        while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || b"_-:.".contains(&bytes[j])) {
+            j += 1;
+        }
+        let name = &entry[name_start..j];
+        let mut k = j;
+        while k < bytes.len() && (bytes[k] as char).is_whitespace() {
+            k += 1;
+        }
+        let is_field = !name.is_empty() && k < bytes.len() && bytes[k] == b'=';
+        // the end of this field's value: the `,` or closing brace at depth 0 of the value
+        let mut end = if is_field { k + 1 } else { line_start };
+        let mut depth = 0i32;
+        let mut quoted = false;
+        while end < bytes.len() {
+            match bytes[end] {
+                b'{' => depth += 1,
+                b'}' if depth > 0 => depth -= 1,
+                b'"' if depth == 0 => quoted = !quoted,
+                b',' if depth == 0 && !quoted => break,
+                b'}' | b')' if depth == 0 && !quoted => break,
+                _ => {}
+            }
+            end += 1;
+        }
+        if is_field && names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+            out.push_str(&entry[kept..line_start]);
+            if end < bytes.len() && bytes[end] == b',' {
+                // the comma after it goes too
+                kept = end + 1;
+            } else {
+                // the last field: the comma before it goes instead
+                if out.ends_with(',') {
+                    out.pop();
+                }
+                kept = end;
+            }
+        }
+        if end >= bytes.len() || bytes[end] != b',' {
+            break;
+        }
+        i = end + 1;
+    }
+    out.push_str(&entry[kept..]);
+    out
 }
 
 /// The keys of the entries of a `.bib` file.
@@ -290,6 +360,19 @@ pub fn unused<S: AsRef<str>>(markdown_text: &str, bib_keys: &[S]) -> Vec<String>
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn personal_fields_dropped() {
+        let entry = "@article{joughin2019,\n author = {Joughin, Ian},\n file = {:/Users/me/lit/a.pdf:PDF},\n title = {Regularized {Coulomb} friction, laws},\n year = {2019}\n}";
+        let kept = without(entry, PERSONAL);
+        assert_eq!(kept, "@article{joughin2019,\n author = {Joughin, Ian},\n title = {Regularized {Coulomb} friction, laws},\n year = {2019}\n}");
+        // the last field, with no comma after it, and quoted values
+        let last = "@misc{a, title = \"x, y\", File = \"/p.pdf\"}";
+        assert_eq!(without(last, PERSONAL), "@misc{a, title = \"x, y\"}");
+        // nothing to drop
+        let none = "@book{b,\n title = {Fields of file = {x}}\n}";
+        assert_eq!(without(none, PERSONAL), none);
+    }
+
     use super::*;
 
     /// An empty folder of its own for a test.

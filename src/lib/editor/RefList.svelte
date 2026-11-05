@@ -84,11 +84,11 @@
     } else if (e.key === "Enter" && e.metaKey) {
       pdf(hit?.item);
     } else if (e.key === "Enter") {
-      if (hit) oninsert(e.shiftKey ? fullReference(hit.item) : citation(hit.item));
+      cite(e.shiftKey ? "reference" : "citation");
     } else if (e.metaKey && e.key === ".") {
-      if (hit) oninsert(pandoc(hit.item));
+      cite("pandoc");
     } else if (e.metaKey && e.key.toLowerCase() === "l") {
-      if (hit) oninsert(latex(hit.item));
+      cite("latex");
     } else if (e.key === "Escape") {
       onclose();
     } else {
@@ -107,6 +107,15 @@
 
   /** The keys to the search field. */
   export const focus = () => input?.focus();
+
+  /** The paper marked put in at the cursor: as a citation ("Schoof (2007)"), the full reference, `[@key]` or
+   *  `\cite{key}`. The keys call it, and so can the app's menu: macOS takes ⌘. for Cancel before the page sees it, so
+   *  ⌘. only reaches the list as a menu item of the app. */
+  export function cite(form: "citation" | "reference" | "pandoc" | "latex") {
+    if (!hit) return;
+    const as = { citation, reference: fullReference, pandoc, latex }[form];
+    oninsert(as(hit.item));
+  }
 
   /** A file's name, from its path. */
   const nameOf = (path: string) => path.split("/").pop() ?? path;

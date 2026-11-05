@@ -11,6 +11,7 @@ mod preview;
 mod projects;
 mod refs;
 mod review;
+mod settings;
 mod state;
 mod tabs;
 mod tray;
@@ -32,6 +33,7 @@ pub fn run() {
         .manage(git::Git::default())
         .manage(projects::Projects::default())
         .setup(|app| {
+            settings::init(app.handle());
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
             tray::build(app.handle())?;
@@ -48,6 +50,8 @@ pub fn run() {
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
+            settings::settings,
+            settings::set_settings,
             documents::document,
             documents::set_blank,
             documents::save_untitled,

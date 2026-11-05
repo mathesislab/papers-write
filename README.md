@@ -208,6 +208,19 @@ with papers-review as `papers-write/editor`, and so is the project bar
   opens a tab "paper.md since v2": a tag or a commit that touched the file (or
   any revision typed), its text read only, with the changes since drawn as
   tracked changes.
+- Settings (⌘, in the app menu and the menu bar icon; one window, every change
+  saved at once in `settings.json` of the app's data folder, every window told).
+  Editor: font (system, serif, monospace) and size, what Tab inserts, readable
+  line length, line numbers, spelling (stored; the editor does not use it yet),
+  the preview following the cursor, the symbols typed (the defaults each turned
+  off, and your own). Review: your name and e-mail (empty: the git
+  configuration's, else the system's; when set they win, each on its own) and
+  your colour among the review's authors (or automatic, from the name; it is
+  the colour you see for yourself). Build: the path of texmark, latexmk and
+  pandoc (empty: found as usual, which the window shows as "Found: …"; a path
+  that is not a file is an error where the tool is used). Window: files open as
+  tabs (off: a window each, for the files opened from then on) and the app
+  stays in the menu bar when its last window closes (off: it quits).
 
 ## Develop
 

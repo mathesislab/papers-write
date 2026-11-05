@@ -24,6 +24,7 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import Preview from "$lib/Preview.svelte";
   import CommentBox from "$lib/CommentBox.svelte";
+  import ReviewPanel from "$lib/ReviewPanel.svelte";
   import { ReviewSession } from "$lib/review.svelte";
   import { reviewing, reviewProps } from "$lib/reviewEditor";
   import { colorOf } from "$lib/reviewFormat";
@@ -47,7 +48,8 @@
   // The review (Review menu, `review-menu`): suggesting or editing (a badge at the top right while suggesting), the
   // suggestions and comments of the review files carried onto the text as typed (`review_items`, asked again 500 ms
   // after the typing stops, after each write of the user's, on `review-changed` and when the file changes on disk),
-  // given to the editor with `setReview`. Add Comment… (⌥⌘M) opens a box at the selection; ⌘↵ posts.
+  // given to the editor with `setReview`. Review ▸ Show Review Panel (⌥⌘R) shows them in a column at the right
+  // (ReviewPanel), in place of the preview: the two do not show together. Add Comment… (⌥⌘M) opens a box at the selection; ⌘↵ posts.
 
   /** the file of the window; none while untitled; undefined until the backend says */
   let path = $state<string | null | undefined>();
@@ -85,6 +87,8 @@
   let width = $state(stored >= 240 ? stored : 0);
   let panes = $state<HTMLElement>();
   const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what) });
+  /** the review panel at the right: shown (the preview is not while it is) */
+  let panel = $state(false);
   /** the comment being written: the selection it is on and where the box goes */
   let commenting = $state<{ from: number; to: number; x: number; y: number } | null>(null);
   const markdown = $derived(!path || /\.(md|markdown|txt)$/i.test(path));
@@ -146,6 +150,7 @@
     if (!markdown) return;
     previewing = !previewing;
     if (previewing) {
+      panel = false;
       follow();
       refresh();
     }
@@ -268,9 +273,15 @@
     editor?.focus();
   }
 
+  function togglePanel() {
+    panel = !panel;
+    if (panel) previewing = false;
+  }
+
   /** A choice of the Review menu. */
   function reviewMenu(what: string) {
     if (what === "suggest") session.toggleMode();
+    else if (what === "panel") togglePanel();
     else if (what === "comment") comment();
     else if (what === "accept-all") session.acceptAll().catch(() => {});
     else if (what === "reject-all") session.rejectAll().catch(() => {});
@@ -367,6 +378,9 @@
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width}px` : "45%"}><Preview {html} error={said} {block} /></div>
   {/if}
+  {#if panel}
+    <div class="pane review"><ReviewPanel {session} /></div>
+  {/if}
   </div>
   {#if listing}
     {#key version}
@@ -446,6 +460,9 @@
     flex: none;
     min-width: 240px;
     max-width: 80%;
+  }
+  .review {
+    width: 320px;
   }
   .error,
   .note {

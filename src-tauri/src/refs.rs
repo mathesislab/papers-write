@@ -11,8 +11,7 @@ use papers_core::{BibWatch, Found};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use write_core::bib::{self, Cited};
-use write_core::frontmatter;
-use write_core::refs::{References, sources_of};
+use write_core::refs::{References, bibliography_of, sources_of};
 
 /// The references of each window, by its label. A window's slot is made when its references are first asked and
 /// filled under its own lock, so a second search waits for the load instead of repeating it.
@@ -46,7 +45,7 @@ impl Slot {
             })
             .collect();
         Slot {
-            named: if path.is_some() { frontmatter::bibliography(text) } else { Vec::new() },
+            named: path.as_deref().map(|p| bibliography_of(p, text)).unwrap_or_default(),
             path,
             references: Arc::new(References::load(sources)),
             _watches: watches,
@@ -62,7 +61,7 @@ fn references_of(window: &WebviewWindow, text: &str) -> Arc<References> {
     let path = crate::documents::path_of(app, label);
     let slot = app.state::<Loaded>().0.lock().unwrap().entry(label.to_string()).or_default().clone();
     let mut slot = slot.lock().unwrap();
-    let named = if path.is_some() { frontmatter::bibliography(text) } else { Vec::new() };
+    let named = path.as_deref().map(|p| bibliography_of(p, text)).unwrap_or_default();
     let fresh = slot.as_ref().is_some_and(|s| s.path == path && s.named == named);
     if !fresh {
         let before = slot.is_some();
@@ -146,7 +145,7 @@ fn own_bibs(window: &WebviewWindow, text: &str) -> Vec<PathBuf> {
         return Vec::new();
     };
     let folder = path.parent().map(Path::to_path_buf).filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| PathBuf::from("."));
-    frontmatter::bibliography(text).into_iter().map(|n| folder.join(n)).filter(|f| f.is_file()).collect()
+    bibliography_of(&path, text).into_iter().map(|n| folder.join(n)).filter(|f| f.is_file()).collect()
 }
 
 /// The document's own `.bib` files (`own_bibs`), as the references give an entry's file: the completion marks the
@@ -164,5 +163,13 @@ pub async fn bib_check(window: WebviewWindow, text: String) -> Result<Check, Str
         return Err(e.to_string());
     }
     let keys: Vec<String> = own.library().map(|l| l.items().iter().map(|i| i.key.clone()).collect()).unwrap_or_default();
+    // a .tex file cites with commands only (an @ in it is no citation)
+    let tex = crate::documents::path_of(window.app_handle(), window.label()).is_some_and(|p| write_core::latex::is_latex(&p));
+    if tex {
+        let cited = write_core::latex::cited_keys(&text);
+        let missing = cited.iter().filter(|k| !keys.contains(k)).cloned().collect();
+        let unused = keys.iter().filter(|k| !cited.contains(k)).cloned().collect();
+        return Ok(Check { missing, unused });
+    }
     Ok(Check { missing: bib::missing(&text, &keys), unused: bib::unused(&text, &keys) })
 }

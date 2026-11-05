@@ -11,7 +11,8 @@ use papers_core::Library;
 use serde::Serialize;
 
 use crate::frontmatter;
-use crate::refs::{References, folder_of};
+use crate::latex;
+use crate::refs::{References, bibliography_of, folder_of};
 
 /// The `.bib` file a document gets when its front matter names none.
 pub const DEFAULT_BIB: &str = "references.bib";
@@ -23,8 +24,8 @@ pub struct Cited {
     pub bib: PathBuf,
     /// whether the entry was added to it (false: it was there)
     pub added: bool,
-    /// the Markdown text with the `bibliography` line added to its front matter, when the document named no
-    /// `.bib` (the editor's text is to be replaced with it)
+    /// the text with the `bibliography` line added to its front matter (a `.tex` file: `\bibliography`), when the
+    /// document named no `.bib` (the editor's text is to be replaced with it)
     pub markdown: Option<String>,
 }
 
@@ -56,9 +57,10 @@ impl std::error::Error for Error {}
 /// front matter names is left where it is. The file is written whole, by a rename, and its text is kept.
 pub fn cite(markdown_path: &Path, markdown_text: &str, key: &str, references: &References) -> Result<Cited, Error> {
     let folder = folder_of(markdown_path);
-    let named: Vec<PathBuf> = frontmatter::bibliography(markdown_text).into_iter().map(|n| folder.join(n)).collect();
+    let named: Vec<PathBuf> = bibliography_of(markdown_path, markdown_text).into_iter().map(|n| folder.join(n)).collect();
     let (target, markdown) = match named.first() {
         Some(first) => (first.clone(), None),
+        None if latex::is_latex(markdown_path) => (folder.join(DEFAULT_BIB), Some(latex::with_bibliography(markdown_text, DEFAULT_BIB))),
         None => (folder.join(DEFAULT_BIB), Some(frontmatter::with_bibliography(markdown_text, DEFAULT_BIB))),
     };
     // the target is read for its keys, and it must parse; the others are only looked in
@@ -391,6 +393,21 @@ mod tests {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, LIBRARY).unwrap();
         References::load(vec![path])
+    }
+
+    #[test]
+    fn a_tex_file_gets_its_bibliography_named() {
+        let dir = folder("tex");
+        let refs = library(&dir);
+        let tex = "\\begin{document}\\cite{robinson2012}\n\\end{document}\n";
+        let cited = cite(&dir.join("p.tex"), tex, "robinson2012", &refs).unwrap();
+        assert!(cited.added);
+        assert!(cited.markdown.unwrap().contains("\\bibliography{references}"));
+        // one that names a .bib has the entry added there
+        let named = "\\bibliography{mine}\n";
+        let cited = cite(&dir.join("p.tex"), named, "feldmann2017", &refs).unwrap();
+        assert_eq!(cited.bib, dir.join("mine.bib"));
+        assert!(cited.markdown.is_none());
     }
 
     #[test]

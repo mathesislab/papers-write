@@ -227,7 +227,7 @@
       const cited = await invoke<{ bib: string; added: boolean; markdown: string | null }>("cite_key", { key, text: current() });
       const view = editor?.view();
       if (cited.markdown !== null && view) replaceText(view, cited.markdown);
-      if (cited.markdown !== null) say(`${nameOf(cited.bib)}${cited.added ? " created" : ""} and named in the front matter`);
+      if (cited.markdown !== null) say(`${nameOf(cited.bib)}${cited.added ? " created" : ""} and named in the ${markdown ? "front matter" : "document"}`);
       else if (cited.added) say(`Added ${key} to ${nameOf(cited.bib)}`);
       return true;
     } catch (e) {

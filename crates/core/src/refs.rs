@@ -88,11 +88,17 @@ impl References {
     }
 }
 
-/// The `.bib` files of the references of a Markdown file: those its front matter's `bibliography` names
+/// The names of the `.bib` files a document says it uses, as written: the front matter's `bibliography` of Markdown, the
+/// `\bibliography` and `\addbibresource` of a `.tex` file (chosen by the extension of `path`).
+pub fn bibliography_of(path: &Path, text: &str) -> Vec<String> {
+    if crate::latex::is_latex(path) { crate::latex::bibliography(text) } else { frontmatter::bibliography(text) }
+}
+
+/// The `.bib` files of the references of a Markdown or LaTeX file: those it names
 /// (relative to the file's folder), then the papers library's, each once; one that is not there is left out.
 pub fn sources_of(markdown_path: &Path, markdown_text: &str) -> Vec<PathBuf> {
     let folder = folder_of(markdown_path);
-    let named = frontmatter::bibliography(markdown_text).into_iter().map(|n| folder.join(n)).collect::<Vec<_>>();
+    let named = bibliography_of(markdown_path, markdown_text).into_iter().map(|n| folder.join(n)).collect::<Vec<_>>();
     let library = MachineConfig::load(None)
         .map_err(|e| e.message().to_string())
         .and_then(|machine| library_bib(&folder, machine))

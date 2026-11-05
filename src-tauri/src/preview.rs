@@ -336,14 +336,36 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
         assert!(p.error.is_none(), "{:?}", p.error);
         let h = &p.html;
         assert!(!h.contains("eq:mass?") && !h.contains("fig:loop?"), "{h}");
-        assert!(h.contains("Eq.\u{a0}(1)") && h.contains(r#"<span class="eqno">(2)</span>"#), "{h}");
+        assert!(h.contains(r##"<a href="#eq:mass">(1)</a>"##) && !h.contains("Eq.") && h.contains(r#"<span class="eqno">(2)</span>"#), "{h}");
         assert!(h.contains(r#"<span class="eqno">(1)</span>"#) && h.contains(r##"<a href="#eq:friction">(2)</a>"##), "{h}");
         assert!(!h.contains("\\begin{equation}") && !h.contains("{#eq:mass}") && !h.contains("\\label"), "{h}");
         assert_eq!(h.matches("<math").count(), 2, "both equations are MathML: {h}");
         assert!(h.contains("Figure 1: The hysteresis loop") && h.contains("Table 1: Parameters"), "{h}");
-        assert!(h.contains("Fig.\u{a0}1</a>") && h.contains("Sec.\u{a0}1</a>") && h.contains("Table\u{a0}1</a>"), "{h}");
+        assert!(h.contains(r##"Fig. <a href="#fig:loop">1</a>"##) && h.contains(r##"see <a href="#sec:intro">1</a>"##), "bare numbers: {h}");
         assert!(h.contains("<strong>??</strong>"), "{h}");
-        assert!(h.contains("Figs.\u{a0}") && h.contains("1</a>\u{2013}<a href=\"#fig:second\">2"), "{h}");
+        assert!(h.contains(r##"<a href="#fig:loop">1</a> and <a href="#fig:second">2</a>"##), "{h}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn crossref_words_come_from_the_front_matter() {
+        if pandoc().is_err() {
+            return;
+        }
+        let dir = scratch("words");
+        let generation = AtomicU64::new(1);
+        let text = format!("---\ncrossref: {{fig: Fig., figs: Figs., eq: Eq., sec: Sect., tbl: \"\"}}\n---\n\n{SAMPLE}\nThree: [@fig:loop; @fig:second; @fig:loop] and @eq:mass, [@eq:mass; @eq:friction].\n");
+        let p = render(&text, &dir, false, &generation, 1).unwrap();
+        assert!(p.error.is_none(), "{:?}", p.error);
+        let h = &p.html;
+        assert!(h.contains("Fig.\u{a0}<a href=\"#fig:loop\">1</a>"), "{h}");
+        assert!(h.contains("Sect.\u{a0}<a href=\"#sec:intro\">1</a>"), "{h}");
+        assert!(h.contains("Eq.\u{a0}<a href=\"#eq:mass\">(1)</a>"), "{h}");
+        // the plural word for several; a plural not given (eqs) is the singular; an empty word (tbl) is a bare number
+        assert!(h.contains("Figs.\u{a0}<a href=\"#fig:loop\">1</a> and <a href=\"#fig:second\">2</a>"), "{h}");
+        assert!(h.contains("Figs.\u{a0}<a href=\"#fig:loop\">1</a>, <a href=\"#fig:second\">2</a> and <a href=\"#fig:loop\">1</a>"), "{h}");
+        assert!(h.contains("Eq.\u{a0}<a href=\"#eq:mass\">(1)</a> and <a href=\"#eq:friction\">(2)</a>"), "{h}");
+        assert!(h.contains("and <a href=\"#tbl:params\">1</a>"), "{h}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

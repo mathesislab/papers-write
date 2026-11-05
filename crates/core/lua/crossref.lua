@@ -5,13 +5,17 @@
 --     `<span class="eqno">(n)</span>` after the math, inside `<div class="eqn" id="x">`
 --   * figures `{#fig:x}`, tables `{#tbl:x}`, listings `{#lst:x}`: numbered in order, the caption prefixed
 --     "Figure n: ", "Table n: ", "Listing n: "; sections `{#sec:x}`: numbered (1, 1.1, ...) in the heading
---   * `@fig:x`, `@eq:x`, `@tbl:x`, `@sec:x`, `@lst:x` and `\ref{x}`, `\eqref{x}`: the number, linked to its target;
---     unknown labels give a bold "??"; `\label{x}` elsewhere is dropped
+--   * `@fig:x`, `@eq:x`, `@tbl:x`, `@sec:x`, `@lst:x` and `\ref{x}`, `\eqref{x}`: the number (an equation's in
+--     parentheses), linked to its target; several in one citation: "1 and 2", "1, 2 and 3"; unknown labels give a bold
+--     "??"; `\label{x}` elsewhere is dropped
+--   * words before the numbers only when the front matter says so, as texmark does (empty: bare numbers):
+--     `crossref: {fig: Fig., figs: Figs., eq: Eq., eqs: Eqs., tbl: Table, tbls: Tables, sec: Sect., secs: Sects.,
+--     lst: Listing, lsts: Listings}`: "Fig. 1", "Figs. 1 and 2" (a plural left out is the singular)
 -- A failure inside leaves the document as it was.
 
+-- the words before a reference, singular and plural, by kind: none until the front matter gives them
 local KINDS = {
-  fig = { "Fig.", "Figs." }, eq = { "Eq.", "Eqs." }, tbl = { "Table", "Tables" },
-  sec = { "Sec.", "Secs." }, lst = { "Listing", "Listings" },
+  fig = { "", "" }, eq = { "", "" }, tbl = { "", "" }, sec = { "", "" }, lst = { "", "" },
 }
 local NAMES = { fig = "Figure", tbl = "Table", lst = "Listing" }
 local WRAP = { equation = false, align = "aligned", gather = "gathered" }
@@ -225,6 +229,22 @@ local function link(content, e) return pandoc.Link(content, "#" .. e.id) end
 
 local function unknown() return pandoc.Strong({ pandoc.Str("??") }) end
 
+-- parts (lists of inlines) joined as "a", "a and b", "a, b and c"
+local function join(parts)
+  local out = pandoc.Inlines({})
+  for i, p in ipairs(parts) do
+    if i > 1 then
+      if i == #parts then
+        out:insert(pandoc.Space()); out:insert(pandoc.Str("and")); out:insert(pandoc.Space())
+      else
+        out:insert(pandoc.Str(",")); out:insert(pandoc.Space())
+      end
+    end
+    out:extend(p)
+  end
+  return out
+end
+
 local function resolve_cite(c)
   local items = {}
   for _, ct in ipairs(c.citations) do
@@ -233,39 +253,28 @@ local function resolve_cite(c)
     items[#items + 1] = { kind = k, e = labels[ct.id] }
   end
   if #items == 0 then return nil end
-  local out = pandoc.Inlines({})
-  local first = c.citations[1].prefix
-  if #first > 0 then out:extend(first); out:insert(pandoc.Space()) end
+  -- runs of one kind, each with its word (plural for several), the numbers joined
+  local groups = {}
   local i = 1
   while i <= #items do
     local k, j = items[i].kind, i
     while j < #items and items[j + 1].kind == k do j = j + 1 end
-    if i > 1 then out:insert(pandoc.Str(",")); out:insert(pandoc.Space()) end
-    if i == j and items[i].e then
-      out:insert(link({ pandoc.Str(KINDS[k][1] .. NBSP .. number_text(items[i].e)) }, items[i].e))
-    else
-      out:insert(pandoc.Str(KINDS[k][j > i and 2 or 1] .. NBSP))
-      local g = i
-      while g <= j do
-        local e = items[g].e
-        if g > i then out:insert(pandoc.Str(",")); out:insert(pandoc.Space()) end
-        if not e then
-          out:insert(unknown())
-        else
-          local h = g
-          while k ~= "sec" and h < j and items[h + 1].e and items[h + 1].e.n == items[h].e.n + 1 do h = h + 1 end
-          out:insert(link({ pandoc.Str(number_text(e)) }, e))
-          if h > g then
-            out:insert(pandoc.Str("\xE2\x80\x93"))
-            out:insert(link({ pandoc.Str(number_text(items[h].e)) }, items[h].e))
-          end
-          g = h
-        end
-        g = g + 1
-      end
+    local nums = {}
+    for g = i, j do
+      local e = items[g].e
+      nums[#nums + 1] = e and pandoc.Inlines({ link({ pandoc.Str(number_text(e)) }, e) }) or pandoc.Inlines({ unknown() })
     end
+    local part = pandoc.Inlines({})
+    local word = KINDS[k][j > i and 2 or 1]
+    if word ~= "" then part:insert(pandoc.Str(word .. NBSP)) end
+    part:extend(join(nums))
+    groups[#groups + 1] = part
     i = j + 1
   end
+  local out = pandoc.Inlines({})
+  local first = c.citations[1].prefix
+  if #first > 0 then out:extend(first); out:insert(pandoc.Space()) end
+  out:extend(join(groups))
   local suffix = c.citations[#c.citations].suffix
   if #suffix > 0 then out:extend(suffix) end
   return out
@@ -301,8 +310,20 @@ pass2.Math = function(m)
   return pandoc.Math(parse_env(m.text) and "DisplayMath" or m.mathtype, out)
 end
 
+-- the words of the front matter's `crossref:`
+local function read_words(meta)
+  local m = meta.crossref
+  if type(m) ~= "table" or m.t == "MetaInlines" or m.t == "MetaString" then return end
+  for k, words in pairs(KINDS) do
+    local one, many = m[k], m[k .. "s"]
+    if one ~= nil then words[1] = pandoc.utils.stringify(one); words[2] = words[1] end
+    if many ~= nil then words[2] = pandoc.utils.stringify(many) end
+  end
+end
+
 function Pandoc(doc)
   local ok, res = pcall(function()
+    read_words(doc.meta)
     doc:walk({ Header = function(h) if kind_of(h.identifier) == "sec" then number_sections = true end end })
     local d = doc:walk(pass1)
     return d:walk(pass2)

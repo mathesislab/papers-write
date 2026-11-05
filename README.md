@@ -181,7 +181,11 @@ with papers-review as `papers-write/editor`, and so is the project bar
   (`$$..$$ {#eq:x}`, `equation`/`align`/`gather`), figures, tables and
   sections (`{#fig:x}`, `{#tbl:x}`, `{#sec:x}`) are numbered, and `@fig:x`,
   `@eq:x`, `\eqref{x}` ... resolved, by a Lua filter of pandoc (not
-  pandoc-crossref, which need not be installed) as texmark does.
+  pandoc-crossref, which need not be installed) as texmark does: bare numbers
+  (`1`, `(1)` for an equation, `1 and 2`, `1, 2 and 3`), with words in front
+  only when the front matter gives them: `crossref: {fig: Fig., figs: Figs.,
+  eq: Eq., eqs: Eqs., tbl: Table, tbls: Tables, sec: Sect., secs: Sects., lst:
+  Listing, lsts: Listings}` (a plural left out is the singular; empty is bare).
   Drag the split to resize; its width is kept for the window.
 - Review menu: suggestions and comments kept in files beside the document
   (`.papers-write/review/<file>/`, one file per person, only appended to).

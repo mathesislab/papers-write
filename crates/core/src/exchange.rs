@@ -266,7 +266,7 @@ mod tests {
         }
         let dir = folder("xref");
         let doc = dir.join("paper.md");
-        let current = "See @fig:x and \\ref{eq:y}.\n\n![The loop](loop.png){#fig:x}\n\n\\begin{equation}\na = b \\label{eq:y}\n\\end{equation}\n";
+        let current = "---\ncrossref: {fig: Fig.}\n---\n\nSee @fig:x and \\ref{eq:y}.\n\n![The loop](loop.png){#fig:x}\n\n\\begin{equation}\na = b \\label{eq:y}\n\\end{equation}\n";
         std::fs::write(&doc, current).unwrap();
         let to = dir.join("paper.docx");
         let made = export(&doc, current, &to).unwrap();

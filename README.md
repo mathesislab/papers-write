@@ -77,7 +77,8 @@ with papers-review as `papers-write/editor`, and so is the project bar
   files of its front matter at their relative paths, and the review files of
   the round. Opened (double click, Open With, ⌘O, a drop), it unpacks in the
   app's data folder (`reviews/<name>-<hash>/`, once: opening it again finds what
-  was done there) and the document opens titled "<name> — review for <who>",
+  was done there; a folder not opened or worked in for 60 days is moved to the Trash
+  when the app starts, never one that is open) and the document opens titled "<name> — review for <who>",
   suggesting, with a bar at the top (edits made in the text itself do not go
   back, only suggestions and comments). Send Back… (the bar, File ▸ Exchange)
   makes `<name> — <you>.review` with your own review file and the texts it was

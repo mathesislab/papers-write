@@ -184,10 +184,29 @@ fn open_now(app: &AppHandle, file: &Path) -> Result<(), String> {
     match opened.manifest.kind {
         PackageKind::Send => {
             let doc = package::unpack(&opened, &root(app)?).map_err(|e| e.to_string())?;
+            package::mark_opened(&doc);
             documents::open_file(app, &doc)
         }
         PackageKind::Back => join(app, &opened),
     }
+}
+
+/// Unpacked reviews not used for this long go to the Trash when the app starts.
+const KEEP: std::time::Duration = std::time::Duration::from_secs(60 * 86_400);
+
+/// The unpacked reviews unused for 60 days moved to the Trash (never one with a document open), on a thread of its
+/// own. What fails is told on stderr; the rest goes on.
+pub fn sweep(app: &AppHandle) {
+    let Ok(root) = root(app) else { return };
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let open = documents::open_paths(&app);
+        for home in package::unused_unpacked(&root, std::time::SystemTime::now(), KEEP, &open) {
+            if let Err(e) = crate::trash::trash(&home) {
+                eprintln!("{e}");
+            }
+        }
+    });
 }
 
 /// The open document that `opened` is a review of: the file name is the same and it has the text the review was made

@@ -430,6 +430,50 @@ pub fn of_unpacked(doc: &Path) -> Option<Manifest> {
     (m.kind == PackageKind::Send && doc.file_name()?.to_str()? == m.document).then_some(m)
 }
 
+// ---- unpacked reviews that are no longer used
+
+/// The file in an unpacked review's folder that says when it was last opened (its time).
+const OPENED: &str = ".opened";
+
+/// The document `doc` of an unpacked review was opened now (its folder is in use for another while); nothing for a
+/// file that is not one.
+pub fn mark_opened(doc: &Path) {
+    if let Some(home) = unpacked_home(doc) {
+        let _ = fs::write(home.join(OPENED), now());
+    }
+}
+
+/// The latest time something in `dir` was written: unpacked, opened, or worked on (a decision, a reply, an edit).
+fn last_used(dir: &Path) -> Option<std::time::SystemTime> {
+    let mut latest = fs::metadata(dir).and_then(|m| m.modified()).ok()?;
+    for entry in fs::read_dir(dir).ok()?.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        let time = if path.is_dir() { last_used(&path) } else { entry.metadata().and_then(|m| m.modified()).ok() };
+        latest = latest.max(time.unwrap_or(latest));
+    }
+    Some(latest)
+}
+
+/// The folders under `root` that are unpacked reviews not used for `max_age` before `now`, except any that holds a
+/// file of `open` (a document that is open is in use however old it is).
+pub fn unused_unpacked(root: &Path, now: std::time::SystemTime, max_age: std::time::Duration, open: &[PathBuf]) -> Vec<PathBuf> {
+    let open: Vec<PathBuf> = open.iter().map(|p| p.canonicalize().unwrap_or_else(|_| p.clone())).collect();
+    let Ok(entries) = fs::read_dir(root) else { return Vec::new() };
+    let mut out: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        // only what unpacking made: a folder with a manifest
+        .filter(|p| p.join("manifest.toml").is_file())
+        .filter(|p| {
+            let p = p.canonicalize().unwrap_or_else(|_| p.clone());
+            !open.iter().any(|o| o.starts_with(&p))
+        })
+        .filter(|p| last_used(p).is_some_and(|t| now.duration_since(t).is_ok_and(|age| age >= max_age)))
+        .collect();
+    out.sort();
+    out
+}
+
 // ---- send back
 
 /// What a package sent back holds.
@@ -797,5 +841,55 @@ mod tests {
         assert!(holds(&d, &blob_hash(TEXT)));
         assert!(holds(&d, &blob_hash("something else\n")));
         assert!(!holds(&d, &blob_hash("never")));
+    }
+}
+
+#[cfg(test)]
+mod unused_tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    const DAY: Duration = Duration::from_secs(86_400);
+
+    fn age(path: &Path, days: u64) {
+        let t = SystemTime::now() - DAY * days as u32;
+        fs::File::options().write(true).open(path).unwrap().set_modified(t).unwrap();
+    }
+
+    /// An unpacked review under `root`, all of whose files are `days` old; its document.
+    fn unpacked(root: &Path, name: &str, days: u64) -> PathBuf {
+        let home = root.join(name);
+        let doc = home.join("document/paper.md");
+        fs::create_dir_all(doc.parent().unwrap()).unwrap();
+        fs::write(home.join("manifest.toml"), "kind = \"send\"\n").unwrap();
+        fs::write(&doc, "text").unwrap();
+        for f in [&home.join("manifest.toml"), &doc] {
+            age(f, days);
+        }
+        for d in [doc.parent().unwrap(), &home] {
+            fs::File::open(d).unwrap().set_modified(SystemTime::now() - DAY * days as u32).unwrap();
+        }
+        doc
+    }
+
+    #[test]
+    fn a_review_not_used_for_sixty_days_is_listed_unless_it_is_open() {
+        let root = crate::review::testutil::doc("x").parent().unwrap().to_path_buf();
+        let old = unpacked(&root, "old-1", 90);
+        let _new = unpacked(&root, "new-1", 10);
+        let open = unpacked(&root, "open-1", 90);
+        let busy = unpacked(&root, "busy-1", 90);
+        fs::create_dir_all(root.join("loose")).unwrap();
+        let sixty = Duration::from_secs(60 * 86_400);
+        let now = SystemTime::now();
+        // work in a review (a decision appended) or opening it again is use
+        fs::create_dir_all(busy.parent().unwrap().join(".papers-write/review/paper.md")).unwrap();
+        fs::write(busy.parent().unwrap().join(".papers-write/review/paper.md/jane.toml"), "x").unwrap();
+        let listed = unused_unpacked(&root, now, sixty, std::slice::from_ref(&open));
+        assert_eq!(listed, vec![old.parent().unwrap().parent().unwrap().to_path_buf()]);
+        // a document opened again is marked
+        mark_opened(&old);
+        assert!(root.join("old-1/.opened").is_file());
+        assert!(unused_unpacked(&root, now, sixty, &[]).iter().all(|p| !p.ends_with("old-1")));
     }
 }

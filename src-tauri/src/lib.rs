@@ -14,6 +14,7 @@ mod review;
 mod settings;
 mod state;
 mod tabs;
+mod trash;
 mod tray;
 
 use tauri::{DragDropEvent, Manager, RunEvent, WindowEvent};
@@ -118,7 +119,10 @@ pub fn run() {
         .run(|app, event| match event {
             // the files handed over while launching, or else a window of untitled text; files that come after this
             // take the blank window
-            RunEvent::Ready => documents::ready(app),
+            RunEvent::Ready => {
+                documents::ready(app);
+                package::sweep(app);
+            }
             // a quit asked by the system (the Dock icon's menu): with untitled text never saved, it asks first
             RunEvent::ExitRequested {
                 code: None, api, ..

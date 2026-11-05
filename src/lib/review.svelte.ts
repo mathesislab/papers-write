@@ -3,8 +3,7 @@
 // the user does with them. The editor is told the items (`setReview`) and the mode by the page, which reads them here.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { FileEditor } from "papers-write/editor";
-import { reviewing, type ReviewHandlers, type ReviewItem, type ReviewMode } from "$lib/reviewEditor";
+import type { FileEditor, ReviewHandlers, ReviewItem, ReviewMode } from "papers-write/editor";
 
 export type Me = { name: string; email: string; slug: string };
 type Loaded = { items: ReviewItem[]; errors: string[]; people: Record<string, string> };
@@ -142,7 +141,7 @@ export class ReviewSession {
   /** The suggestion in the text (the editor writes the file), then decided; a counter-suggestion accepts what it
    *  answers too. */
   async #accept(item: ReviewItem) {
-    const editor = reviewing(this.#deps.editor());
+    const editor = this.#deps.editor();
     if (!editor) return;
     await editor.accept(item);
     await invoke("review_decide", { on: item.id, decision: "accepted" });
@@ -224,6 +223,6 @@ export class ReviewSession {
   /** The item brought into view in the text and marked in the panel. */
   show(id: string) {
     this.selected = id;
-    reviewing(this.#deps.editor())?.scrollTo(id);
+    this.#deps.editor()?.scrollTo(id);
   }
 }

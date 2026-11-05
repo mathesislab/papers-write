@@ -26,7 +26,6 @@
   import CommentBox from "$lib/CommentBox.svelte";
   import ReviewPanel from "$lib/ReviewPanel.svelte";
   import { ReviewSession } from "$lib/review.svelte";
-  import { reviewing, reviewProps } from "$lib/reviewEditor";
   import { colorOf } from "$lib/reviewFormat";
   import { openPath } from "@tauri-apps/plugin-opener";
   import {
@@ -321,8 +320,8 @@
   $effect(() => {
     if (path !== undefined) untrack(() => session.start(!!path));
   });
-  $effect(() => reviewing(editor)?.setReview(session.items));
-  $effect(() => reviewing(editor)?.setMode(session.mode));
+  $effect(() => editor?.setReview(session.items));
+  $effect(() => editor?.setMode(session.mode));
 
   onMount(() => {
     setEditorFont("system", 13.5);
@@ -363,7 +362,7 @@
         {completion}
         autofocus
         extensions={[cursor]}
-        {...reviewProps(session.handlers)}
+        review={session.handlers}
         onchange={changed}
         bind:error
       />

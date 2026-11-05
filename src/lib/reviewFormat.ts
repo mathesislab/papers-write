@@ -1,11 +1,7 @@
 // How the review shows people and times.
 
-/** The colour of a person: a hue from their slug, the same for everyone who sees it. */
-export function colorOf(slug: string): string {
-  let h = 0;
-  for (const c of slug) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return `hsl(${h % 360} 62% 46%)`;
-}
+/** The colour of a person: the editor's, from their slug, the same for everyone who sees it. */
+export { reviewColour as colorOf } from "papers-write/editor";
 
 /** "just now", "5 min ago", "2 h ago", "3 d ago", else the date. */
 export function ago(time: string, now = Date.now()): string {

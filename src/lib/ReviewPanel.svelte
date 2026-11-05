@@ -6,7 +6,7 @@
   // ReviewSession, which writes the review files; the panel only asks.
 
   import type { ReviewSession } from "$lib/review.svelte";
-  import type { ReviewItem } from "$lib/reviewEditor";
+  import type { ReviewItem } from "papers-write/editor";
   import type { ReviewRecord } from "$lib/editor/review/types";
   import { ago, colorOf, whoIs } from "$lib/reviewFormat";
 

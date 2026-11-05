@@ -93,6 +93,9 @@ export function colourOf(slug: string): number {
   return (Math.abs(h) % COLOURS.length) + 1;
 }
 
+/** A person's colour as CSS (`var(--review-n, …)`), for the app's lists to match the text. */
+export const reviewColour = (slug: string) => `var(--review-${colourOf(slug)}, ${COLOURS[colourOf(slug) - 1]})`;
+
 const classes = (s: Shown, kind: string) => `cm-review-${kind} cm-review-c${colourOf(s.slug)}${s.dim ? " cm-review-dim" : ""}`;
 
 /** What a suggestion puts in, shown after the text it replaces. It sits before its position (side -1), so that the

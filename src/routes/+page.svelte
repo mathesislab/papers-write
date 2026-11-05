@@ -14,6 +14,8 @@
   // references from the text typed, which each call sends. Check Citations… lists in a sheet the keys cited that the
   // document's own bibliography lacks (each to add from the library) and the entries it never cites.
   //
+  // The foot of the window says the state of the document's repository (GitBar).
+  //
   // File ▸ Exchange (`exchange`) is Exchange: Compare as Suggestions… and the Word round trip.
   //
   // View ▸ Show Preview (⇧⌘P, `preview`) toggles the pane at the right of a Markdown document: pandoc's HTML of the text
@@ -44,6 +46,8 @@
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
+  import GitBar from "$lib/GitBar.svelte";
+  import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import "$lib/theme.css";
 
@@ -58,6 +62,9 @@
   let editor = $state<FileEditor>();
   let builds = $state<Build>();
   let exchange = $state<Exchange>();
+  let gitbar = $state<GitBar>();
+  /** the repository of the document (git.rs); none when it is not in one */
+  let repo = $state<GitState | null>(null);
   let error = $state("");
   /** a save that failed, where the editor's own errors do not say */
   let problem = $state("");
@@ -106,6 +113,8 @@
     typed = text;
     if (previewing) later();
     session.reload(500);
+    // the file is written half a second after the typing stops
+    gitbar?.refresh(1500);
     if (!path && blank !== !text.trim()) invoke("set_blank", { blank: (blank = !text.trim()) });
   }
 
@@ -331,9 +340,13 @@
       listen("file-changed", () => {
         editor?.changedOnDisk();
         session.reload(300);
+        gitbar?.refresh(1000);
       }),
       listen<string>("review-menu", (e) => reviewMenu(e.payload)),
-      listen("review-changed", () => session.reload(100)),
+      listen("review-changed", () => {
+        session.reload(100);
+        gitbar?.refresh(500);
+      }),
       listen<string>("menu", (e) => (e.payload === "save" ? save() : builds?.run(e.payload))),
       listen<string>("edit", (e) => edit(e.payload)),
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
@@ -417,6 +430,7 @@
       {/if}
     </div>
   {/if}
+  <GitBar bind:this={gitbar} {path} bind:state={repo} onopen={() => {}} />
   <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
   {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
   <Exchange bind:this={exchange} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />

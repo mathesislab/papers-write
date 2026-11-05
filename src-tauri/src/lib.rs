@@ -4,6 +4,7 @@ mod build;
 mod documents;
 mod exchange;
 mod files;
+mod git;
 mod menu;
 mod preview;
 mod refs;
@@ -25,6 +26,7 @@ pub fn run() {
         .manage(refs::Loaded::default())
         .manage(preview::Runs::default())
         .manage(review::Reviews::default())
+        .manage(git::Git::default())
         .setup(|app| {
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
@@ -54,6 +56,8 @@ pub fn run() {
             build::earlier_file,
             build::reveal,
             build::open_document,
+            git::git_state,
+            git::git_fetch,
             exchange::compare_as_suggestions,
             exchange::revision_author,
             exchange::choose_edited_copy,

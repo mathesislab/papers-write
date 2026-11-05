@@ -29,6 +29,9 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::documents;
+// the git helpers live in `git`; `exchange` reaches them through here
+pub(crate) use crate::git::{Revision, git_lines, git_show};
+use crate::git;
 
 /// The most errors of a LaTeX log that are kept.
 const MAX_ERRORS: usize = 20;
@@ -112,19 +115,6 @@ pub struct Status {
     pub message: Option<String>,
 }
 
-/// A version of a document in git, to choose from.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct Revision {
-    /// what git is given: a tag, or the hash of a commit
-    pub rev: String,
-    /// the short name: the tag, the short hash
-    pub label: String,
-    /// "tag" or "commit"
-    pub kind: &'static str,
-    /// date, author and subject
-    pub detail: String,
-}
-
 // ---- the tools
 
 /// The folders searched for the tools, after PATH: a GUI app has hardly any PATH, and texmark is a Python script of
@@ -160,7 +150,7 @@ fn search_dirs() -> Vec<PathBuf> {
 }
 
 /// PATH for the commands run: the folders searched, so texmark finds pandoc and its filters and the engine.
-fn search_path(extra: Option<&Path>) -> OsString {
+pub(crate) fn search_path(extra: Option<&Path>) -> OsString {
     let mut dirs = search_dirs();
     if let Some(dir) = extra {
         dirs.insert(0, dir.to_path_buf());
@@ -309,42 +299,6 @@ fn parse_log_errors(log: &str) -> Vec<LatexError> {
         }
     }
     errors
-}
-
-/// The versions of a file from `git log --format=%H%x1f%h%x1f%as%x1f%an%x1f%s`.
-fn parse_commits(output: &str) -> Vec<Revision> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let mut f = line.split('\u{1f}');
-            let (hash, short, date, author, subject) =
-                (f.next()?, f.next()?, f.next()?, f.next()?, f.next()?);
-            Some(Revision {
-                rev: hash.to_string(),
-                label: short.to_string(),
-                kind: "commit",
-                detail: format!("{date} {author}: {subject}"),
-            })
-        })
-        .collect()
-}
-
-/// The tags from `git tag --format=%(refname:short)%1f%(creatordate:short)%1f%(subject)`.
-fn parse_tags(output: &str) -> Vec<Revision> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let mut f = line.split('\u{1f}');
-            let name = f.next().filter(|n| !n.is_empty())?;
-            let (date, subject) = (f.next().unwrap_or(""), f.next().unwrap_or(""));
-            Some(Revision {
-                rev: name.to_string(),
-                label: name.to_string(),
-                kind: "tag",
-                detail: format!("{date} {subject}").trim().to_string(),
-            })
-        })
-        .collect()
 }
 
 /// The last lines of what a command printed to stderr (or else stdout), for a message.
@@ -522,13 +476,6 @@ pub fn run_build(file: &Path) -> Status {
         ),
         Err(e) => failed("build", e),
     }
-}
-
-/// The text of `file` as it was at `rev`.
-pub(crate) fn git_show(folder: &Path, name: &str, rev: &str) -> Result<Vec<u8>, String> {
-    let git = find_tool("git")?;
-    let out = run_ok(&git, &["show".into(), format!("{rev}:./{name}")], folder)?;
-    Ok(out.stdout)
 }
 
 /// A file made for a while: removed when it goes out of scope.
@@ -781,60 +728,14 @@ pub fn marked_up(app: AppHandle, window: WebviewWindow, earlier: Earlier) -> Res
     Ok(())
 }
 
-pub(crate) fn git_lines(folder: &Path, args: &[&str]) -> Option<String> {
-    let git = find_tool("git").ok()?;
-    let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
-    let out = run(&git, &args, folder).ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
-}
-
-/// The versions of the window's document in git: the tags, and the last 30 commits that touched it; none when it is
-/// not in a repository.
+/// The versions of the window's document in git: the tags, and the last 30 commits that touched it (`git`); none
+/// when it is not in a repository.
 #[tauri::command]
 pub async fn revisions(window: WebviewWindow) -> Result<Vec<Revision>, String> {
     let file = document_of(&window)?;
-    let folder = file.parent().ok_or("no folder")?.to_path_buf();
-    let name = file
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
-    tauri::async_runtime::spawn_blocking(move || {
-        if git_lines(&folder, &["rev-parse", "--is-inside-work-tree"]).is_none() {
-            return Vec::new();
-        }
-        let mut found = git_lines(
-            &folder,
-            &[
-                "tag",
-                "--sort=-creatordate",
-                "--format=%(refname:short)%1f%(creatordate:short)%1f%(subject)",
-            ],
-        )
-        .map(|o| parse_tags(&o))
-        .unwrap_or_default();
-        found.truncate(50);
-        found.extend(
-            git_lines(
-                &folder,
-                &[
-                    "log",
-                    "-n",
-                    "30",
-                    "--format=%H%x1f%h%x1f%as%x1f%an%x1f%s",
-                    "--",
-                    &name,
-                ],
-            )
-            .map(|o| parse_commits(&o))
-            .unwrap_or_default(),
-        );
-        found
-    })
-    .await
-    .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || git::revisions_of(&file))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// The file to compare with, chosen in a dialog; none when it was cancelled.
@@ -983,28 +884,6 @@ mod tests {
     }
 
     #[test]
-    fn git_versions() {
-        let commits = parse_commits(
-            "abc123def\u{1f}abc123d\u{1f}2026-10-01\u{1f}Alex\u{1f}Methods: rewritten\nbad line\n",
-        );
-        assert_eq!(commits.len(), 1);
-        assert_eq!(commits[0].rev, "abc123def");
-        assert_eq!(commits[0].label, "abc123d");
-        assert_eq!(commits[0].detail, "2026-10-01 Alex: Methods: rewritten");
-        let tags = parse_tags("v2\u{1f}2026-09-01\u{1f}Submitted\nv1\u{1f}2026-05-01\u{1f}\n");
-        assert_eq!(tags.len(), 2);
-        assert_eq!(
-            (
-                tags[0].kind,
-                tags[0].label.as_str(),
-                tags[0].detail.as_str()
-            ),
-            ("tag", "v2", "2026-09-01 Submitted")
-        );
-        assert_eq!(tags[1].detail, "2026-05-01");
-    }
-
-    #[test]
     fn tools_found_in_folders() {
         let dir = std::env::temp_dir().join(format!("pw-tools-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
@@ -1074,7 +953,7 @@ mod tests {
                 ],
             )
             .unwrap();
-            parse_tags(&tags)
+            git::parse_tags(&tags)
         };
         assert_eq!(revisions[0].label, "v1");
         let diffed = run_diff(

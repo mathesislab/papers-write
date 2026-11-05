@@ -38,7 +38,7 @@
     insertSymbol,
     replaceText,
     setEditorFont,
-    type CitationOption,
+    type Item,
     type Completion,
     type Found,
   } from "papers-write/editor";
@@ -200,16 +200,10 @@
   /** The completion of citations as typed (`[@`, `@`, `\cite{`): the references matching what is typed, those of the
    *  document's own bibliography marked as such, a key in both once; a key taken is added to the bibliography. */
   const completion: Completion = {
+    // the backend ranks them: the document's own entries, then the keys that start so, then other matches
     async citations(prefix) {
-      const [found, own] = await Promise.all([search(prefix, 30), invoke<string[]>("bibliography_files", { text: current() })]);
-      const options = new Map<string, CitationOption>();
-      for (const { item } of found.hits) {
-        const inBib = own.includes(item.bib);
-        if (!options.get(item.key)?.inBib) options.set(item.key, { key: item.key, label: citation(item), detail: item.title, inBib });
-      }
-      // the keys that start with what is typed first, then those of the bibliography, else as the references found them
-      const rank = (o: CitationOption) => (o.key.toLowerCase().startsWith(prefix.toLowerCase()) ? 0 : 2) + (o.inBib ? 0 : 1);
-      return [...options.values()].sort((a, b) => rank(a) - rank(b));
+      const found = await invoke<{ item: Item; in_bib: boolean }[]>("cite_options", { prefix, limit: 30, text: current() });
+      return found.map(({ item, in_bib }) => ({ key: item.key, label: citation(item), detail: item.title, inBib: in_bib }));
     },
     oncite: (key) => void add(key),
   };

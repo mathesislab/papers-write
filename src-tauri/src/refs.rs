@@ -148,11 +148,12 @@ fn own_bibs(window: &WebviewWindow, text: &str) -> Vec<PathBuf> {
     bibliography_of(&path, text).into_iter().map(|n| folder.join(n)).filter(|f| f.is_file()).collect()
 }
 
-/// The document's own `.bib` files (`own_bibs`), as the references give an entry's file: the completion marks the
-/// keys already there.
+/// The references offered for a citation key typed so far: the document's own first, then the keys that start
+/// with it, then the other matches (`write_core::refs::candidates`).
 #[tauri::command]
-pub async fn bibliography_files(window: WebviewWindow, text: String) -> Vec<String> {
-    own_bibs(&window, &text).iter().map(|p| p.to_string_lossy().into_owned()).collect()
+pub async fn cite_options(window: WebviewWindow, prefix: String, limit: usize, text: String) -> Vec<write_core::refs::Candidate> {
+    let refs = references_of(&window, &text);
+    write_core::refs::candidates(&refs, &prefix, &own_bibs(&window, &text), limit)
 }
 
 /// The keys cited in `text` against those of the `.bib` files its front matter names (not the papers library).

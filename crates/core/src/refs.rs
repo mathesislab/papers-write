@@ -139,6 +139,56 @@ fn sources(document: &[PathBuf], library: Option<PathBuf>) -> Vec<PathBuf> {
     found
 }
 
+/// A reference offered to complete a citation key as it is typed.
+#[derive(Debug, Clone, Serialize)]
+pub struct Candidate {
+    pub item: Item,
+    /// in the document's own bibliography (else in the library only: citing it copies it there)
+    pub in_bib: bool,
+}
+
+/// The references offered for a citation key typed so far (`prefix`), at most `limit`: those of the document's own
+/// bibliography (`own`, its `.bib` files) first, the keys that start with `prefix` before the other matches; then
+/// the library's keys that start with `prefix`, newest first; then the library's other matches (words from their
+/// start), as `search` ranks them. Each key once. Searching by words alone lost the document's own entries among the
+/// many words that start alike ("jou": every journal).
+pub fn candidates(references: &References, prefix: &str, own: &[PathBuf], limit: usize) -> Vec<Candidate> {
+    let Some(library) = references.library() else {
+        return Vec::new();
+    };
+    let lower = prefix.to_lowercase();
+    let starts = |item: &Item| item.key.to_lowercase().starts_with(&lower);
+    let is_own = |item: &Item| own.contains(&item.bib);
+    let matched: Vec<&Item> = if prefix.trim().is_empty() {
+        library.items().iter().collect()
+    } else {
+        let found = library.search(prefix, Matching::WordStart, library.items().len());
+        let ids: std::collections::HashSet<&str> = found.hits.iter().map(|h| h.item.id.as_str()).collect();
+        library.items().iter().filter(|i| starts(i) || ids.contains(i.id.as_str())).collect()
+    };
+    let newest = |a: &&Item, b: &&Item| b.year.cmp(&a.year);
+    let mut own_first: Vec<&Item> = matched.iter().copied().filter(|i| is_own(i)).collect();
+    own_first.sort_by(|a, b| starts(b).cmp(&starts(a)).then_with(|| newest(a, b)));
+    let mut keyed: Vec<&Item> = matched.iter().copied().filter(|i| !is_own(i) && starts(i)).collect();
+    keyed.sort_by(newest);
+    let rest: Vec<&Item> = if prefix.trim().is_empty() {
+        Vec::new()
+    } else {
+        let found = library.search(prefix, Matching::WordStart, limit.saturating_mul(4).max(limit));
+        let ids: Vec<String> = found.hits.iter().map(|h| h.item.id.clone()).collect();
+        ids.iter().filter_map(|id| library.items().iter().find(|i| &i.id == id)).filter(|i| !is_own(i) && !starts(i)).collect()
+    };
+    let mut seen = std::collections::HashSet::new();
+    own_first
+        .into_iter()
+        .chain(keyed)
+        .chain(rest)
+        .filter(|i| seen.insert(i.key.clone()))
+        .take(limit)
+        .map(|i| Candidate { item: i.clone(), in_bib: is_own(i) })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -160,6 +210,25 @@ mod tests {
   year = {2017},
 }
 ";
+
+    #[test]
+    fn the_documents_own_entries_come_first_then_keys_then_words() {
+        let dir = folder("candidates");
+        let own = bib(&dir, "own.bib", "@article{joughin2019,\n author = {Joughin, Ian},\n title = {Friction},\n journal = {GRL},\n year = {2019},\n}\n");
+        // a library of many newer entries whose words start alike ("Journal"), and a key that starts alike
+        let mut lib = String::new();
+        for i in 0..40 {
+            lib.push_str(&format!("@article{{other{i},\n author = {{Other, A.}},\n title = {{Thing {i}}},\n journal = {{Journal of Glaciology}},\n year = {{2026}},\n}}\n\n"));
+        }
+        lib.push_str("@article{jourdain2025,\n author = {Jourdain, N.},\n title = {Melt},\n journal = {TC},\n year = {2025},\n}\n");
+        let library = bib(&dir, "library.bib", &lib);
+        let refs = References::load(vec![own.clone(), library]);
+        let got = candidates(&refs, "jou", std::slice::from_ref(&own), 10);
+        let keys: Vec<&str> = got.iter().map(|c| c.item.key.as_str()).collect();
+        assert_eq!(&keys[..2], ["joughin2019", "jourdain2025"]);
+        assert!(got[0].in_bib && !got[1].in_bib);
+        assert_eq!(keys.len(), 10);
+    }
 
     /// An empty folder of its own for a test.
     fn folder(name: &str) -> PathBuf {

@@ -65,7 +65,7 @@ pub fn run() {
             refs::reference_sources,
             refs::cite_key,
             refs::bib_check,
-            refs::bibliography_files,
+            refs::cite_options,
             review::review_me,
             review::review_items,
             review::review_suggest,

@@ -116,10 +116,11 @@ pub fn run() {
             // the files handed over while launching, or else a window of untitled text; files that come after this
             // take the blank window
             RunEvent::Ready => documents::ready(app),
-            // the last window closed: the app stays in the menu bar; Quit (⌘Q, the menu bar icon) ends it with a code
+            // the last window closed: the app stays in the menu bar (unless the settings say it quits); Quit (⌘Q, the
+            // menu bar icon) ends it with a code
             RunEvent::ExitRequested {
                 code: None, api, ..
-            } if app.webview_windows().is_empty() => {
+            } if app.webview_windows().is_empty() && settings::get().menu_bar => {
                 api.prevent_exit();
             }
             // the Dock icon clicked, no window open

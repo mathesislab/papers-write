@@ -20,6 +20,7 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use crate::settings::Settings;
 use write_core::review::text::slug;
 use write_core::review::{Decision, Item, NewRecord, Person, Review, store, utf16_of};
 
@@ -64,17 +65,39 @@ pub struct Items {
     people: HashMap<String, String>,
 }
 
-/// The person of the git configuration of `folder`, else the macOS full name of the user, else `$USER`.
+/// Who the user is for `folder`: the name and e-mail of the settings where set, else those of the git configuration
+/// of the folder, else the macOS full name of the user (or `$USER`) and no e-mail.
 pub(crate) fn person_in(folder: &Path) -> Person {
-    Person::from_git(folder).unwrap_or_else(|| {
-        let full = std::process::Command::new("id")
-            .arg("-F")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .and_then(|o| String::from_utf8(o.stdout).ok());
-        fallback(full, std::env::var("USER").ok())
-    })
+    identity(&crate::settings::get(), || Person::from_git(folder), system_person)
+}
+
+/// The user as the system says.
+fn system_person() -> Person {
+    let full = std::process::Command::new("id")
+        .arg("-F")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok());
+    fallback(full, std::env::var("USER").ok())
+}
+
+/// The name and the e-mail each from the settings if set, else from `git` (asked only when needed), else `system`.
+fn identity(settings: &Settings, git: impl FnOnce() -> Option<Person>, system: impl FnOnce() -> Person) -> Person {
+    let (name, email) = (settings.review_name.trim(), settings.review_email.trim());
+    if !name.is_empty() && !email.is_empty() {
+        return Person::new(name, email);
+    }
+    let base = git().unwrap_or_else(system);
+    Person::new(if name.is_empty() { base.name } else { name.to_string() }, if email.is_empty() { base.email } else { email.to_string() })
+}
+
+/// Who the user is changed (the settings): each window's review of a file has the new person from now on.
+pub fn identity_changed(app: &AppHandle) {
+    let state = app.state::<Reviews>();
+    for slot in state.slots.lock().unwrap().values_mut() {
+        slot.me = person_in(folder_of(&slot.path));
+    }
 }
 
 /// A person from a full name and a user name, as the system gives them (either may be missing or blank).
@@ -375,6 +398,35 @@ mod tests {
 
     fn jane() -> Person {
         Person::new("Jane Doe", "jane@example.org")
+    }
+
+    fn settings(name: &str, email: &str) -> Settings {
+        Settings { review_name: name.into(), review_email: email.into(), ..Settings::default() }
+    }
+
+    fn system() -> Person {
+        Person::new("Sys Tem", "")
+    }
+
+    #[test]
+    fn who_the_user_is_settings_first_then_git_then_the_system() {
+        let git = || Some(Person::new("Git Name", "git@example.org"));
+        // nothing set: git, else the system
+        assert_eq!(identity(&settings("", ""), git, system), Person::new("Git Name", "git@example.org"));
+        assert_eq!(identity(&settings("", ""), || None, system), system());
+        // set: they win, each on its own
+        assert_eq!(identity(&settings("Set Name", "set@example.org"), git, system), Person::new("Set Name", "set@example.org"));
+        assert_eq!(identity(&settings("Set Name", ""), git, system), Person::new("Set Name", "git@example.org"));
+        assert_eq!(identity(&settings("", "set@example.org"), git, system), Person::new("Git Name", "set@example.org"));
+        assert_eq!(identity(&settings("Set Name", ""), || None, system), Person::new("Set Name", ""));
+        // blank is empty
+        assert_eq!(identity(&settings("  ", " "), || None, system), system());
+    }
+
+    #[test]
+    fn git_and_the_system_are_not_asked_when_the_settings_say_it_all() {
+        let asked = || -> Option<Person> { panic!("asked") };
+        assert_eq!(identity(&settings("A", "a@x.org"), asked, || panic!("asked")), Person::new("A", "a@x.org"));
     }
 
     #[test]

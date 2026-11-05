@@ -159,9 +159,18 @@ pub fn get() -> Settings {
 /// `settings` the current ones: kept in the data folder, and every window told.
 fn put(app: &AppHandle, settings: Settings) {
     let settings = settings.normalised();
-    *CURRENT.write().unwrap() = settings.clone();
+    let who_changed = {
+        let mut current = CURRENT.write().unwrap();
+        let changed = (&current.review_name, &current.review_email) != (&settings.review_name, &settings.review_email);
+        *current = settings.clone();
+        changed
+    };
     if let Some(dir) = DIR.get() {
         settings.save(dir);
+    }
+    // the windows' reviews know the user before the pages are told to ask who it is
+    if who_changed {
+        crate::review::identity_changed(app);
     }
     if let Err(e) = app.emit("settings-changed", settings) {
         eprintln!("settings-changed: {e}");
@@ -176,7 +185,7 @@ pub fn settings() -> Settings {
 
 /// The settings changed in the Settings window.
 #[tauri::command]
-pub fn set_settings(app: AppHandle, settings: Settings) {
+pub async fn set_settings(app: AppHandle, settings: Settings) {
     put(&app, settings);
 }
 

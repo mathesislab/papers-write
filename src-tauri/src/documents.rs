@@ -112,7 +112,8 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<String> {
     }
     regular(app, true);
     // a new window joins a document's tabs, not the Settings window
-    let joined = front(app).filter(|w| w.label().starts_with("doc-"));
+    let tabs = crate::settings::get().tabs;
+    let joined = front(app).filter(|w| tabs && w.label().starts_with("doc-"));
     let built = WebviewWindowBuilder::new(
         app,
         &label,
@@ -127,7 +128,8 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<String> {
     )
     .title(title(path.as_deref()))
     .inner_size(900.0, 700.0)
-    .tabbing_identifier(TABBING)
+    // off: an identifier of its own, which the system's preference for tabs does not merge with others
+    .tabbing_identifier(if tabs { TABBING } else { &label })
     .build();
     let window = match built {
         Ok(window) => window,

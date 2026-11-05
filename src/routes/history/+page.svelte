@@ -7,7 +7,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { EditorState } from "@codemirror/state";
-  import { FileEditor, PREFS, setEditorFont, type ReviewHandlers, type ReviewItem } from "papers-write/editor";
+  import { FileEditor, PREFS, type EditorPrefs, type ReviewHandlers, type ReviewItem } from "papers-write/editor";
+  import { applyEditor, watchSettings } from "$lib/settings";
   import "$lib/theme.css";
 
   type History = { title: string; text: string; items: ReviewItem[]; markdown: boolean };
@@ -15,6 +16,7 @@
   let shown = $state<History | undefined>();
   let editor = $state<FileEditor>();
   let error = $state("");
+  let prefs = $state<EditorPrefs>(PREFS);
 
   /** nothing is suggested or withdrawn in a read-only text */
   const handlers: ReviewHandlers = { me: "history", suggest: async () => "", withdraw: async () => {} };
@@ -32,11 +34,14 @@
   $effect(() => editor?.setReview(shown?.items ?? []));
 
   onMount(() => {
-    setEditorFont("system", 13.5);
+    const stop = watchSettings((s) => (prefs = applyEditor(s)));
     ask();
     // the document written (or changed by a pull) since the tab was opened: compared again as it gets the keys
     window.addEventListener("focus", ask);
-    return () => window.removeEventListener("focus", ask);
+    return () => {
+      stop();
+      window.removeEventListener("focus", ask);
+    };
   });
 </script>
 
@@ -50,7 +55,7 @@
           load={async () => ({ path: "", text: shown?.text ?? "" })}
           save={async () => {}}
           mono={!shown.markdown}
-          prefs={PREFS}
+          {prefs}
           extensions={readOnly}
           review={handlers}
         />

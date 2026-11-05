@@ -52,7 +52,8 @@
     citation,
     insertSymbol,
     replaceText,
-    setEditorFont,
+    setOwnColour,
+    type EditorPrefs,
     type Item,
     type Completion,
     type Found,
@@ -63,6 +64,7 @@
   import GitBar from "$lib/GitBar.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
+  import { applyEditor, watchSettings, type Settings } from "$lib/settings";
   import "$lib/theme.css";
 
   // The review (Review menu, `review-menu`): suggesting or editing (a badge at the top right while suggesting), the
@@ -215,7 +217,7 @@
    *  definitions, comments and raw LaTeX environments are not in its HTML. */
   function follow() {
     const view = editor?.view();
-    if (!previewing || !view) return;
+    if (!previewing || !view || !follows) return;
     const { state } = view;
     const head = state.selection.main.head;
     const tree = ensureSyntaxTree(state, state.doc.length, 50);
@@ -414,8 +416,42 @@
     }
   });
 
+  // The settings (the Settings window): the font and the editor's prefs, the symbols typed, the user's colour in the
+  // review (and who the user is, if that changed), whether the preview follows the cursor.
+  let prefs = $state<EditorPrefs>(PREFS);
+  let symbols = $state<[string, string][]>([]);
+  let colour = $state<number | null>(null);
+  let follows = true;
+  let who = "";
+  /** how often the colours were set: the text and the lists are drawn again with them */
+  let coloured = $state(0);
+
+  function apply(s: Settings) {
+    prefs = applyEditor(s);
+    symbols = s.symbols;
+    colour = s.review_colour;
+    follows = s.preview_follow;
+    const now = `${s.review_name}\n${s.review_email}`;
+    if (who && who !== now) session.identity();
+    who = now;
+    if (follows) follow();
+  }
+
+  const userColour = $derived.by(() => {
+    void coloured;
+    return colorOf(session.me?.slug ?? "");
+  });
+
+  $effect(() => {
+    setOwnColour(session.me?.slug, colour);
+    untrack(() => {
+      coloured++;
+      session.reload();
+    });
+  });
+
   onMount(() => {
-    setEditorFont("system", 13.5);
+    const stop = watchSettings(apply);
     ask();
     askProject();
     window.addEventListener("focus", loadBar);
@@ -445,6 +481,7 @@
       listen("references-changed", () => version++),
     ];
     return () => {
+      stop();
       window.removeEventListener("focus", loadBar);
       unlisten.forEach((u) => u.then((f) => f()));
     };
@@ -472,7 +509,8 @@
         save={file ? (p, text) => invoke("write_text", { path: p, text }) : async () => {}}
         mono={!markdown && !latex}
         {latex}
-        prefs={PREFS}
+        {prefs}
+        {symbols}
         {completion}
         autofocus
         extensions={[cursor]}
@@ -483,7 +521,7 @@
     {/key}
   {/if}
   {#if session.mode === "suggest"}
-    <button class="mode" style:--user={colorOf(session.me?.slug ?? "")} title="Back to editing (⇧⌘E)" onclick={() => session.toggleMode()}>Suggesting</button>
+    <button class="mode" style:--user={userColour} title="Back to editing (⇧⌘E)" onclick={() => session.toggleMode()}>Suggesting</button>
   {/if}
   </div>
   {#if previewing && markdown}

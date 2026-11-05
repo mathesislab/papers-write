@@ -165,8 +165,18 @@ fn find_in(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
     dirs.iter().map(|d| d.join(name)).find(|p| p.is_file())
 }
 
+/// The tool to run: the file the settings name for it (an error when it is not a file), else as found.
 pub(crate) fn find_tool(name: &str) -> Result<PathBuf, String> {
-    found_tool(name)
+    chosen(crate::settings::get().tool(name), name, || found_tool(name))
+}
+
+/// `set`, the file the settings name for the tool `name`, if there is one; else what `found` gives.
+fn chosen(set: Option<PathBuf>, name: &str, found: impl FnOnce() -> Result<PathBuf, String>) -> Result<PathBuf, String> {
+    match set {
+        Some(path) if path.is_file() => Ok(path),
+        Some(path) => Err(format!("{name}: {} (set in Settings) is not a file", path.display())),
+        None => found(),
+    }
 }
 
 /// The tool as it is found without the settings: on PATH, else in the folders searched.
@@ -780,6 +790,18 @@ pub fn open_document(app: AppHandle, path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tool_of_the_settings_is_used_when_it_is_a_file_else_it_is_found() {
+        let file = std::env::temp_dir().join(format!("pw-tool-{}", std::process::id()));
+        std::fs::write(&file, "").unwrap();
+        let found = || Ok(PathBuf::from("/found/texmark"));
+        assert_eq!(chosen(None, "texmark", found), Ok(PathBuf::from("/found/texmark")));
+        assert_eq!(chosen(Some(file.clone()), "texmark", || panic!("searched")), Ok(file.clone()));
+        let missing = PathBuf::from("/nowhere/texmark");
+        assert!(chosen(Some(missing), "texmark", found).unwrap_err().contains("set in Settings"));
+        let _ = std::fs::remove_file(&file);
+    }
 
     #[test]
     fn texmark_in_the_documents_folder() {

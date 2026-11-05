@@ -72,6 +72,17 @@ export class ReviewSession {
     }
   }
 
+  /** Who the user is, asked again (the settings changed it); the items read again for the new person. */
+  async identity() {
+    if (!this.me) return;
+    try {
+      this.me = await invoke<Me>("review_me");
+      this.reload();
+    } catch (e) {
+      this.problem = String(e);
+    }
+  }
+
   /** The document is (another) file: who the user is for it, and its items once the editor has its text. */
   async start(saved: boolean) {
     this.items = [];

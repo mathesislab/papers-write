@@ -64,18 +64,10 @@ fn home() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// pandoc: on the PATH, else where Homebrew puts it (an app started from the Dock has a short PATH).
+/// pandoc: the file of the settings, else on the PATH or where Homebrew puts it (an app started from the Dock has a
+/// short PATH).
 pub(crate) fn pandoc() -> Result<PathBuf, String> {
-    let on_path = std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
-        .unwrap_or_default();
-    let fixed = ["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from);
-    on_path
-        .into_iter()
-        .chain(fixed)
-        .map(|d| d.join("pandoc"))
-        .find(|p| p.is_file())
-        .ok_or_else(|| "pandoc is not installed: brew install pandoc".to_string())
+    crate::build::find_tool("pandoc")
 }
 
 const CROSSREF: &str = include_str!("../preview/crossref.lua");

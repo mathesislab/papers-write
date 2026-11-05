@@ -11,12 +11,12 @@ import { paperMarkdown, tex } from "../src/lib/editor/lang/index.ts";
 
 const md = (doc: string) => {
   const state = EditorState.create({ doc, extensions: [markdown({ extensions: paperMarkdown })] });
-  ensureSyntaxTree(state, doc.length, 1000);
+  ensureSyntaxTree(state, doc.length, Infinity);
   return state;
 };
 const latex = (doc: string) => {
   const state = EditorState.create({ doc, extensions: [tex] });
-  ensureSyntaxTree(state, doc.length, 1000);
+  ensureSyntaxTree(state, doc.length, Infinity);
   return state;
 };
 

@@ -10,7 +10,7 @@ import { paperMarkdown } from "../src/lib/editor/lang/index.ts";
 
 const make = (doc: string) => {
   const state = EditorState.create({ doc, extensions: [markdown({ extensions: paperMarkdown })] });
-  ensureSyntaxTree(state, doc.length, 1000);
+  ensureSyntaxTree(state, doc.length, Infinity);
   return state;
 };
 const prose = (doc: string) => {

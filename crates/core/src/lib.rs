@@ -2,8 +2,11 @@
 //!
 //! - [`frontmatter`]: the `bibliography` field of a Markdown text's front matter, read and added.
 //! - [`refs`]: the `.bib` files of a document and the papers library, loaded as one library and searched.
+//! - [`bib`]: a cited key of the library copied into the document's `.bib`; the keys cited and missing or unused.
 
+pub mod bib;
 pub mod frontmatter;
 pub mod refs;
 
+pub use bib::{Cited, Error, cite, cited_keys, missing, unused};
 pub use refs::{Found, RefEntry, References, sources_of};

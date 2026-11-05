@@ -38,6 +38,11 @@ fn find(text: &str) -> Option<Block> {
     None
 }
 
+/// Where the text after the front matter starts (0 without one).
+pub(crate) fn body_start(text: &str) -> usize {
+    find(text).map_or(0, |b| text[b.close..].find('\n').map_or(text.len(), |n| b.close + n + 1))
+}
+
 /// The names in the `bibliography` field of the front matter of `text`: a string, or a list (`[a.bib, b.bib]`
 /// or `- a.bib` lines), quotes taken off. Empty when there is no front matter or no such field.
 pub fn bibliography(text: &str) -> Vec<String> {

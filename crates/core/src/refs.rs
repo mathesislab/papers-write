@@ -13,6 +13,7 @@ use papers_rs::config::{MachineConfig, find_config};
 use serde::Serialize;
 
 use crate::frontmatter;
+use crate::project::Project;
 
 /// The references of a document, as they were read.
 pub struct References {
@@ -97,11 +98,29 @@ pub fn bibliography_of(path: &Path, text: &str) -> Vec<String> {
 /// The `.bib` files of the references of a Markdown or LaTeX file: those it names
 /// (relative to the file's folder), then the papers library's, each once; one that is not there is left out.
 pub fn sources_of(markdown_path: &Path, markdown_text: &str) -> Vec<PathBuf> {
+    sources_in(markdown_path, markdown_text, project_library_of(markdown_path).as_deref())
+}
+
+/// The library a document's project (`write.toml`) says to search, by its path; none when the document is in no
+/// project, or the project sets none, or its `write.toml` cannot be read (the papers library is searched then).
+pub fn project_library_of(document: &Path) -> Option<PathBuf> {
+    if document.as_os_str().is_empty() {
+        return None;
+    }
+    Project::of(&folder_of(document)).ok().flatten()?.library()
+}
+
+/// [`sources_of`] with the library of the document's project given (`project_library`, as `write.toml` says it:
+/// [`project_library_bib`]): searched instead of the papers library found from the folder.
+pub fn sources_in(markdown_path: &Path, markdown_text: &str, project_library: Option<&Path>) -> Vec<PathBuf> {
     let folder = folder_of(markdown_path);
     let named = bibliography_of(markdown_path, markdown_text).into_iter().map(|n| folder.join(n)).collect::<Vec<_>>();
     let library = MachineConfig::load(None)
         .map_err(|e| e.message().to_string())
-        .and_then(|machine| library_bib(&folder, machine))
+        .and_then(|machine| match project_library {
+            Some(library) => project_library_bib(library, machine),
+            None => library_bib(&folder, machine),
+        })
         // the document's own files are still searched when papers' configuration cannot be read
         .unwrap_or_else(|e| {
             eprintln!("the papers library: {e}");
@@ -120,6 +139,19 @@ pub(crate) fn folder_of(markdown_path: &Path) -> PathBuf {
 pub fn library_bib(folder: &Path, machine: MachineConfig) -> Result<Option<PathBuf>, String> {
     let config = find_config(&folder.to_string_lossy(), machine).map_err(|e| e.message().to_string())?;
     Ok(config.bibtex.filter(|b| !b.is_empty()).map(PathBuf::from))
+}
+
+/// The `.bib` file of the library a project names: the file itself when it is a `.bib` path, the `.bib` of the
+/// papers library when it is a folder with a `.papers/config.json` (a folder without one is an error: the library
+/// above it is not the project's).
+pub fn project_library_bib(library: &Path, machine: MachineConfig) -> Result<Option<PathBuf>, String> {
+    if !library.is_dir() {
+        return Ok(Some(library.to_path_buf()));
+    }
+    if !library.join(".papers/config.json").is_file() {
+        return Err(format!("{}: not a papers library (no .papers/config.json)", library.display()));
+    }
+    library_bib(library, machine)
 }
 
 /// The files to read: those of the document, then the library's, each once (a document in the library folder
@@ -275,6 +307,47 @@ mod tests {
         assert_eq!(sources(&[library.clone(), a.clone()], Some(library.clone())), [library, a]);
         assert_eq!(sources(&project, Some(gone)), [project[0].clone(), b]);
         assert!(sources(&[], None).is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_project_library_is_a_bib_or_a_papers_folder_else_none() {
+        let dir = folder("project-library");
+        let single = bib(&dir, "mine.bib", REFS);
+        assert_eq!(project_library_bib(&single, MachineConfig::empty()).unwrap(), Some(single.clone()));
+        let library = dir.join("lib");
+        fs::create_dir_all(library.join(".papers")).unwrap();
+        fs::write(library.join(".papers/config.json"), r#"{"bibtex": "papers.bib", "version": 3}"#).unwrap();
+        let papers = bib(&library, "papers.bib", REFS);
+        let got = project_library_bib(&library, MachineConfig::empty()).unwrap().unwrap();
+        assert_eq!(got.canonicalize().unwrap(), papers.canonicalize().unwrap());
+        // a folder that is no library (even inside one) is an error, not the library above it
+        fs::create_dir_all(library.join("notes")).unwrap();
+        assert!(project_library_bib(&library.join("notes"), MachineConfig::empty()).unwrap_err().contains("not a papers library"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_document_in_a_project_with_a_library_searches_it_beside_its_own_bibliography() {
+        let dir = folder("project-sources");
+        fs::create_dir_all(dir.join("sections")).unwrap();
+        let (own, shared) = (bib(&dir.join("sections"), "own.bib", REFS), bib(&dir, "shared.bib", REFS));
+        let doc = dir.join("sections/intro.md");
+        let text = "---\nbibliography: own.bib\n---\ntext";
+        // no project: no project library
+        assert_eq!(project_library_of(&doc), None);
+        fs::write(dir.join("write.toml"), "name = \"p\"\n").unwrap();
+        assert_eq!(project_library_of(&doc), None);
+        // relative to the project's root, not the document's folder
+        fs::write(dir.join("write.toml"), "library = \"shared.bib\"\n").unwrap();
+        assert_eq!(project_library_of(&doc), Some(shared.clone()));
+        let library = project_library_of(&doc);
+        assert_eq!(sources_in(&doc, text, library.as_deref()), [own.clone(), shared.clone()]);
+        // an absolute path
+        fs::write(dir.join("write.toml"), format!("library = {:?}\n", shared.display().to_string())).unwrap();
+        assert_eq!(project_library_of(&doc), Some(shared.clone()));
+        // untitled: no project
+        assert_eq!(project_library_of(Path::new("")), None);
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -1,4 +1,5 @@
-//! The references of each document window: the `.bib` files its front matter names and the papers library
+//! The references of each document window: the `.bib` files its front matter names and the papers library (or
+//! the library its project names in `write.toml`)
 //! (`write_core::refs`), loaded when first asked (not as the window opens), kept while the window is open, and
 //! read again when one of the files changes or when the front matter names other files (the page sends its text
 //! as typed). The page is told (`references-changed`) after a reload it did not ask for.
@@ -11,7 +12,7 @@ use papers_core::{BibWatch, Found};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use write_core::bib::{self, Cited};
-use write_core::refs::{References, bibliography_of, sources_of};
+use write_core::refs::{References, bibliography_of, project_library_of, sources_in, sources_of};
 
 /// The references of each window, by its label. A window's slot is made when its references are first asked and
 /// filled under its own lock, so a second search waits for the load instead of repeating it.
@@ -24,6 +25,8 @@ pub struct Slot {
     path: Option<PathBuf>,
     /// the `bibliography` of its front matter, as typed
     named: Vec<String>,
+    /// the library its project names (`write.toml`), if it does
+    library: Option<PathBuf>,
     references: Arc<References>,
     _watches: Vec<BibWatch>,
 }
@@ -31,8 +34,9 @@ pub struct Slot {
 impl Slot {
     fn new(app: &AppHandle, label: &str, path: Option<PathBuf>, text: &str) -> Slot {
         // untitled: the papers library only
+        let library = path.as_deref().and_then(project_library_of);
         let sources = match &path {
-            Some(p) => sources_of(p, text),
+            Some(p) => sources_in(p, text, library.as_deref()),
             None => sources_of(Path::new(""), ""),
         };
         let watches = sources
@@ -47,6 +51,7 @@ impl Slot {
         Slot {
             named: path.as_deref().map(|p| bibliography_of(p, text)).unwrap_or_default(),
             path,
+            library,
             references: Arc::new(References::load(sources)),
             _watches: watches,
         }
@@ -62,7 +67,8 @@ fn references_of(window: &WebviewWindow, text: &str) -> Arc<References> {
     let slot = app.state::<Loaded>().0.lock().unwrap().entry(label.to_string()).or_default().clone();
     let mut slot = slot.lock().unwrap();
     let named = path.as_deref().map(|p| bibliography_of(p, text)).unwrap_or_default();
-    let fresh = slot.as_ref().is_some_and(|s| s.path == path && s.named == named);
+    let library = path.as_deref().and_then(project_library_of);
+    let fresh = slot.as_ref().is_some_and(|s| s.path == path && s.named == named && s.library == library);
     if !fresh {
         let before = slot.is_some();
         *slot = Some(Slot::new(app, label, path, text));

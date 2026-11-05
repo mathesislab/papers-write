@@ -17,4 +17,4 @@ pub mod refs;
 pub mod review;
 
 pub use bib::{Cited, Error, cite, cited_keys, missing, unused};
-pub use refs::{Found, RefEntry, References, bibliography_of, sources_of};
+pub use refs::{Found, RefEntry, References, bibliography_of, project_library_of, sources_in, sources_of};

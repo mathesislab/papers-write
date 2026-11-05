@@ -39,7 +39,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             }
             "tray-open" => documents::choose(app),
             "tray-settings" => crate::settings::show(app),
-            "tray-quit" => app.exit(0),
+            "tray-quit" => documents::quit(app),
             _ => {}
         })
         .build(app)?;

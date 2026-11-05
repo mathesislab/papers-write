@@ -1,7 +1,7 @@
 //! The quick preview: the Markdown as typed rendered by pandoc to an HTML fragment, for the pane beside the text.
 //! MathML for the math (WebKit renders it natively: no MathJax, no network), `--citeproc` for the citations (the
 //! default CSL, after a Lua filter that numbers the equations, figures, tables and sections and resolves their
-//! references, as pandoc-crossref does: `preview/crossref.lua`), run in the document's folder so `bibliography:` and the images resolve. One run per window at a
+//! references, as pandoc-crossref does: `crates/core/lua/crossref.lua`), run in the document's folder so `bibliography:` and the images resolve. One run per window at a
 //! time: a request while one runs supersedes it, and the process of the old one is killed.
 //!
 //! Images: the local ones are rewritten to base64 data URIs here, after pandoc, when the file is under 5 MB. Not

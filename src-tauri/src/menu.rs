@@ -224,7 +224,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "recent-clear" => crate::projects::clear_recent(app),
         _ if id.starts_with(RECENT) => crate::projects::open_reporting(app, Path::new(&id[RECENT.len()..])),
         "settings" => crate::settings::show(app),
-        "quit" => app.exit(0),
+        "quit" => documents::quit(app),
         "close" => {
             if let Some(window) = documents::front(app) {
                 let _ = window.close();

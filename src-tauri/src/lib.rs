@@ -119,6 +119,12 @@ pub fn run() {
             // the files handed over while launching, or else a window of untitled text; files that come after this
             // take the blank window
             RunEvent::Ready => documents::ready(app),
+            // a quit asked by the system (the Dock icon's menu): with untitled text never saved, it asks first
+            RunEvent::ExitRequested {
+                code: None, api, ..
+            } if documents::confirm_quit(app) => {
+                api.prevent_exit();
+            }
             // the last window closed: the app stays in the menu bar (unless the settings say it quits); Quit (⌘Q, the
             // menu bar icon) ends it with a code
             RunEvent::ExitRequested {

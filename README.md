@@ -118,7 +118,9 @@ with papers-review as `papers-write/editor`, and so is the project bar
   change that takes in a citation, math or markup is placed on the words
   around it.
 - The app stays in the menu bar when the last window closes (New, Open…,
-  Quit); ⌘Q quits.
+  Quit); ⌘Q quits (from the menu bar icon or the Dock too). If untitled windows have
+  text that was never saved, it asks once: "2 windows have text that was never
+  saved": Quit and discard, or Cancel.
 - Projects: a project is a folder with a `write.toml` (below). File ▸ Open
   Project… (⇧⌘O) chooses a folder (File ▸ Open Recent lists the last ten
   projects opened, most recent first, a missing one disabled; Clear Menu

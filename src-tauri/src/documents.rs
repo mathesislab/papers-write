@@ -35,6 +35,8 @@ pub struct Documents {
     pending: Mutex<Vec<PathBuf>>,
     /// the window that last had the keys: the one in front (a tab chosen makes its window key)
     focused: Mutex<Option<String>>,
+    /// the dialog before quitting is up
+    asking_quit: AtomicBool,
 }
 
 /// The document of a window, for its page.
@@ -366,6 +368,53 @@ pub async fn save_untitled(
     Ok(Some(file.to_string_lossy().into_owned()))
 }
 
+/// How many windows have untitled text that was never saved: those without a file that are not blank.
+fn unsaved_count(paths: &HashMap<String, Option<PathBuf>>, blank: &HashSet<String>) -> usize {
+    paths.iter().filter(|(label, path)| path.is_none() && !blank.contains(*label)).count()
+}
+
+/// What the dialog says before quitting with `n` windows of text never saved.
+fn quit_message(n: usize) -> String {
+    match n {
+        1 => "1 window has text that was never saved.".into(),
+        n => format!("{n} windows have text that was never saved."),
+    }
+}
+
+/// The app quits (⌘Q, the menu bar icon, the Dock icon). With text in an untitled window that was never saved it
+/// asks once first: Quit and discard, or Cancel.
+pub fn quit(app: &AppHandle) {
+    if !confirm_quit(app) {
+        app.exit(0);
+    }
+}
+
+/// Asks before quitting when untitled text would be lost; true when the dialog is up (it quits on "Quit and
+/// discard"), false when there is nothing to ask. One dialog at a time.
+pub fn confirm_quit(app: &AppHandle) -> bool {
+    let state = app.state::<Documents>();
+    let n = unsaved_count(&state.paths.lock().unwrap(), &state.blank.lock().unwrap());
+    if n == 0 {
+        return false;
+    }
+    if state.asking_quit.swap(true, Ordering::SeqCst) {
+        return true;
+    }
+    let handle = app.clone();
+    app.dialog()
+        .message(format!("{} Quit and discard it?", quit_message(n)))
+        .title("Quit")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom("Quit and discard".into(), "Cancel".into()))
+        .show(move |discard| {
+            handle.state::<Documents>().asking_quit.store(false, Ordering::SeqCst);
+            if discard {
+                handle.exit(0);
+            }
+        });
+    true
+}
+
 /// A window asked to close: an untitled one with text in it asks first whether to discard it.
 pub fn closing(window: &Window, api: &CloseRequestApi) {
     let state = window.state::<Documents>();
@@ -394,4 +443,25 @@ pub fn closing(window: &Window, api: &CloseRequestApi) {
                 let _ = window.destroy();
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_untitled_windows_with_text_count_for_quitting() {
+        let paths: HashMap<String, Option<PathBuf>> = [
+            ("doc-1".to_string(), None),
+            ("doc-2".to_string(), None),
+            ("doc-3".to_string(), None),
+            ("doc-4".to_string(), Some(PathBuf::from("/tmp/paper.md"))),
+        ]
+        .into();
+        let blank: HashSet<String> = ["doc-1".to_string()].into();
+        assert_eq!(unsaved_count(&paths, &blank), 2);
+        assert_eq!(unsaved_count(&paths, &["doc-1", "doc-2", "doc-3"].map(String::from).into()), 0);
+        assert_eq!(quit_message(1), "1 window has text that was never saved.");
+        assert_eq!(quit_message(2), "2 windows have text that was never saved.");
+    }
 }

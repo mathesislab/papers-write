@@ -12,6 +12,7 @@
 
   let {
     text = "",
+    enter = "citation",
     search: find,
     closest: findClosest,
     sources: findSources,
@@ -21,6 +22,9 @@
   }: {
     /** a reference selected in the PDF: the papers closest to it are listed first */
     text?: string;
+    /** what ↵ puts in: a citation as read, "Schoof (2007)" (a review), or `[@key]` (a paper in Markdown); ⇧↵ the
+     *  full reference either way */
+    enter?: "citation" | "pandoc";
     /** the papers matching `query`, at most `limit` of them */
     search: (query: string, limit: number) => Promise<Found>;
     /** the papers closest to `text`, at most `limit` of them */
@@ -84,7 +88,7 @@
     } else if (e.key === "Enter" && e.metaKey) {
       pdf(hit?.item);
     } else if (e.key === "Enter") {
-      cite(e.shiftKey ? "reference" : "citation");
+      cite(e.shiftKey ? "reference" : enter);
     } else if (e.metaKey && e.key === ".") {
       cite("pandoc");
     } else if (e.metaKey && e.key.toLowerCase() === "l") {
@@ -164,7 +168,7 @@
     {/each}
   </ul>
   <footer>
-    <span class="keys">↵ cite · ⇧↵ reference · ⌘. [@key] · ⌘L \cite · {hit?.item.files.length ? "⌘↵ PDF · " : ""}esc</span>
+    <span class="keys">{enter === "pandoc" ? "↵ [@key]" : "↵ cite · ⌘. [@key]"} · ⇧↵ reference · ⌘L \cite · {hit?.item.files.length ? "⌘↵ PDF · " : ""}esc</span>
     <span class="sources" title={bibs.join("\n")}>
       {#if found && found.total > hits.length}{hits.length} of {found.total} ·{/if}
       {bibs.map(nameOf).join(", ")}

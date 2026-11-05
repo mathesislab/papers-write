@@ -28,7 +28,7 @@ import { FileEditor, RefList, SymbolList, makeEditor, prefsFrom, setEditorFont }
 
 `RefList.svelte` (the references over the editor):
 - `search: (query: string, limit: number) => Promise<Found>`, `closest: (text: string, limit: number) => Promise<Found>`, `sources: () => Promise<string[]>` (the .bib files shown in the footer).
-- `text` (a selected reference: the closest papers are listed first), `oninsert(text)`, `onopen(path)` (a paper's PDF), `onclose()`.
+- `text` (a selected reference: the closest papers are listed first), `enter` (what ↵ puts in: `"citation"`, Schoof (2007), by default, or `"pandoc"`, `[@key]`), `oninsert(text)`, `onopen(path)` (a paper's PDF), `onclose()`.
 - It gives `cite(form)` (`"citation" | "reference" | "pandoc" | "latex"`): the paper marked put in. macOS takes ⌘. for Cancel before the page sees it, so the app needs a menu item with ⌘. that calls `cite("pandoc")` on the list.
 
 `SymbolList.svelte`: `entries` (`DEFAULTS` and `LATEX` merged with the user's, see `merged`), `oninsert`, `onclose`.

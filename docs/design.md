@@ -189,7 +189,7 @@ and `library` are kept but not yet used by the build and the references.
 - The bib grows: citing a library key copies its entry into the bib of the
   front matter. A check lists keys cited but missing (offered from the
   library), and entries never cited (offered for removal).
-- Hover: an equation rendered (MathJax), a figure's thumbnail, a
+- Hover: an equation rendered (pandoc's MathML), a figure's thumbnail, a
   reference's citation, a label's target.
 - Outline of the sections; diagnostics for undefined labels and keys;
   spelling from the system. Grammar (Harper, a local Rust checker) later.

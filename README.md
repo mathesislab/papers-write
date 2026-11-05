@@ -187,6 +187,22 @@ with papers-review as `papers-write/editor`, and so is the project bar
   eq: Eq., eqs: Eqs., tbl: Table, tbls: Tables, sec: Sect., secs: Sects., lst:
   Listing, lsts: Listings}` (a plural left out is the singular; empty is bare).
   Drag the split to resize; its width is kept for the window.
+- View ▸ Show Outline (⌥⌘O) lists the headings (`#`… in Markdown, `\section`…
+  in a `.tex` file) in a column at the left of the text, indented by level, the
+  one the cursor is under marked; a click goes there. Shown or hidden is kept.
+- Hover (a pause of 300 ms; none while the mouse is down): over math
+  (`$..$`, `$$..$$`, `equation`, `align`...) the equation, rendered by pandoc
+  as MathML (cached); over a citation key its reference (authors, year, title,
+  journal); over an image path (`![..](path)`, `\includegraphics{path}`) a
+  thumbnail; over a cross-reference (`@fig:x`, `\ref{x}`) what the label is
+  on: "Figure: The hysteresis loop", "Equation: …".
+- Underlines: a citation key found neither in the document's `.bib` files nor
+  in the library (checked 800 ms after the typing stops, and when the
+  references change), a reference to a label the document does not define
+  (`@fig:x`, `\ref{x}`; not in a `.tex` file that `\input`s others), and a label
+  defined twice (both). Hover says why.
+- The system's spell checker underlines misspelled words in Markdown text, not
+  in `.tex` and monospace files (the language is the system's).
 - Review menu: suggestions and comments kept in files beside the document
   (`.papers-write/review/<file>/`, one file per person, only appended to).
   Suggest Changes (⇧⌘E) makes typing a suggestion of yours instead of an edit

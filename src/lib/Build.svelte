@@ -1,8 +1,10 @@
 <script lang="ts">
-  // The builds of a document, over its editor: Build (⌘B) and Build and Show PDF (⇧⌘B) of the Build menu come to
-  // `run`. The document is written first (`flush`), then the backend runs texmark and tells only the status: `build-status`, shown as a mark in the corner: building,
+  // The builds of a document, over its editor: Build (⌘B), Build and Show PDF (⇧⌘B) and Marked-up PDF… of the Build
+  // menu come to `run`. The document is written first (`flush`), then the backend runs texmark (and for the marked-up
+  // PDF latexdiff and latexmk) and tells only the status: `build-status`, shown as a mark in the corner: building,
   // done (the time), failed. A failure, or LaTeX errors in a PDF that was made, are listed in a sheet with the log's
-  // path.
+  // path. The marked-up PDF asks first which earlier version: the tags and the last commits of the file in git, or
+  // another file.
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
@@ -18,12 +20,15 @@
     errors: LatexError[];
     message: string | null;
   };
+  type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
 
   let { flush, onfocus }: { flush: () => unknown; onfocus?: () => void } = $props();
 
   let status = $state<Status | null>(null);
   /** the sheet of errors is shown */
   let sheet = $state(false);
+  /** the choice of an earlier version: the versions in git, or the error that kept them from being listed */
+  let choosing = $state<{ revisions: Revision[]; error?: string } | null>(null);
   /** what went wrong before a build could start (the document is not saved) */
   let refused = $state("");
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -58,15 +63,35 @@
     }
   }
 
-  /** The menu's commands: "build", "build-show". */
+  /** The menu's commands: "build", "build-show", "marked-up". */
   export async function run(what: string) {
-    if (what !== "build" && what !== "build-show") return;
+    if (what !== "build" && what !== "build-show" && what !== "marked-up") return;
     await flush();
-    await request("build", { show: what === "build-show" });
+    if (what === "marked-up") {
+      try {
+        choosing = { revisions: await invoke<Revision[]>("revisions") };
+      } catch (e) {
+        refused = String(e);
+      }
+    } else {
+      await request("build", { show: what === "build-show" });
+    }
+  }
+
+  async function chooseVersion(earlier: { kind: "git"; rev: string; label: string } | { kind: "file"; path: string }) {
+    choosing = null;
+    await request("marked_up", { earlier });
+    onfocus?.();
+  }
+
+  async function chooseFile() {
+    const path = await request<string | null>("earlier_file");
+    if (path) await chooseVersion({ kind: "file", path });
   }
 
   function close() {
     sheet = false;
+    choosing = null;
     onfocus?.();
   }
 
@@ -123,6 +148,32 @@
         <button onclick={() => request("open_document", { path: log })}>Open Log</button>
       </div>
     {/if}
+  </div>
+{/if}
+
+{#if choosing}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="sheet" role="dialog" aria-label="Marked-up PDF" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+    <header>
+      <b>Marked-up PDF against…</b>
+      <button onclick={close}>Cancel</button>
+    </header>
+    {#if choosing.revisions.length}
+      <ul class="versions">
+        {#each choosing.revisions as v (v.kind + v.rev)}
+          <li>
+            <button onclick={() => chooseVersion({ kind: "git", rev: v.rev, label: v.label })}>
+              <span class="kind">{v.kind === "tag" ? "tag" : "commit"}</span>
+              <b>{v.label}</b>
+              <span class="where">{v.detail}</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="where">The document is not in a git repository with earlier versions (tags, or commits that touched it).</p>
+    {/if}
+    <div class="buttons"><button onclick={chooseFile}>Another file…</button></div>
   </div>
 {/if}
 
@@ -224,6 +275,19 @@
   }
   .sheet button:hover {
     background: var(--chip);
+  }
+  .versions button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border-color: transparent;
+    padding: 3px 6px;
+  }
+  .kind {
+    display: inline-block;
+    min-width: 46px;
+    color: var(--muted);
+    font-size: 11px;
   }
   code {
     font-size: 11px;

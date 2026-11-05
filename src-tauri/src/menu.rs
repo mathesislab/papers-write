@@ -77,6 +77,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                 "Build and Show PDF",
                 Some("Shift+CmdOrCtrl+B"),
             )?,
+            &separator()?,
+            &item("marked-up", "Marked-up PDF…", None)?,
         ],
     )?;
     // the PDF of the window in front (a window of a PDF; the other pages ignore these)
@@ -125,7 +127,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         // the page writes the document, then asks for the build
-        "save" | "build" | "build-show" => {
+        "save" | "build" | "build-show" | "marked-up" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "menu", id);
             }

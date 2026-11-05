@@ -178,12 +178,20 @@ card asking for these, and offers to start from the paper-draft skeleton.
   frame without scripts. Cross-references stay as pandoc leaves them.
   A 9,400-word paper with 60 display equations takes 0.22 s, fast enough to
   run a moment after the typing stops. It follows the cursor.
-- Build: texmark with `--pdf` into `build/`, the PDF in a tab (PDFKit),
-  rebuilt on save if asked; LaTeX errors mapped back to the Markdown's lines
-  where they can be.
-- Marked-up PDF: two versions (two commits, a tag and now, or a base and its
-  suggestions accepted) each converted by texmark to LaTeX, then latexdiff
-  and latexmk: the marked-up manuscript journals ask for with a revision.
+- Build: texmark with `--pdf` into `build/` beside the document (⌘B; ⇧⌘B
+  shows the PDF in a tab, PDFKit, which reloads by itself when the file
+  changes), one build per document at a time, the status only told to the
+  page. Failures list the `!` errors of `build/name.log` with their `.tex`
+  lines. Not yet: rebuilt on save; the errors mapped back to the Markdown's
+  lines.
+- Marked-up PDF: two versions each converted by texmark to LaTeX, then
+  latexdiff and latexmk: the marked-up manuscript journals ask for with a
+  revision. Built: a tag or one of the last 30 commits of the file, or
+  another file, against the text now (`build/diff/old` the earlier text as
+  LaTeX only, `build/diff/new` the current one built, as texmark copies the
+  journal's class files and the bibliography only when it compiles, and there
+  `diff.tex` is made and compiled). Not yet: a base and its suggestions
+  accepted, two commits.
 - TeX: the one installed (MacTeX / TeX Live), through latexmk; the app says
   so when there is none. Not tectonic: latexdiff and the journals' classes
   need a full TeX anyway, and texmark already calls the installed engine.

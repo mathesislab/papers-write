@@ -44,6 +44,13 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   time; one asked meanwhile runs after it. texmark is found on PATH, in
   `/opt/homebrew/Caskroom/miniforge/base/bin` or `~/.local/bin` (`pip install
   texmark`); the LaTeX engine in `/Library/TeX/texbin`.
+- Build ▸ Marked-up PDF… makes the marked-up manuscript for a revision: choose
+  the earlier version, a tag or one of the last 30 commits that touched the
+  file (when it is in a git repository), or another file. Each is converted
+  to LaTeX by texmark, `latexdiff` marks the changes, `latexmk` makes the PDF:
+  `build/diff/name-diff-<version>.pdf`, shown in a tab (the work is in
+  `build/diff/old` and `build/diff/new`; the current version is built there in
+  full, which takes a few seconds more than Build). Errors show as for a build.
 - The app stays in the menu bar when the last window closes (New, Open…,
   Quit); ⌘Q quits.
 - Edit ▸ References… (⇧⌘R) lists the references over the editor: the `.bib`

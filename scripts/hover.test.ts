@@ -6,6 +6,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { environmentTex, labelTarget, targetAt } from "../src/lib/editor/hover.ts";
+import { latexMath, latexMathAt } from "../src/lib/editor/lang/tex-math.ts";
 import { paperMarkdown, tex } from "../src/lib/editor/lang/index.ts";
 
 const md = (doc: string) => {
@@ -114,4 +115,27 @@ test("what a label stands for, LaTeX", () => {
   assert.equal(labelTarget(state, "sec:method"), "Section: Method");
   assert.equal(labelTarget(state, "fig:a"), "Figure: A {nested} caption");
   assert.equal(labelTarget(state, "eq:a"), "Equation: a &= b");
+});
+
+test("math in a LaTeX file", () => {
+  assert.deepEqual(over("so $x|^2$ here", latex), { kind: "math", tex: "x^2", display: false, from: 3, to: 8 });
+  const dollars = over("$$\na |= b\n$$", latex);
+  assert.ok(dollars?.kind === "math" && dollars.tex === "a = b" && dollars.display);
+  const paren = over("\\(\\alpha| + 1\\)", latex);
+  assert.ok(paren?.kind === "math" && paren.tex === "\\alpha + 1" && !paren.display);
+  const env = over("\\begin{equation}\n E = |mc^2 \\label{eq:e}\n\\end{equation}", latex);
+  assert.ok(env?.kind === "math" && env.display && env.tex === "E = mc^2", JSON.stringify(env));
+  const al = over("\\begin{align*}\na &= |b\n\\end{align*}", latex);
+  assert.ok(al?.kind === "math" && al.tex.startsWith("\\begin{align*}"));
+  assert.equal(over("plain |text $x$", latex), null);
+});
+
+test("latexMath: escapes, comments, unclosed", () => {
+  assert.deepEqual(latexMath("costs \\$5 and \\$6").map((m) => m.tex), []);
+  assert.deepEqual(latexMath("% $x$\n$y$").map((m) => m.tex), ["y"]);
+  assert.deepEqual(latexMath("$a \\$ b$").map((m) => m.tex), ["a \\$ b"]);
+  assert.deepEqual(latexMath("$a % $\n b$").map((m) => m.tex.replace(/\s+/g, " ")), ["a % $ b"]);
+  assert.deepEqual(latexMath("an unclosed $a\n\nnext $b$").map((m) => m.tex), ["b"]);
+  assert.equal(latexMathAt("\\[x\\]", 3)?.display, true);
+  assert.equal(latexMathAt("a $x$ b", 6), null);
 });

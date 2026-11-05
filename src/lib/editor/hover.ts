@@ -6,6 +6,7 @@
 import { language, syntaxTree } from "@codemirror/language";
 import type { EditorState, Extension } from "@codemirror/state";
 import { EditorView, hoverTooltip, type Tooltip } from "@codemirror/view";
+import { latexMathAt } from "./lang/tex-math.ts";
 import { headingTitle } from "./outline.ts";
 import type { HoverSources } from "./types.ts";
 
@@ -61,6 +62,14 @@ export function targetAt(state: EditorState, pos: number, side: -1 | 1 = 1): Tar
       const url = node.getChild("URL");
       const path = url ? imagePath(state.sliceDoc(url.from, url.to)) : "";
       return isFile(path) ? { kind: "image", path, from, to } : null;
+    }
+  }
+  // a LaTeX file has no math nodes: its formulas are found in the text
+  if (isTex(state)) {
+    const m = latexMathAt(state.doc.toString(), pos);
+    if (m) {
+      const tex = m.tex.startsWith("\\begin{") ? environmentTex(m.tex) : m.tex;
+      if (tex) return { kind: "math", tex, display: m.display, from: m.from, to: m.to };
     }
   }
   // `\includegraphics{path}` is a command whatever the language

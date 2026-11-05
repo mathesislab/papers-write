@@ -32,7 +32,7 @@ use write_core::project;
 
 use crate::documents;
 // the git helpers live in `git`; `exchange` reaches them through here
-pub(crate) use crate::git::{Revision, git_lines, git_show};
+pub(crate) use crate::git::{Revision, git_show};
 use crate::git;
 
 /// The most errors of a LaTeX log that are kept.
@@ -790,6 +790,7 @@ pub fn open_document(app: AppHandle, path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::git_lines;
 
     #[test]
     fn a_tool_of_the_settings_is_used_when_it_is_a_file_else_it_is_found() {

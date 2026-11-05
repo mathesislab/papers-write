@@ -20,3 +20,15 @@ export function summary(s: GitState): string {
   if (away) parts.push(away);
   return parts.join(" · ");
 }
+
+/** What edits turned into suggestions wrote: the suggestions added, by whom, and those the review had already. */
+export type Added = { added: number; already: number; people: string[] };
+
+/** What was added, in words: "3 suggestions added, of Jane Doe, Bob." */
+export function said(made: Added): string {
+  const n = made.added;
+  const plural = (k: number) => (k === 1 ? "" : "s");
+  if (n) return `${n} suggestion${plural(n)} added, of ${made.people.join(", ")}.${made.already ? ` ${made.already} were in the review already.` : ""}`;
+  if (made.already) return "Already in the review: nothing added.";
+  return "No difference: nothing to suggest.";
+}

@@ -2,9 +2,10 @@
   // File ▸ Exchange: a review that comes in or goes out without the app on the other side. The menu's items come to
   // `run`; the document is written first (`flush`), then a sheet asks what is needed and the backend does the rest.
   //
-  // Compare as Suggestions…: the revisions of the document in git (or a branch, a tag, any revision typed) or an edited
-  // copy of the file, and whose edits they are (the commit's author, filled in; for a file the name is asked). Each
-  // change becomes a suggestion under that name.
+  // Compare as Suggestions…: a branch or a commit (typed), or an edited copy of the file. From git, what was done there
+  // since it left this branch's history, each change under the author of its commit (Git ▸ Review Branch… lists the
+  // branches); for a file, the changes from the text now, under the name asked for. What it added is logged (`onlog`)
+  // for the message of the next commit.
   //
   // Export as Word with Changes…: where to save the .docx (a dialog), then a sheet that says how many tracked changes
   // and comments it has and lists what could not go to Word (suggestions that overlap, in the front matter).
@@ -22,16 +23,23 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "$lib/events";
-
-  type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
+  import { said, type Added } from "$lib/git";
 
   export type Reviewing = { name: string; email: string; round: string; document: string };
   let {
     flush,
     onfocus,
+    onlog,
     reviewing = $bindable(null),
     mode = "edit",
-  }: { flush: () => unknown; onfocus?: () => void; reviewing?: Reviewing | null; mode?: string } = $props();
+  }: {
+    flush: () => unknown;
+    onfocus?: () => void;
+    /** what was done to the review, for the message of the next commit: "review of jane/edits as suggestions" */
+    onlog?: (what: string) => void;
+    reviewing?: Reviewing | null;
+    mode?: string;
+  } = $props();
 
   type Sent = { path: string; figures: number; bibliographies: number; skipped: string[] };
   type Returned = { path: string; suggestions: number; comments: number; to: string };
@@ -40,7 +48,7 @@
   /** the sheet of Send Back: what went into the file */
   let returned = $state<Returned | null>(null);
 
-  type Compare = { revisions: Revision[]; chosen: string; typed: string; file: string; name: string; email: string; busy: boolean; done: string };
+  type Compare = { typed: string; file: string; name: string; email: string; busy: boolean; done: string };
   let comparing = $state<Compare | null>(null);
   type Exported = { path: string; suggestions: number; comments: number; skipped: string[]; notes: string[] };
   /** the sheet of an export: what it made */
@@ -73,12 +81,7 @@
       }
       return;
     }
-    try {
-      const revisions = await invoke<Revision[]>("revisions");
-      comparing = { revisions, chosen: "", typed: "", file: "", name: "", email: "", busy: false, done: "" };
-    } catch (e) {
-      problem = String(e);
-    }
+    comparing = { typed: "", file: "", name: "", email: "", busy: false, done: "" };
   }
 
   async function sendReview() {
@@ -123,23 +126,15 @@
   });
 
   const nameOf = (file: string) => file.split("/").pop() ?? file;
-  /** the revision to compare with: the one typed, else the one chosen in the list */
-  const revision = $derived(comparing ? comparing.typed.trim() || comparing.chosen : "");
-  const ready = $derived(!!comparing && !comparing.busy && !!comparing.name.trim() && (!!revision || !!comparing.file));
 
-  /** The author of the commit named, unless a name was typed already. */
-  async function author() {
-    if (!comparing || !revision || comparing.name.trim()) return;
-    try {
-      const who = await invoke<{ name: string; email: string } | null>("revision_author", { revision });
-      if (who && comparing && !comparing.name.trim()) [comparing.name, comparing.email] = [who.name, who.email];
-    } catch {}
-  }
+  /** the branch or commit to compare with (a file is chosen instead) */
+  const revision = $derived(comparing ? comparing.typed.trim() : "");
+  const ready = $derived(!!comparing && !comparing.busy && (!!revision || (!!comparing.file && !!comparing.name.trim())));
 
   async function chooseFile() {
     try {
       const file = await invoke<string | null>("choose_edited_copy");
-      if (file && comparing) [comparing.file, comparing.chosen, comparing.typed] = [file, "", ""];
+      if (file && comparing) [comparing.file, comparing.typed] = [file, ""];
     } catch (e) {
       problem = String(e);
     }
@@ -151,8 +146,10 @@
     [c.busy, c.done, problem] = [true, "", ""];
     try {
       const source = revision ? { revision } : { file: c.file };
-      const n = await invoke<number>("compare_as_suggestions", { source, author: { name: c.name.trim(), email: c.email.trim() || null } });
-      c.done = n ? `${n} suggestion${n === 1 ? "" : "s"} added under ${c.name.trim()}.` : "No difference: nothing to suggest.";
+      const author = revision ? null : { name: c.name.trim(), email: c.email.trim() || null };
+      const made = await invoke<Added>("compare_as_suggestions", { source, author });
+      c.done = said(made);
+      if (made.added) onlog?.(`review of ${revision || nameOf(c.file)} as suggestions`);
     } catch (e) {
       problem = String(e);
     }
@@ -256,33 +253,29 @@
       <b>Compare as Suggestions</b>
       <button onclick={close}>{comparing.done ? "Close" : "Cancel"}</button>
     </header>
-    <p class="where">The changes from this document to the other version become suggestions under the name of whoever made it.</p>
+    <p class="where">
+      A branch or a commit: what was done there since it left this branch, each change under the author of its commit (your own edits since are kept). A file:
+      the changes from this document to it.
+    </p>
     <label>
-      Commit or tag
-      <select bind:value={comparing.chosen} onchange={() => { comparing!.typed = ""; comparing!.file = ""; author(); }}>
-        <option value="">{comparing.revisions.length ? "Choose…" : "none (not in a repository)"}</option>
-        {#each comparing.revisions as v (v.kind + v.rev)}
-          <option value={v.rev}>{v.label}: {v.detail}</option>
-        {/each}
-      </select>
-    </label>
-    <label>
-      or a branch or any revision
-      <input bind:value={comparing.typed} placeholder="feature/jane, HEAD~3" oninput={() => (comparing!.file = "")} onchange={author} spellcheck="false" />
+      Branch or commit
+      <input bind:value={comparing.typed} placeholder="jane/edits, origin/jane, a1b2c3d" oninput={() => (comparing!.file = "")} spellcheck="false" />
     </label>
     <div class="row">
       <span>or an edited copy</span>
       <button onclick={chooseFile}>Choose file…</button>
       {#if comparing.file}<span class="where" title={comparing.file}>{nameOf(comparing.file)}</span>{/if}
     </div>
-    <label>
-      Edits made by
-      <input bind:value={comparing.name} placeholder="Name" spellcheck="false" />
-    </label>
-    <label>
-      Email (optional)
-      <input bind:value={comparing.email} placeholder="name@example.org" spellcheck="false" />
-    </label>
+    {#if !revision}
+      <label>
+        Edits made by
+        <input bind:value={comparing.name} placeholder="Name" spellcheck="false" />
+      </label>
+      <label>
+        Email (optional)
+        <input bind:value={comparing.email} placeholder="name@example.org" spellcheck="false" />
+      </label>
+    {/if}
     <div class="buttons"><button class="go" disabled={!ready} onclick={compare}>Compare</button></div>
     {#if comparing.done}<p>{comparing.done}</p>{/if}
   </div>
@@ -433,7 +426,6 @@
     width: auto;
     flex: none;
   }
-  select,
   input {
     display: block;
     width: 100%;

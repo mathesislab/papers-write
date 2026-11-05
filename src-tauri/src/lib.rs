@@ -79,7 +79,6 @@ pub fn run() {
             git::compare_with_commit,
             git::history,
             exchange::compare_as_suggestions,
-            exchange::revision_author,
             exchange::choose_edited_copy,
             exchange::export_word,
             exchange::choose_word_file,

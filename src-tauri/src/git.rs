@@ -14,6 +14,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use write_core::review::Item;
 use write_core::review::compare::{as_items, suggestions};
+use write_core::review::history::{self, Added, Attribution};
 
 use crate::build::{find_tool, search_path};
 use crate::documents;
@@ -430,6 +431,52 @@ pub async fn git_pull(window: WebviewWindow) -> Result<String, String> {
 pub async fn git_push(window: WebviewWindow) -> Result<String, String> {
     let doc = doc_of(&window)?;
     blocking(move || push(&doc)).await?
+}
+
+// ---- a co-author's edits as suggestions
+
+/// The text of the document at `rev`.
+fn text_at(doc: &Path, rev: &str) -> Result<String, String> {
+    let name = doc.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    String::from_utf8(git_show(folder_of(doc), &name, rev)?).map_err(|_| format!("{name} at {rev}: not a UTF-8 text file"))
+}
+
+/// The commit `rev` names, in full; an error that says so when there is none.
+fn commit_of(folder: &Path, rev: &str) -> Result<String, String> {
+    git(folder, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")])
+        .map(|h| h.trim().to_string())
+        .map_err(|_| format!("{rev}: no such branch or commit"))
+}
+
+/// The edits made to `doc` from the commit `start` to `end` written as the suggestions of their authors (each hunk
+/// under the commit that made it), on the text at `start` as their base. That text, and what was written.
+fn as_suggestions(doc: &Path, start: &str, end: &str) -> Result<(String, Added), String> {
+    let folder = folder_of(doc);
+    let name = doc.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let (from, to) = (text_at(doc, start)?, text_at(doc, end)?);
+    if from == to {
+        return Ok((from, Added::default()));
+    }
+    let who = Attribution::read(|args| git(folder, args), &name, start, end)?;
+    let newest = who.commits.last().ok_or_else(|| format!("no commit from {start} to {end}"))?;
+    let changes = history::suggestions(&from, &to, |h| who.commit_of(&from, &to, h).unwrap_or(newest).clone());
+    let added = history::add(doc, &from, &changes).map_err(|e| e.to_string())?;
+    Ok((from, added))
+}
+
+/// The edits of the branch or commit `rev` since it left the history of HEAD (`git merge-base HEAD <rev>`) as
+/// suggestions: only what was done there, never the undoing of what was written here since.
+pub(crate) fn review_revision(doc: &Path, rev: &str) -> Result<Added, String> {
+    let folder = folder_of(doc);
+    let tip = commit_of(folder, rev)?;
+    let base = git(folder, &["merge-base", "HEAD", &tip]).map_err(|_| format!("{rev} has no history in common with this branch"))?;
+    let base = base.trim();
+    if base == tip {
+        return Err(format!(
+            "{rev} is in the history of this branch already: its edits are in the text. Git ▸ Review Commits… turns committed edits back into suggestions."
+        ));
+    }
+    Ok(as_suggestions(doc, base, &tip)?.1)
 }
 
 // ---- Compare with Commit…

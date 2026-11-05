@@ -167,9 +167,13 @@ class MarkerWidget extends WidgetType {
   }
 }
 
+/** Whether a view applies the suggestion (Accepted): only one whose text is still where it was (exact, moved). An
+ *  outdated or orphaned one may not fit the text any more: it stays unapplied, shown as in All Markup (dimmed). */
+const applies = (s: Shown, view: ReviewView) => view === "accepted" && !s.dim;
+
 /** What is drawn of `shown` in a view. All Markup: as it is. Accepted: the text each suggestion replaces hidden and
- *  what it puts there as plain text in its author's colour. Original: the suggestions not drawn. Comments are marked
- *  in all three. The text itself is the file's in all. */
+ *  what it puts there as plain text in its author's colour (the outdated and orphaned ones as in All Markup).
+ *  Original: the suggestions not drawn. Comments are marked in all three. The text itself is the file's in all. */
 export function viewDecorations(shown: Shown[], view: ReviewView): DecorationSet {
   const ranges = [];
   for (const s of shown) {
@@ -180,9 +184,10 @@ export function viewDecorations(shown: Shown[], view: ReviewView): DecorationSet
       continue;
     }
     if (view === "original") continue;
-    if (view === "markup" && s.from < s.to) ranges.push(Decoration.mark({ class: classes(s, "del"), attributes }).range(s.from, s.to));
+    const done = applies(s, view);
+    if (!done && s.from < s.to) ranges.push(Decoration.mark({ class: classes(s, "del"), attributes }).range(s.from, s.to));
     if (s.insert) {
-      const kind = view === "accepted" ? "acc" : "ins";
+      const kind = done ? "acc" : "ins";
       ranges.push(Decoration.widget({ widget: new InsertWidget(s.insert, classes(s, kind), s.id), side: -1 }).range(s.to));
     }
   }
@@ -194,7 +199,7 @@ export function viewDecorations(shown: Shown[], view: ReviewView): DecorationSet
 export function hiddenRanges(shown: Shown[], view: ReviewView): { from: number; to: number }[] {
   if (view !== "accepted") return [];
   const out: { from: number; to: number }[] = [];
-  for (const s of shown.filter((s) => s.kind === "suggestion" && s.from < s.to).sort((a, b) => a.from - b.from || a.to - b.to)) {
+  for (const s of shown.filter((s) => s.kind === "suggestion" && s.from < s.to && applies(s, view)).sort((a, b) => a.from - b.from || a.to - b.to)) {
     const last = out[out.length - 1];
     if (last && s.from <= last.to) last.to = Math.max(last.to, s.to);
     else out.push({ from: s.from, to: s.to });
@@ -265,9 +270,9 @@ function tipOf(state: EditorState, shown: Shown[], me: string): HTMLElement {
  *  drawn before its end). */
 const tooltip = hoverTooltip(
   (view, pos, side): Tooltip | null => {
-    const markup = view.state.field(viewField) === "markup";
+    const mode = view.state.field(viewField);
     const shown = shownOf(view.state).filter(
-      (s) => (markup || s.kind === "comment") && (pos > s.from || (pos === s.from && (side > 0 || s.from === s.to))) && (pos < s.to || (pos === s.to && side < 0)),
+      (s) => (mode === "markup" || s.kind === "comment" || (mode === "accepted" && !applies(s, mode))) && (pos > s.from || (pos === s.from && (side > 0 || s.from === s.to))) && (pos < s.to || (pos === s.to && side < 0)),
     );
     if (!shown.length) return null;
     const me = view.state.facet(handlersFacet)?.me ?? "";

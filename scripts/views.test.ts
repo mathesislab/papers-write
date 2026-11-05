@@ -51,6 +51,18 @@ test("Accepted: overlapping suggestions hide one merged range", () => {
   assert.deepEqual(hiddenRanges([sug("a-1", 4, 10, "x"), sug("b-1", 8, 14, "y")], "accepted"), [{ from: 4, to: 14 }]);
 });
 
+test("Accepted: an outdated or orphaned suggestion is not applied, drawn as in All Markup (dimmed)", () => {
+  const stale = { ...sug("jane-doe-5", 30, 34, "old"), dim: true };
+  const all = [sug("jane-doe-1", 4, 8, "new"), stale];
+  assert.deepEqual(drawn(all, "accepted"), [
+    [8, 8, "widget new (cm-review-acc)"],
+    [30, 34, "mark cm-review-del"],
+    [34, 34, "widget old (cm-review-ins)"],
+  ]);
+  assert.deepEqual(hiddenRanges(all, "accepted"), [{ from: 4, to: 8 }]);
+  assert.deepEqual(drawn([stale], "original"), []);
+});
+
 test("Original: no suggestion drawn, comments still marked", () => {
   assert.deepEqual(drawn(shown, "original"), [[0, 3, "mark cm-review-comment"]]);
   assert.deepEqual(hiddenRanges(shown, "original"), []);

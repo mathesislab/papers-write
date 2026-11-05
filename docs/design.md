@@ -107,7 +107,9 @@ One app later is then a matter of windows, not code.
 ## The app
 
 - Opens any text file: Open With and the Dock, `⌘O`, `⌘N` for a blank one,
-  a command (`pw paper.md`), files dropped. Files open as macOS window tabs;
+  a command (`pw paper.md`, not yet), files dropped. A new window is untitled
+  text kept in the window, saved with `⌘S` (a file is saved as typed).
+  Files open as macOS window tabs;
   a tab dragged out is a window of its own, and as many windows as wanted.
   Opens in well under a second: the library, pandoc and git are loaded when
   first needed. It stays in the menu bar when the last window closes, as

@@ -16,8 +16,22 @@ library's search, previews and missing-reference checks at hand while
 writing.
 
 Status: early. The editor (CodeMirror, Markdown) is written here and shared
-with papers-review as `papers-write/editor`; the app is a window with the
-editor.
+with papers-review as `papers-write/editor`; the app is a plain-text editor.
+
+## Use
+
+- Any file opens at once: File ▸ Open… (⌘O), Open With or a double click
+  (md, markdown, txt, tex, bib, yaml, toml), a drop on the Dock icon or on a
+  window. A file already open comes forward.
+- Each file is a macOS window tab (System Settings ▸ Desktop & Dock ▸ Prefer
+  tabs when opening documents); a tab dragged out is a window. ⌘N is a new
+  window of untitled text, kept in the window; ⌘S asks where to save it, and
+  from then on it is that file.
+- A file is saved as typed, half a second after the typing stops. If it
+  changes on disk (another editor, a sync client), it is read again, or the
+  bar asks which to keep.
+- The app stays in the menu bar when the last window closes (New, Open…,
+  Quit); ⌘Q quits.
 
 ## Develop
 

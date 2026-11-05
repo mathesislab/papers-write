@@ -5,7 +5,7 @@
 import { EditorSelection, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { modeField, setMode } from "./mode.ts";
-import { handlersFacet, overlay, setItems, shownAt, shownOf, type Shown } from "./overlay.ts";
+import { handlersFacet, hideItem, overlay, setItems, shownAt, shownOf, type Shown } from "./overlay.ts";
 import { stepSuggestions, suggestMode } from "./own.ts";
 import type { ReviewHandlers, ReviewItem, ReviewMode } from "./types.ts";
 
@@ -64,5 +64,19 @@ export function scrollToItem(view: EditorView, id: string): boolean {
     selection: EditorSelection.single(s.from, s.to),
     effects: EditorView.scrollIntoView(s.from, { y: "center" }),
   });
+  return true;
+}
+
+/** The suggestion `item` accepted: its text put in place of what it replaces, as an edit of the text (in either mode;
+ *  undone as any edit), where it is now in the editor if it is shown. It is not shown again until the app gives the
+ *  items again (which it does once it has written the decision). False if it is no suggestion or out of the text. */
+export function accept(view: EditorView, item: ReviewItem): boolean {
+  if (item.kind !== "suggestion") return false;
+  const s = shownOf(view.state).find((s) => s.id === item.id);
+  const from = s?.from ?? item.at.from;
+  const to = s?.to ?? item.at.to;
+  const insert = s?.insert ?? item.replacement ?? item.record.insert ?? "";
+  if (from > to || to > view.state.doc.length) return false;
+  view.dispatch({ changes: { from, to, insert }, effects: hideItem.of(item.id), userEvent: "review.accept" });
   return true;
 }

@@ -8,7 +8,7 @@ import { diffOwn, mapOwn, suggestEdit, type Edit, type Own } from "../src/lib/ed
 import { setItems } from "../src/lib/editor/review/overlay.ts";
 import { setMode } from "../src/lib/editor/review/mode.ts";
 import { Sender, ownField } from "../src/lib/editor/review/own.ts";
-import { itemsAt, review } from "../src/lib/editor/review/review.ts";
+import { accept, itemsAt, review } from "../src/lib/editor/review/review.ts";
 import type { ReviewItem } from "../src/lib/editor/review/types.ts";
 
 const TEXT = "the grounding line retreats rapidly";
@@ -299,4 +299,17 @@ test("sent to the app 400 ms after the last change; changes while a new one's id
   assert.deepEqual(calls.slice(2), ["withdraw jane-doe-2"]);
   assert.deepEqual(state.field(ownField).own, []);
   assert.deepEqual([...state.field(ownField).ids], []);
+});
+
+test("a suggestion accepted: its text put in as an edit, in suggest mode too, and no longer shown", () => {
+  const ed = editor();
+  const view = { get state() { return ed.state; }, dispatch: (spec: TransactionSpec) => ed.go(spec) };
+  ed.go({ effects: setItems.of([item("joe-1", 19, 27, "retreat", "Joe"), item("jane-doe-2", 4, 4, "new ")]) });
+  assert.equal(accept(view as never, item("joe-1", 19, 27, "retreat", "Joe")), true);
+  assert.equal(ed.state.doc.toString(), "the grounding line retreat rapidly");
+  assert.deepEqual(itemsAt(ed.state, 20), []);
+  // one of the user's own, where it is now
+  assert.equal(accept(view as never, item("jane-doe-2", 0, 0, "new ")), true);
+  assert.equal(ed.state.doc.toString(), "the new grounding line retreat rapidly");
+  assert.deepEqual(ed.own(), []);
 });

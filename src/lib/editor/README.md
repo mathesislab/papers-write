@@ -26,6 +26,7 @@ import { FileEditor, RefList, SymbolList, makeEditor, prefsFrom, setEditorFont }
   - Tab and Enter accept the option marked when the list is open (Tab before the symbols and the indent; Enter does what it did otherwise when it is not), Esc closes it. Ordinary prose never opens it.
 - The sequences typed (`->`, `^2`, `--`) and `\name` with Tab do not apply in code, in math (`$…$`, `$$…$$`, `equation`, `align`...), in LaTeX environments, in the front matter, nor in citation keys, labels and paths. In math and LaTeX Tab in the middle of a line leaves the text alone (no indent).
 - It calls `changedOnDisk()` when the file changed elsewhere; `flush`, `reload`, `focus`, `view`, `undo`, `redo`, `indent`, `outdent`, `list` are exported.
+- `review: ReviewHandlers` (optional; without it there is no review, as in Papers Review): the suggestions and comments drawn over the text, and suggest mode. Then `setReview(items)`, `setMode(mode)`, `accept(item)`, `scrollTo(id)` are exported too (see below); `undo` and `redo` step through the user's suggestions in suggest mode.
 
 `RefList.svelte` (the references over the editor):
 - `search: (query: string, limit: number) => Promise<Found>`, `closest: (text: string, limit: number) => Promise<Found>`, `sources: () => Promise<string[]>` (the .bib files shown in the footer).
@@ -33,6 +34,28 @@ import { FileEditor, RefList, SymbolList, makeEditor, prefsFrom, setEditorFont }
 - It gives `cite(form)` (`"citation" | "reference" | "pandoc" | "latex"`): the paper marked put in. macOS takes ⌘. for Cancel before the page sees it, so the app needs a menu item with ⌘. that calls `cite("pandoc")` on the list.
 
 `SymbolList.svelte`: `entries` (`DEFAULTS` and `LATEX` merged with the user's, see `merged`), `oninsert`, `onclose`.
+
+## The review
+
+The suggestions and comments of everyone, drawn over the text as Word's All Markup: the editor's text is always the file's, and nothing of the review is ever in it. The types are in `review/types.ts` (the app's Rust, papers-write-core's `review::Item`, mirrors them); positions are UTF-16 code units of the editor's text.
+
+- Drawn: a suggestion's text struck through and what it puts there after it, both in the colour of its author (from a hash of the person's slug, the `<slug>` of `<slug>-<n>` ids, over `--review-1` … `--review-6`); a comment as a light highlight of its text, or a small mark where it has none. Items whose text changed or is gone (`status` outdated, orphaned) are dimmed; those not `open` are not drawn. A tooltip on hover says who, when and what (the note or comment, how many replies). A click on one calls `select(id)`.
+- Edit mode: typing changes the text as usual; the items move with it until the app gives them again.
+- Suggest mode: what the user types (CodeMirror's `input`, `delete` and `move` changes) becomes their suggestions and the text does not change. Typing at a point is an insertion; typing on, or in the text one's own suggestion replaces, adds to it; a selection typed over or deleted is one suggestion taking in one's own suggestions it covers; Backspace takes from what one's own suggestion inserts, else strikes the character before (the deletion growing left, the cursor at its start); Delete strikes the character after. One's own suggestions that come to touch are one; one typed away to nothing (or back to the text) is withdrawn. Someone else's are left alone: typing in their range suggests on the text beneath. The cursor stays at the end of the suggestion typed into, drawn after what it inserts. The symbols typed as sequences and the completion are off (what is typed is not in the text before the cursor). The app's own changes (reading the file again, `replaceText`, `accept`) go through as edits.
+- The user's suggestions (theirs: ids `<me>-<n>`) are kept in the editor: made by typing, or taken from the app's items when open and in place. Each is sent with `suggest(s)` 400 ms after its last change, with its `id` once known; the answer is its id (a new one when the app writes an edited suggestion as a new record: the old one is then no longer taken from the items). One request at a time for each: typing on while a new one's id is awaited is sent after the answer, with the id. A suggestion typed away is withdrawn (`withdraw(id)`). What has not gone out when the editor closes is sent then. An item of the user's being typed into is shown as typed, not as the app last gave it.
+- Undo and redo (⌘Z, ⇧⌘Z, ⌘Y, and FileEditor's `undo`, `redo`) in suggest mode step through the history of the user's suggestions (typing within half a second, into the same suggestion, is one step); the text's own history is not touched. A step back sends what it changes like any typing (a suggestion withdrawn and brought back is a new one).
+- The mode indicator, the review panel, replies and decisions are the app's.
+
+```ts
+import { review, setReview, setReviewMode, reviewMode, accept, scrollToItem, itemsAt, undoSuggestion, redoSuggestion } from "papers-write/editor";
+```
+
+- `review(handlers: ReviewHandlers): Extension`: the review of an editor (it can sit in a Compartment). `ReviewHandlers` is `{ me, suggest(s: Suggested): Promise<string>, withdraw(id): Promise<void>, select?(id) }`; `Suggested` is `{ id?, from, to, insert }`.
+- `setReview(view, items: ReviewItem[])`: the app's items on the editor's current text; they replace those drawn.
+- `setReviewMode(view, "edit" | "suggest")`, `reviewMode(state)`.
+- `accept(view, item)`: a suggestion's `replacement` put at `at` (where it is now in the editor) as an ordinary edit, `userEvent` `"review.accept"`, in either mode; it is not drawn until the app gives the items again. Writing the decision is the app's.
+- `scrollToItem(view, id)`: scrolled to and its range selected (false if not drawn). `itemsAt(state, pos)`: the items drawn whose range holds `pos`, where they are now (a suggestion of the user's not yet answered has an empty `id`).
+- `undoSuggestion(view)`, `redoSuggestion(view)`: a step of the suggestions' history in suggest mode (true), false in edit mode.
 
 `setEditorFont(font, size)` sets `--editor-font` and `--editor-size` on the page; call it when the settings change. The types of the references (`Item`, `Hit`, `Found` ...) are in `types.ts`; the app's Rust mirrors them.
 
@@ -58,4 +81,5 @@ The editor and the components use these, set by the app's theme (light and dark)
 | `--md-math-number` | the numbers in math | `--md-quote`, else `--muted` |
 | `--md-cite` | the keys of citations (`[@key]`, `@key`, `\cite{key}`) | `--accent` |
 | `--md-ref` | cross-references (`@fig:x`, `\ref{x}`) and labels (`{#fig:x}`, `\label{x}`) | `--md-cite` |
+| `--review-1` … `--review-6` | the colours of the reviewers (suggestions, comments) | `#c2410c`, `#7c3aed`, `#0f766e`, `#be185d`, `#1d4ed8`, `#4d7c0f` |
 | `--editor-font`, `--editor-size` | the font and size of the Markdown (with a default); set by `setEditorFont` | |

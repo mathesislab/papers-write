@@ -7,7 +7,8 @@
   // A text file edited in place (CodeMirror): the review in its pane, and a file open in a tab of the page. It is
   // written half a second after the typing stops, and as the editor loses the keys. Changed elsewhere (an editor, a
   // sync client: the owner calls `changedOnDisk`), it is read again; with changes of its own not yet written, the bar
-  // asks which to keep. Where the file is read from and written to is the owner's: `load` and `save`.
+  // asks which to keep. Where the file is read from and written to is the owner's: `load` and `save`. With `review`,
+  // the suggestions and comments are drawn over the text and typing in suggest mode makes the user's suggestions.
 
   import { indentLess, indentMore, redo as stepForward, undo as stepBack } from "@codemirror/commands";
   import { Prec, type Extension } from "@codemirror/state";
@@ -15,6 +16,16 @@
   import { onMount } from "svelte";
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "./editor";
   import type { Completion } from "./types";
+  import {
+    accept as acceptItem,
+    redoSuggestion,
+    review as reviewOf,
+    scrollToItem,
+    setReview as showReview,
+    setReviewMode,
+    undoSuggestion,
+  } from "./review/review";
+  import type { ReviewHandlers, ReviewItem, ReviewMode } from "./review/types";
   import SymbolList from "./SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "./symbols";
 
@@ -24,6 +35,7 @@
     mono = false,
     extensions = [],
     completion,
+    review,
     placeholder,
     autofocus = false,
     symbols = [],
@@ -44,6 +56,9 @@
     extensions?: Extension[];
     /** what the completion of citations, references and LaTeX takes from the app (none without it) */
     completion?: Completion;
+    /** what the review asks of the app: with it, the items given by `setReview` are drawn over the text and typing in
+     *  suggest mode (`setMode`) makes the user's suggestions (none without it) */
+    review?: ReviewHandlers;
     /** what the editor shows while empty (none without it) */
     placeholder?: string;
     /** the keys to the editor once the file is read (a window of its own) */
@@ -88,12 +103,18 @@
     if (editor) setPrefs(editor, now);
   });
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** the review's items and mode given before the file was read */
+  let items: ReviewItem[] | undefined;
+  let mode: ReviewMode = "edit";
 
   const text = () => editor?.state.doc.toString() ?? "";
   function failed(e: unknown) {
     status = "error";
     error = String(e);
   }
+
+  /** whether the review given before the editor was made is in it */
+  let shown = false;
 
   /** The file read, into the editor: made the first time. */
   function show(file: { path: string; text: string }) {
@@ -105,8 +126,13 @@
         prefs,
         completion,
         placeholder,
-        extensions: [...extensions, selection, ...(mono ? [] : [listKey])],
+        extensions: [...extensions, selection, ...(mono ? [] : [listKey]), ...(review ? [reviewOf(review)] : [])],
       });
+    if (review && !shown) {
+      shown = true;
+      if (mode !== "edit") setReviewMode(editor, mode);
+      if (items) showReview(editor, items);
+    }
     onchange?.(file.text);
     [status, error] = ["saved", ""];
     if (autofocus && !editor.hasFocus) editor.focus();
@@ -168,9 +194,24 @@
   export const view = () => editor;
   export const focus = () => editor?.focus();
   export const hasFocus = () => editor?.hasFocus ?? false;
-  /** The history of the editor stepped back or forward. */
-  export const undo = () => editor && stepBack(editor);
-  export const redo = () => editor && stepForward(editor);
+  /** The history of the editor stepped back or forward; in suggest mode that of the user's suggestions. */
+  export const undo = () => editor && (undoSuggestion(editor) || stepBack(editor));
+  export const redo = () => editor && (redoSuggestion(editor) || stepForward(editor));
+
+  /** The review's items, as the app has them on the text in the editor (with `review`). */
+  export function setReview(now: ReviewItem[]) {
+    items = now;
+    if (editor && review) showReview(editor, now);
+  }
+  /** Edit or suggest (with `review`). */
+  export function setMode(now: ReviewMode) {
+    mode = now;
+    if (editor && review) setReviewMode(editor, now);
+  }
+  /** A suggestion accepted: its text put in, as typed (written as any change). */
+  export const accept = (item: ReviewItem) => !!editor && !!review && acceptItem(editor, item);
+  /** The item `id` scrolled to and selected; false if it is not shown. */
+  export const scrollTo = (id: string) => !!editor && !!review && scrollToItem(editor, id);
   /** The lines at the cursor indented less or more (⌘[ and ⌘] of the Go menu). */
   export const outdent = () => editor && indentLess(editor);
   export const indent = () => editor && indentMore(editor);

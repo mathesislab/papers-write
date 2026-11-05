@@ -7,7 +7,7 @@
 import { EditorSelection, EditorState, Prec, StateEffect, StateField, Transaction, type Extension, type TransactionSpec } from "@codemirror/state";
 import { EditorView, ViewPlugin, keymap, type ViewUpdate } from "@codemirror/view";
 import { modeField, suggesting } from "./mode.ts";
-import { claimedFacet, handlersFacet, itemsField, setItems, shownFacet, type Shown } from "./overlay.ts";
+import { claimedFacet, handlersFacet, hideItem, itemsField, setItems, shownFacet, type Shown } from "./overlay.ts";
 import { mapOwn, suggestEdit, type Edit, type Own, type Result } from "./suggest.ts";
 import type { ReviewItem } from "./types.ts";
 
@@ -165,6 +165,23 @@ export const ownField = StateField.define<OwnState>({
         sent.delete(key);
         busy.delete(key);
         st = { ...st, ids, sent, busy, retired: new Set(st.retired).add(id) };
+      } else if (e.is(hideItem)) {
+        // accepted: the app writes the decision; nothing to send or withdraw
+        const key = [...st.ids].find(([, id]) => id === e.value)?.[0];
+        if (key === undefined) continue;
+        const [ids, sent] = [new Map(st.ids), new Map(st.sent)];
+        ids.delete(key);
+        sent.delete(key);
+        const out = (snaps: readonly Snap[]) => snaps.map((x) => ({ ...x, own: x.own.filter((o) => o.key !== key) }));
+        st = {
+          ...st,
+          own: st.own.filter((o) => o.key !== key),
+          ids,
+          sent,
+          retired: new Set(st.retired).add(e.value),
+          done: out(st.done),
+          undone: out(st.undone),
+        };
       } else if (e.is(setItems)) {
         const me = tr.state.facet(handlersFacet)?.me;
         if (me) st = reconcile(st, e.value, me);

@@ -29,7 +29,7 @@ export { completionSource } from "./completion";
 export { contextAt, labelsOf, literalAt, nameOptions, refOptions, type Context, type Literal } from "./context";
 export { MATH_NAMES, TEXT_NAMES, type LatexName } from "./lang/latex-names.ts";
 export type { CitationOption, Completion, EditorFont, Found, Hit, Indent, Item, Span, YearCount } from "./types";
-export { itemsAt, redoSuggestion, review, reviewMode, scrollToItem, setReview, setReviewMode, undoSuggestion } from "./review/review";
+export { accept, itemsAt, redoSuggestion, review, reviewMode, scrollToItem, setReview, setReviewMode, undoSuggestion } from "./review/review";
 export type {
   ReviewDecision,
   ReviewHandlers,

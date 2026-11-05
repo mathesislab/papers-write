@@ -14,7 +14,10 @@ use tauri::{
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+use write_core::review::package;
+
 use crate::files;
+use crate::package as review_files;
 
 /// The windows' tabbing identifier: the windows of the app merge into tabs of one window.
 pub(crate) const TABBING: &str = "papers-write";
@@ -68,8 +71,11 @@ pub fn path_of(app: &AppHandle, label: &str) -> Option<PathBuf> {
         .flatten()
 }
 
-/// The name of a window: its file's, else "Untitled".
-fn title(path: Option<&Path>) -> String {
+/// The name of a window: its file's (a document to review: "<name> — review for <who sent it>"), else "Untitled".
+pub(crate) fn title(path: Option<&Path>) -> String {
+    if let Some(sent) = path.and_then(package::of_unpacked) {
+        return format!("{} — review for {}", sent.document, sent.from.name);
+    }
     path.and_then(|p| p.file_name())
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Untitled".into())
@@ -216,6 +222,11 @@ pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", path.display()))?;
     if !path.is_file() {
         return Err(format!("{}: not a file", path.display()));
+    }
+    // a review file is a package: its document to review, or a review sent back
+    if review_files::is_review(&path) {
+        review_files::open(app, path);
+        return Ok(());
     }
     let state = app.state::<Documents>();
     let open = state

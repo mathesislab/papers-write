@@ -45,6 +45,14 @@
       },
       {
         "ext": [
+          "review"
+        ],
+        "name": "Papers Write review",
+        "description": "A document with its review",
+        "role": "Editor"
+      },
+      {
+        "ext": [
           "pdf"
         ],
         "name": "PDF document",

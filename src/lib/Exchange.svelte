@@ -15,17 +15,30 @@
   // many came in, and lists what could not be placed in the text.
   //
   // Send for Review…: the round (a name, "Draft of <date>" to begin with), then where to save the `.review` file (a
-  // dialog); a sheet says what went into it.
+  // dialog); a sheet says what went into it. The document opened from a `.review` has a quiet bar at the top (the
+  // package says whose draft it is): Send Back… makes the file of the user's own suggestions and comments to return
+  // (also in File ▸ Exchange).
 
+  import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "$lib/events";
 
   type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
 
-  let { flush, onfocus }: { flush: () => unknown; onfocus?: () => void } = $props();
+  export type Reviewing = { name: string; email: string; round: string; document: string };
+  let {
+    flush,
+    onfocus,
+    reviewing = $bindable(null),
+    mode = "edit",
+  }: { flush: () => unknown; onfocus?: () => void; reviewing?: Reviewing | null; mode?: string } = $props();
 
   type Sent = { path: string; figures: number; bibliographies: number; skipped: string[] };
+  type Returned = { path: string; suggestions: number; comments: number; to: string };
   /** the sheet of Send for Review: the round, and what went into the file */
   let sending = $state<{ round: string; busy: boolean; result: Sent | null } | null>(null);
+  /** the sheet of Send Back: what went into the file */
+  let returned = $state<Returned | null>(null);
 
   type Compare = { revisions: Revision[]; chosen: string; typed: string; file: string; name: string; email: string; busy: boolean; done: string };
   let comparing = $state<Compare | null>(null);
@@ -37,9 +50,9 @@
   let importing = $state<{ file: string; untracked: boolean; author: string; busy: boolean; result: Imported | null } | null>(null);
   let problem = $state("");
 
-  /** The menu's items: "send-review", "compare", "word-export", "word-import". */
+  /** The menu's items: "send-review", "send-back", "compare", "word-export", "word-import". */
   export async function run(what: string) {
-    if (!["send-review", "compare", "word-export", "word-import"].includes(what)) return;
+    if (!["send-review", "send-back", "compare", "word-export", "word-import"].includes(what)) return;
     problem = "";
     await flush();
     if (what === "send-review") {
@@ -47,6 +60,7 @@
       sending = { round: `Draft of ${day}`, busy: false, result: null };
       return;
     }
+    if (what === "send-back") return sendBack();
     if (what === "word-import") {
       importing = { file: "", untracked: false, author: "", busy: false, result: null };
       return chooseWord();
@@ -79,6 +93,34 @@
     }
     s.busy = false;
   }
+
+  /** Send Back…: the file of the user's own review, where a dialog says. */
+  async function sendBack() {
+    problem = "";
+    await flush();
+    try {
+      returned = (await invoke<Returned | null>("send_back")) ?? returned;
+    } catch (e) {
+      problem = String(e);
+    }
+  }
+
+  /** What this window is a review of (a document opened from a `.review`), asked again when it shows another file. */
+  async function whose() {
+    try {
+      reviewing = await invoke<Reviewing | null>("review_package");
+    } catch {
+      reviewing = null;
+    }
+  }
+
+  onMount(() => {
+    whose();
+    const unlisten = listen("opened", whose);
+    return () => {
+      unlisten.then((f) => f());
+    };
+  });
 
   const nameOf = (file: string) => file.split("/").pop() ?? file;
   /** the revision to compare with: the one typed, else the one chosen in the list */
@@ -140,6 +182,7 @@
 
   function close() {
     sending = null;
+    returned = null;
     comparing = null;
     importing = null;
     exported = null;
@@ -151,6 +194,15 @@
   const grab = (node: HTMLElement) => node.focus();
 </script>
 
+{#if reviewing}
+  <div class="bar">
+    <span>
+      A review of {reviewing.name}'s draft ({reviewing.round}). Your suggestions stay beside the text.{#if mode !== "suggest"}
+        Edits made in the text itself will not go back: only suggestions and comments do.{/if}
+    </span>
+    <button onclick={sendBack}>Send Back…</button>
+  </div>
+{/if}
 {#if sending}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="sheet" role="dialog" aria-label="Send for Review" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
@@ -180,6 +232,21 @@
       </label>
       <div class="buttons"><button class="go" disabled={!sending.round.trim() || sending.busy} onclick={sendReview}>Save…</button></div>
     {/if}
+  </div>
+{/if}
+{#if returned}
+  {@const r = returned}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="sheet" role="dialog" aria-label="Send Back" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+    <header>
+      <b>Review to send back</b>
+      <button onclick={close}>Close</button>
+    </header>
+    <p>
+      <code title={r.path}>{nameOf(r.path)}</code>: {r.suggestions} suggestion{r.suggestions === 1 ? "" : "s"} and {r.comments} comment{r.comments === 1 ? "" : "s"}
+      for {r.to}.
+    </p>
+    <div class="buttons"><button onclick={() => invoke("reveal", { path: r.path }).catch((e) => (problem = String(e)))}>Reveal in Finder</button></div>
   </div>
 {/if}
 {#if comparing}
@@ -296,6 +363,32 @@
   }
   .mark.error {
     color: var(--error);
+  }
+  .bar {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+    background: var(--chip);
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .bar span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .bar button {
+    flex: none;
   }
   .sheet {
     position: absolute;

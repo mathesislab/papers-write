@@ -71,6 +71,8 @@
   let git = $state<Git>();
   /** the message of the commit offered in the review panel after suggestions were decided; none when not offered */
   let offered = $state("");
+  /** whose draft this window is a review of, when it was opened from a `.review` (a bar at the top; suggest mode to begin with) */
+  let reviewing = $state<{ name: string; email: string; round: string; document: string } | null>(null);
   let error = $state("");
   /** a save that failed, where the editor's own errors do not say */
   let problem = $state("");
@@ -337,6 +339,15 @@
   });
   $effect(() => editor?.setReview(session.items));
   $effect(() => editor?.setMode(session.mode));
+  // a document to review opens suggesting, once (the user may switch to editing)
+  let suggested = "";
+  $effect(() => {
+    const key = reviewing && session.me ? `${path}` : "";
+    if (key && key !== suggested) {
+      suggested = key;
+      untrack(() => session.mode !== "suggest" && session.toggleMode());
+    }
+  });
 
   onMount(() => {
     setEditorFont("system", 13.5);
@@ -365,7 +376,7 @@
   });
 </script>
 
-<main>
+<main style:--bar={reviewing ? "28px" : "0px"}>
   <div class="panes" bind:this={panes}>
   <div class="text">
   {#if path !== undefined}
@@ -451,7 +462,7 @@
   />
   <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
   {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
-  <Exchange bind:this={exchange} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
+  <Exchange bind:this={exchange} bind:reviewing mode={session.mode} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
   {#if error || problem || session.problem}<p class="error">{problem || error || session.problem}</p>{:else if note}<p class="note">{note}</p>{/if}
 </main>
 
@@ -462,7 +473,8 @@
   }
   .panes {
     display: flex;
-    height: 100%;
+    height: calc(100% - var(--bar, 0px));
+    margin-top: var(--bar, 0px);
   }
   .text {
     position: relative;

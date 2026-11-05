@@ -15,15 +15,22 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{AppHandle, WebviewWindow};
-use tauri_plugin_dialog::DialogExt;
-use write_core::review::package;
+use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use write_core::review::package::{self, PackageKind};
+use write_core::review::text::slug;
+use write_core::review::{Person, store};
 
 use crate::{documents, review};
 
 /// The `.review` extension, in any case.
 pub fn is_review(path: &Path) -> bool {
     path.extension().is_some_and(|e| e.eq_ignore_ascii_case(package::EXTENSION))
+}
+
+/// Where packages to review unpack.
+fn root(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("reviews"))
 }
 
 /// What a name goes into a file name as: no slash or colon.
@@ -38,6 +45,25 @@ fn file_name(doc: &Path, what: &str) -> String {
 
 fn unreadable(file: &Path, e: impl std::fmt::Display) -> String {
     format!("{}: {e}", file.display())
+}
+
+// ---- the page
+
+/// What a window is a review of, for its page.
+#[derive(Serialize)]
+pub struct Reviewing {
+    pub name: String,
+    pub email: String,
+    pub round: String,
+    pub document: String,
+}
+
+/// What the document of the window is a review of: none unless it was opened from a `.review`.
+#[tauri::command]
+pub fn review_package(window: WebviewWindow) -> Option<Reviewing> {
+    let doc = documents::path_of(window.app_handle(), window.label())?;
+    let m = package::of_unpacked(&doc)?;
+    Some(Reviewing { name: m.from.name, email: m.from.email, round: m.round, document: m.document })
 }
 
 // ---- send
@@ -84,9 +110,81 @@ fn save_dialog(app: &AppHandle, doc: &Path, name: &str, title: &str) -> Option<P
     Some(if is_review(&to) { to } else { to.with_extension(package::EXTENSION) })
 }
 
+// ---- send back
+
+/// What a package sent back holds.
+#[derive(Serialize)]
+pub struct Returned {
+    pub path: String,
+    pub suggestions: usize,
+    pub comments: usize,
+    /// whose
+    pub to: String,
+}
+
+/// The user's own review of the window's document (one opened from a `.review`) as a `.review` file named for them,
+/// where a dialog says. None when the dialog was cancelled.
+#[tauri::command]
+pub async fn send_back(app: AppHandle, window: WebviewWindow) -> Result<Option<Returned>, String> {
+    let doc = documents::path_of(&app, window.label()).ok_or("Save the document first (⌘S)")?;
+    let sent = package::of_unpacked(&doc).ok_or("This document was not opened from a review file: there is nothing to send back")?;
+    let me: Person = review::me(&window)?;
+    if !store::person_path(&doc, &slug(&me.name)).is_file() {
+        return Err("Nothing to send back yet: no suggestion or comment of yours".into());
+    }
+    let Some(to) = save_dialog(&app, &doc, &file_name(&doc, &me.name), "Send Back") else {
+        return Ok(None);
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let back = package::send_back(&doc, &me, &to).map_err(|e| e.to_string())?;
+        Ok(Some(Returned { path: to.to_string_lossy().into_owned(), suggestions: back.suggestions, comments: back.comments, to: sent.from.name }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ---- a .review opened
+
+/// A `.review` file opened, on a thread of its own (it may ask, and a window is made): its document to review, or
+/// the review sent back joined to its document. What goes wrong is told in a dialog.
+pub fn open(app: &AppHandle, file: PathBuf) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = open_now(&app, &file) {
+            app.dialog().message(e).title("Open").kind(MessageDialogKind::Error).show(|_| {});
+        }
+    });
+}
+
+fn open_now(app: &AppHandle, file: &Path) -> Result<(), String> {
+    let opened = package::open(file).map_err(|e| e.to_string())?;
+    match opened.manifest.kind {
+        PackageKind::Send => {
+            let doc = package::unpack(&opened, &root(app)?).map_err(|e| e.to_string())?;
+            documents::open_file(app, &doc)
+        }
+        PackageKind::Back => Err("A review sent back is joined to its document: not yet".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_document_to_review_is_titled_for_who_sent_it() {
+        let dir = std::env::temp_dir().join(format!("pw-app-package-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("paper.md");
+        std::fs::write(&doc, "A text.\n").unwrap();
+        let file = dir.join("paper — Draft.review");
+        package::send(&doc, "A text.\n", &Person::new("Alex Robinson", ""), "Draft", &file).unwrap();
+        let there = package::unpack(&package::open(&file).unwrap(), &dir.join("reviews")).unwrap();
+        assert_eq!(documents::title(Some(&there)), "paper.md — review for Alex Robinson");
+        assert_eq!(documents::title(Some(&doc)), "paper.md");
+        assert_eq!(documents::title(None), "Untitled");
+    }
 
     #[test]
     fn file_names_of_packages() {

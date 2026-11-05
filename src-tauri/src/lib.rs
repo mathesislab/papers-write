@@ -72,6 +72,8 @@ pub fn run() {
             exchange::choose_word_file,
             exchange::import_word,
             package::send_for_review,
+            package::send_back,
+            package::review_package,
             refs::references,
             refs::closest_references,
             refs::reference_sources,

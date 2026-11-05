@@ -42,6 +42,7 @@
     completion,
     hover,
     diagnostics,
+    spellcheck = false,
     outline = false,
     review,
     placeholder,
@@ -72,6 +73,8 @@
     /** the keys underlined where the text cannot resolve them (labels, and the citations the app says are missing; none
      *  without it) */
     diagnostics?: Diagnostics;
+    /** the system's spell checker on the prose (Markdown files only) */
+    spellcheck?: boolean;
     /** the outline of the headings in a column at the left of the text (Markdown and LaTeX) */
     outline?: boolean;
     /** what the review asks of the app: with it, the items given by `setReview` are drawn over the text and typing in
@@ -182,6 +185,7 @@
         completion,
         hover,
         diagnostics,
+        spellcheck,
         placeholder,
         extensions: [...extensions, selection, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });

@@ -33,6 +33,7 @@ import { diagnostics } from "./diagnostics";
 import { hover } from "./hover";
 import * as lang from "./lang/index.ts";
 import { suggesting } from "./review/mode.ts";
+import { spelling } from "./spelling";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
 import type { Completion, Diagnostics, EditorFont, HoverSources, Indent } from "./types";
@@ -336,6 +337,8 @@ export type Options = {
   /** the keys underlined: cross-references to a label the document lacks and labels defined twice (found by the editor),
    *  and the citation keys the app says are missing; none by default (Markdown and LaTeX only) */
   diagnostics?: Diagnostics;
+  /** the system's spell checker on the prose (Markdown only; math, code and keys are left out); off by default */
+  spellcheck?: boolean;
   /** what an empty editor shows, the app's (Papers Review: how to write a review); none by default */
   placeholder?: string;
   extensions?: Extension[];
@@ -373,6 +376,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
               typedSymbols,
               syntaxHighlighting(style),
               shown,
+              ...(options.spellcheck ? [spelling] : []),
             ]),
         ...(options.placeholder ? [placeholder(options.placeholder)] : []),
         ...(complete ? [completion(complete, latexFile)] : []),

@@ -561,6 +561,7 @@
         {completion}
         {hover}
         {diagnostics}
+        spellcheck
         outline={outlining && (markdown || latex)}
         autofocus
         extensions={[cursor]}

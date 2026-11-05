@@ -23,6 +23,7 @@ export {
 export * from "./lang/index.ts";
 export { difference } from "./difference";
 export { citation, familyName, fullReference, initials, latex as latexCite, pandoc, splitName } from "./refs";
+export { notProse, spelling } from "./spelling";
 export { currentHeading, headingTitle, outline, type Heading } from "./outline";
 export { sections, type Section } from "./sections";
 export { DEFAULTS, LATEX, find as findSymbols, latex, merged, typed, type Entry, type Rule } from "./symbols";

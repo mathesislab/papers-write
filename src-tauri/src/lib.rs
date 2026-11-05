@@ -36,9 +36,8 @@ pub fn run() {
         .manage(review::Reviews::default())
         .manage(git::Git::default())
         .manage(projects::Projects::default())
+        .manage(spelling::Tags::default())
         .setup(|app| {
-            // before the first web view: WebKit reads it as it starts
-            spelling::enable();
             settings::init(app.handle());
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
@@ -48,7 +47,10 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => documents::closing(window, api),
             WindowEvent::Focused(true) => documents::focused(window.app_handle(), window.label()),
-            WindowEvent::Destroyed => documents::closed(window.app_handle(), window.label()),
+            WindowEvent::Destroyed => {
+                spelling::closed(window.app_handle(), window.label());
+                documents::closed(window.app_handle(), window.label());
+            }
             // files dropped on a window open in tabs of their own
             WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) => {
                 documents::open_files(window.app_handle(), paths);
@@ -102,6 +104,10 @@ pub fn run() {
             refs::reference_of,
             refs::missing_keys,
             refs::document_labels,
+            spelling::check_spelling,
+            spelling::spelling_guesses,
+            spelling::learn_word,
+            spelling::ignore_word,
             review::review_me,
             review::review_items,
             review::review_suggest,

@@ -90,3 +90,16 @@ export type Diagnostics = {
    *  800 ms after the typing stops and again on `recheck` */
   missingKeys?: (keys: string[]) => Promise<Set<string>>;
 };
+
+/** What the app supplies for the spelling of the editor (see `Options.spelling`): the system's spell checker. Languages are
+ *  the document's (`lang:` of its front matter, e.g. `en-GB`); none is the system's. */
+export type Spelling = {
+  /** the misspelled words of each text (the prose ranges of the visible lines), as offsets in the text (UTF-16) */
+  check: (texts: { id: number; text: string }[], language?: string) => Promise<{ id: number; misses: { from: number; to: number }[] }[]>;
+  /** what the checker suggests for a misspelled word */
+  guesses: (word: string, language?: string) => Promise<string[]>;
+  /** the word added to the user's dictionary */
+  learn: (word: string) => void | Promise<void>;
+  /** the word left alone in this document */
+  ignore: (word: string) => void | Promise<void>;
+};

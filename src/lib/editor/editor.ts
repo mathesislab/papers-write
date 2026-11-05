@@ -36,7 +36,7 @@ import { suggesting } from "./review/mode.ts";
 import { spelling } from "./spelling";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
-import type { Completion, Diagnostics, EditorFont, HoverSources, Indent } from "./types";
+import type { Completion, Diagnostics, EditorFont, HoverSources, Indent, Spelling } from "./types";
 
 const style = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "650", color: "var(--md-heading)" },
@@ -349,12 +349,20 @@ export type Options = {
   /** the keys underlined: cross-references to a label the document lacks and labels defined twice (found by the editor),
    *  and the citation keys the app says are missing; none by default (Markdown and LaTeX only) */
   diagnostics?: Diagnostics;
-  /** the system's spell checker on the prose (Markdown only; math, code and keys are left out); off by default */
-  spellcheck?: boolean;
+  /** the system's spell checker on the prose (Markdown only; math, code, keys and the like are left out), the misses
+   *  underlined by the editor; none by default. Changed with `setSpelling` */
+  spelling?: Spelling;
   /** what an empty editor shows, the app's (Papers Review: how to write a review); none by default */
   placeholder?: string;
   extensions?: Extension[];
 };
+
+const spellingSlot = new Compartment();
+
+/** The spelling of the editor changed (Settings ▸ Editor ▸ Check spelling): turned on with the app's checker, or off. */
+export function setSpelling(view: EditorView, app: Spelling | undefined) {
+  view.dispatch({ effects: spellingSlot.reconfigure(app ? spelling(app) : []) });
+}
 
 /** An editor of `text` in `parent`; `changed` with the text after each change typed. */
 export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, options: Options = {}) {
@@ -388,7 +396,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
               typedSymbols,
               syntaxHighlighting(style),
               shown,
-              ...(options.spellcheck ? [spelling] : []),
+              spellingSlot.of(options.spelling ? spelling(options.spelling) : []),
             ]),
         ...(options.placeholder ? [placeholder(options.placeholder)] : []),
         ...(complete ? [completion(complete, latexFile)] : []),
@@ -396,6 +404,8 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
         ...(options.diagnostics && (!mono || latexFile) ? [diagnostics(options.diagnostics)] : []),
         theme(mono),
         EditorView.lineWrapping,
+        // WebKit's own spell checking is off: the editor draws the misses of the system's checker itself (spelling.ts)
+        EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off" }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && update.transactions.some((t) => t.annotation(Transaction.userEvent))) {
             changed(update.state.doc.toString());

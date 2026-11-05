@@ -14,8 +14,8 @@
   import { Compartment, Prec, type Extension } from "@codemirror/state";
   import { EditorView, keymap } from "@codemirror/view";
   import { onMount } from "svelte";
-  import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "./editor";
-  import type { Completion, Diagnostics, HoverSources } from "./types";
+  import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, setSpelling, type EditorPrefs } from "./editor";
+  import type { Completion, Diagnostics, HoverSources, Spelling } from "./types";
   import { recheck } from "./diagnostics";
   import Outline from "./Outline.svelte";
   import { currentHeading, outline as outlineOf, type Heading } from "./outline";
@@ -42,7 +42,7 @@
     completion,
     hover,
     diagnostics,
-    spellcheck = false,
+    spelling,
     outline = false,
     review,
     placeholder,
@@ -73,8 +73,8 @@
     /** the keys underlined where the text cannot resolve them (labels, and the citations the app says are missing; none
      *  without it) */
     diagnostics?: Diagnostics;
-    /** the system's spell checker on the prose (Markdown files only) */
-    spellcheck?: boolean;
+    /** the system's spell checker on the prose (Markdown files only); none turns it off */
+    spelling?: Spelling;
     /** the outline of the headings in a column at the left of the text (Markdown and LaTeX) */
     outline?: boolean;
     /** what the review asks of the app: with it, the items given by `setReview` are drawn over the text and typing in
@@ -143,6 +143,10 @@
     if (editor) setRules(editor, now);
   });
   $effect(() => {
+    const now = spelling;
+    if (editor && !mono && !latex) setSpelling(editor, now);
+  });
+  $effect(() => {
     const now = prefs;
     if (editor) setPrefs(editor, now);
   });
@@ -185,7 +189,7 @@
         completion,
         hover,
         diagnostics,
-        spellcheck,
+        spelling,
         placeholder,
         extensions: [...extensions, selection, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });

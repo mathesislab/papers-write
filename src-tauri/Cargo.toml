@@ -31,6 +31,6 @@ papers-core = { git = "https://github.com/mathesislab/papers-desktop", tag = "v0
 # the windows as tabs whatever the system's setting (NSWindow addTabbedWindow), as Papers Desktop uses AppKit
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSResponder", "NSGraphics", "NSApplication"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSResponder", "NSGraphics", "NSApplication", "NSSpellChecker"] }
 # the Trash (as papers-review moves files there); already in the lock through objc2-app-kit
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSFileManager", "NSURL", "NSString", "NSError", "NSUserDefaults"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSFileManager", "NSURL", "NSString", "NSError", "NSUserDefaults", "NSRange", "NSArray"] }

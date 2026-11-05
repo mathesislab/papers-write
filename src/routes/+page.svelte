@@ -61,6 +61,7 @@
     type Item,
     type Completion,
     type Diagnostics,
+    type Spelling,
     type Found,
     type ReviewView,
     type HoverSources,
@@ -354,6 +355,14 @@
     image: (path) => invoke<string | null>("image_data", { path }),
   };
 
+  /** The prose checked by the system's spell checker (the app's; the editor draws the misses), when Settings ▸ Editor ▸ Check spelling is on. */
+  const speller: Spelling = {
+    check: (texts, language) => invoke("check_spelling", { texts, language }),
+    guesses: (word, language) => invoke("spelling_guesses", { word, language }),
+    learn: (word) => invoke("learn_word", { word }),
+    ignore: (word) => invoke("ignore_word", { word }),
+  };
+
   /** The keys underlined: the citations neither the document's bibliography nor the library has (labels the editor sees itself). */
   const diagnostics: Diagnostics = {
     missingKeys: async (keys) => new Set(await invoke<string[]>("missing_keys", { keys, text: current() })),
@@ -601,7 +610,7 @@
         {completion}
         {hover}
         {diagnostics}
-        spellcheck={spelling}
+        spelling={spelling ? speller : undefined}
         outline={outlining && (markdown || latex)}
         autofocus
         extensions={[cursor]}

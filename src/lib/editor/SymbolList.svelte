@@ -3,7 +3,7 @@
   // symbol it gives. Typing filters them; Enter or a click puts the one marked in at the cursor; Esc closes the list.
 
   import { onMount } from "svelte";
-  import { find, type Entry } from "$lib/symbols";
+  import { find, type Entry } from "./symbols";
 
   let {
     entries,

@@ -1,6 +1,6 @@
 // The editor of the review and of the files of a project: CodeMirror 6. Markdown, the markup dimmed (the headings,
-// the emphasis, the quotes drawn as they read, the page and line of a quote coloured), in the system font; or plain
-// text in monospace. The font and size of the Markdown follow the settings, through --editor-font and --editor-size.
+// the emphasis, the quotes drawn as they read), in the system font; or plain text in monospace. The font and size of
+// the Markdown follow the settings, through --editor-font and --editor-size.
 
 import {
   defaultKeymap,
@@ -24,14 +24,12 @@ import {
   lineNumbers,
   placeholder,
   type DecorationSet,
-  type ViewUpdate,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { difference } from "./difference";
-import { locationPrefix } from "./quote";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
-import type { EditorFont, Indent, Settings } from "./types";
+import type { EditorFont, Indent } from "./types";
 
 const style = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "650", color: "var(--md-heading)" },
@@ -72,38 +70,7 @@ const theme = (mono: boolean) =>
     ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "1.5px" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { background: "var(--selection)" },
     ".cm-placeholder": { color: "var(--muted)" },
-    ".cm-location": { color: "var(--md-location)", fontWeight: "550" },
   });
-
-/** The page and line of a quote at the start of a line (`p5, l136–138:`) marked, in the lines in view. */
-const locations = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    constructor(view: EditorView) {
-      this.decorations = mark(view);
-    }
-    update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged) this.decorations = mark(update.view);
-    }
-  },
-  { decorations: (plugin) => plugin.decorations },
-);
-
-function mark(view: EditorView): DecorationSet {
-  const ranges = [];
-  let last = -1;
-  for (const { from, to } of view.visibleRanges) {
-    for (let pos = from; pos <= to; ) {
-      const line = view.state.doc.lineAt(pos);
-      pos = line.to + 1;
-      if (line.from <= last) continue;
-      last = line.from;
-      const length = locationPrefix(line.text);
-      if (length) ranges.push(Decoration.mark({ class: "cm-location" }).range(line.from, line.from + length));
-    }
-  }
-  return Decoration.set(ranges);
-}
 
 /** The band at the top and foot of the editor where a selection being made with the mouse scrolls, in px. */
 const EDGE = 24;
@@ -271,7 +238,11 @@ const tab = (view: EditorView) => {
  *  whether its lines are numbered. */
 export type EditorPrefs = { indent: Indent; readable: boolean; lineNumbers: boolean };
 export const PREFS: EditorPrefs = { indent: "two", readable: true, lineNumbers: false };
-export const prefsFrom = (s: Settings): EditorPrefs => ({
+
+/** What `prefsFrom` reads: the editor's part of the app's settings (a structural type, the app's own fits it). */
+export type EditorSettings = { indent: Indent; readable_width: boolean; line_numbers: boolean };
+
+export const prefsFrom = (s: EditorSettings): EditorPrefs => ({
   indent: s.indent ?? PREFS.indent,
   readable: s.readable_width ?? PREFS.readable,
   lineNumbers: s.line_numbers ?? PREFS.lineNumbers,
@@ -352,7 +323,6 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
               symbolRules.init(() => options.rules ?? DEFAULTS),
               typedSymbols,
               syntaxHighlighting(style),
-              locations,
               placeholder("Your review, in Markdown: ## for its sections, a section a round, say."),
               shown,
             ]),

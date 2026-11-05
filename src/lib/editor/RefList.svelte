@@ -3,21 +3,30 @@
   // Papers Desktop finds them. Typing searches, the words matching from their start, a moment after the typing stops;
   // opened with a reference selected in the PDF, it lists the papers closest to that text until something is typed.
   // The key on the one marked: ↵ puts a citation in at the cursor, ⇧↵ the full reference, ⌘. [@key], ⌘L \cite{key};
-  // ⌘↵ opens its PDF in a tab of the project. Esc closes the list.
+  // ⌘↵ opens its PDF in a tab of the project. Esc closes the list. Where the references come from is the app's:
+  // `search`, `closest` and `sources`.
 
-  import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  import { citation, fullReference, latex, pandoc } from "$lib/refs";
-  import type { Found, Item, Span } from "$lib/types";
+  import { citation, fullReference, latex, pandoc } from "./refs";
+  import type { Found, Item, Span } from "./types";
 
   let {
     text = "",
+    search: find,
+    closest: findClosest,
+    sources: findSources,
     oninsert,
     onopen,
     onclose,
   }: {
     /** a reference selected in the PDF: the papers closest to it are listed first */
     text?: string;
+    /** the papers matching `query`, at most `limit` of them */
+    search: (query: string, limit: number) => Promise<Found>;
+    /** the papers closest to `text`, at most `limit` of them */
+    closest: (text: string, limit: number) => Promise<Found>;
+    /** the .bib files of the references */
+    sources: () => Promise<string[]>;
     /** the text to put in at the cursor */
     oninsert: (text: string) => void;
     /** the PDF of a paper, to open in a tab of the project */
@@ -29,13 +38,13 @@
   const LIMIT = 50;
   let query = $state("");
   /** the papers closest to `text` are listed, not what `query` finds */
-  let closest = $state(false);
+  let nearest = $state(false);
   let found = $state<Found | null>(null);
   let error = $state("");
   /** the paper marked, by its place in the list */
   let marked = $state(0);
   /** the .bib files of the references */
-  let sources = $state<string[]>([]);
+  let bibs = $state<string[]>([]);
   let input: HTMLInputElement;
   let list: HTMLElement;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -47,9 +56,7 @@
   async function search() {
     const now = ++asked;
     try {
-      const result = closest
-        ? await invoke<Found>("closest_references", { text, limit: LIMIT })
-        : await invoke<Found>("references", { query, limit: LIMIT });
+      const result = nearest ? await findClosest(text, LIMIT) : await find(query, LIMIT);
       if (now !== asked) return;
       [found, error, marked] = [result, "", 0];
       list?.scrollTo({ top: 0 });
@@ -59,7 +66,7 @@
   }
 
   function typed() {
-    closest = false;
+    nearest = false;
     clearTimeout(timer);
     timer = setTimeout(search, 120);
   }
@@ -106,10 +113,10 @@
 
   onMount(() => {
     input.focus();
-    closest = text.trim() !== "";
+    nearest = text.trim() !== "";
     search();
-    invoke<string[]>("reference_sources")
-      .then((s) => (sources = s))
+    findSources()
+      .then((s) => (bibs = s))
       .catch(() => {});
     return () => clearTimeout(timer);
   });
@@ -128,7 +135,7 @@
     autocomplete="off"
     autocorrect="off"
   />
-  {#if closest}
+  {#if nearest}
     <p class="closest">Closest to the selected reference: <span>{text.trim()}</span></p>
   {/if}
   <ul bind:this={list}>
@@ -149,9 +156,9 @@
   </ul>
   <footer>
     <span class="keys">↵ cite · ⇧↵ reference · ⌘. [@key] · ⌘L \cite · {hit?.item.files.length ? "⌘↵ PDF · " : ""}esc</span>
-    <span class="sources" title={sources.join("\n")}>
+    <span class="sources" title={bibs.join("\n")}>
       {#if found && found.total > hits.length}{hits.length} of {found.total} ·{/if}
-      {sources.map(nameOf).join(", ")}
+      {bibs.map(nameOf).join(", ")}
     </span>
   </footer>
 </div>

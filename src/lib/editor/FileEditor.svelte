@@ -13,9 +13,9 @@
   import { Prec, type Extension } from "@codemirror/state";
   import { EditorView, keymap } from "@codemirror/view";
   import { onMount } from "svelte";
-  import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "$lib/editor";
-  import SymbolList from "$lib/SymbolList.svelte";
-  import { DEFAULTS, LATEX, merged } from "$lib/symbols";
+  import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "./editor";
+  import SymbolList from "./SymbolList.svelte";
+  import { DEFAULTS, LATEX, merged } from "./symbols";
 
   let {
     load,

@@ -364,8 +364,9 @@
   .mark.error {
     color: var(--error);
   }
+  /* at the top of the window, above the panes the page moves down by its height (--bar), whatever this component sits in */
   .bar {
-    position: absolute;
+    position: fixed;
     z-index: 4;
     top: 0;
     left: 0;

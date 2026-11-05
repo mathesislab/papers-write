@@ -44,7 +44,9 @@ fn valid(text: &str, s: usize, e: usize) -> bool {
     s <= e && e <= text.len() && text.is_char_boundary(s) && text.is_char_boundary(e)
 }
 
-pub fn carry(rec: &Record, base: Option<&str>, current: &str, current_hash: &str) -> Carried {
+/// `rec` carried onto `current` (whose blob hash is `current_hash`). `base` is the text it was made on with the diff
+/// from it to `current` (one diff per base, however many records it has), when that text is there.
+pub fn carry(rec: &Record, base: Option<(&str, &Diff)>, current: &str, current_hash: &str) -> Carried {
     let insert = (rec.kind == Kind::Suggestion).then(|| rec.insert.clone().unwrap_or_default());
     let found = |range: Range<usize>, status: Status| Carried { range, status, replacement: insert.clone() };
     let (Some(s), Some(e)) = (rec.start, rec.end) else {
@@ -53,14 +55,13 @@ pub fn carry(rec: &Record, base: Option<&str>, current: &str, current_hash: &str
     if rec.base.as_deref() == Some(current_hash) && valid(current, s, e) {
         return found(s..e, Status::Exact);
     }
-    if let Some(base) = base.filter(|b| valid(b, s, e)) {
-        return through_diff(base, current, s, e, insert);
+    if let Some((base, diff)) = base.filter(|(b, _)| valid(b, s, e)) {
+        return through_diff(base, current, diff, s, e, insert);
     }
     by_quote(rec, current, insert)
 }
 
-fn through_diff(base: &str, current: &str, s: usize, e: usize, insert: Option<String>) -> Carried {
-    let diff = Diff::new(base, current);
+fn through_diff(base: &str, current: &str, diff: &Diff, s: usize, e: usize, insert: Option<String>) -> Carried {
     let touched: Vec<&Hunk> = diff.overlapping(s, e).collect();
     if touched.is_empty() {
         let (ns, ne) = if s == e {
@@ -77,7 +78,7 @@ fn through_diff(base: &str, current: &str, s: usize, e: usize, insert: Option<St
         return Carried { range: ns..ns, status: Status::Orphaned, replacement: insert };
     }
     if let Some(ins) = &insert
-        && let Some((range, replacement)) = merge(base, current, &diff, s, e, ins)
+        && let Some((range, replacement)) = merge(base, current, diff, s, e, ins)
     {
         return Carried { range, status: Status::Moved, replacement: Some(replacement) };
     }
@@ -206,7 +207,8 @@ mod tests {
     const BASE: &str = "The grounding line retreats rapidly when the bed slopes inland. We show this in Fig. 3.";
 
     fn run(rec: &Record, base: Option<&str>, current: &str) -> Carried {
-        carry(rec, base, current, &blob_hash(current))
+        let diff = base.map(|b| Diff::new(b, current));
+        carry(rec, base.zip(diff.as_ref()), current, &blob_hash(current))
     }
 
     fn at<'a>(c: &Carried, text: &'a str) -> &'a str {

@@ -1,6 +1,7 @@
 //! The records of all the files folded into items, each carried onto the current text.
 
 use super::anchor::{Anchor, Carried, Status, carry};
+use super::diff::Diff;
 use super::record::{Decision, Kind, Record};
 use super::text::{blob_hash, utf16_of};
 use super::Review;
@@ -107,12 +108,18 @@ impl Review {
             out.into_iter().cloned().collect()
         };
 
+        // the bases the records were made on, each with its diff to the current text (made once, not per record)
+        let mut bases: HashMap<&str, Option<(Diff, String)>> = HashMap::new();
+        for h in self.records().filter_map(|r| r.base.as_deref()).filter(|h| *h != cur_hash) {
+            bases.entry(h).or_insert_with(|| self.base(h).map(|t| (Diff::new(&t, current_text), t)));
+        }
+
         let mut items: Vec<Item> = self
             .records()
             .filter(|r| matches!(r.kind, Kind::Suggestion | Kind::Comment) && !newer.contains_key(r.id.as_str()))
             .map(|r| {
-                let base = r.base.as_deref().and_then(|h| if h == cur_hash { None } else { self.base(h) });
-                let Carried { range, status, replacement } = carry(r, base.as_deref(), current_text, &cur_hash);
+                let base = r.base.as_deref().and_then(|h| bases.get(h)?.as_ref()).map(|(d, t)| (t.as_str(), d));
+                let Carried { range, status, replacement } = carry(r, base, current_text, &cur_hash);
                 let state = match decisions.get(&r.id).and_then(|d| d.decision) {
                     Some(Decision::Accepted) => State::Accepted,
                     Some(Decision::Rejected) => State::Rejected,

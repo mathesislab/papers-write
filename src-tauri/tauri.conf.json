@@ -10,14 +10,7 @@
     "frontendDist": "../build"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "Papers Write",
-        "width": 900,
-        "height": 700
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

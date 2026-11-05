@@ -32,6 +32,17 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   bar asks which to keep.
 - The app stays in the menu bar when the last window closes (New, Open…,
   Quit); ⌘Q quits.
+- Edit ▸ References… (⇧⌘R) lists the references over the editor: the `.bib`
+  files named by `bibliography:` in the front matter, and the papers library.
+  Type to search (words, author, year); ↵ puts in a citation, ⌘. `[@key]`,
+  ⌘L `\cite{key}`, ⌘↵ opens the PDF, esc closes. The references are read when
+  first asked, and again when a `.bib` changes.
+- The bibliography grows as you cite: a key put in with ⌘. or ⌘L is copied from
+  the library into the document's own `.bib` (the first one the front matter
+  names; else `references.bib` beside it, named in the front matter). It needs
+  a saved document.
+- Edit ▸ Check Citations… lists the keys cited that the document's `.bib` lacks
+  (Add from library) and the entries it never cites.
 
 ## Develop
 

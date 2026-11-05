@@ -214,6 +214,17 @@ pub fn front(app: &AppHandle) -> Option<WebviewWindow> {
     })
 }
 
+/// The files the windows show.
+pub fn open_paths(app: &AppHandle) -> Vec<PathBuf> {
+    app.state::<Documents>().paths.lock().unwrap().values().flatten().cloned().collect()
+}
+
+/// The window that shows `path`, if one does.
+pub fn label_of(app: &AppHandle, path: &Path) -> Option<String> {
+    let path = path.canonicalize().ok()?;
+    app.state::<Documents>().paths.lock().unwrap().iter().find(|(_, p)| p.as_deref() == Some(path.as_path())).map(|(l, _)| l.clone())
+}
+
 /// A file opened: its window brought forward when it has one; else the untitled blank window in front (or any) shows
 /// it; else a window of its own.
 pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {

@@ -68,6 +68,23 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   in an included file show its name). Marked-up PDF… runs `latexdiff` on the
   earlier and current `.tex` directly (no texmark) and compiles with latexmk
   into `build/diff/name-diff-<version>.pdf`. `.bib` files stay plain text.
+- File ▸ Exchange ▸ Send for Review… makes one file, `<name> — <round>.review`
+  (round: "Draft of <date>" to begin with; saved beside the document unless a
+  dialog says otherwise), for someone who has the app but not git: a zip (the
+  system's `ditto`, so macOS) with a `manifest.toml`, the text as sent, the
+  figures it shows (`![…](…)`, `\includegraphics{…}`) and the bibliography
+  files of its front matter at their relative paths, and the review files of
+  the round. Opened (double click, Open With, ⌘O, a drop), it unpacks in the
+  app's data folder (`reviews/<name>-<hash>/`, once: opening it again finds what
+  was done there) and the document opens titled "<name> — review for <who>",
+  suggesting, with a bar at the top (edits made in the text itself do not go
+  back, only suggestions and comments). Send Back… (the bar, File ▸ Exchange)
+  makes `<name> — <you>.review` with your own review file and the texts it was
+  made on. Opened where the document is (the open window with that text, else
+  the document asked for), it joins that review: missing bases copied, your
+  file copied or its new records appended (never rewritten, so the same file
+  twice adds nothing), a dialog saying "12 suggestions and 3 comments from Jane
+  Doe". If the text changed since, they are carried like any others.
 - File ▸ Exchange ▸ Compare as Suggestions… turns another version into
   suggestions: a commit, tag or branch of the document in git, or an edited
   copy of the file (any path). The word-level changes from this document to

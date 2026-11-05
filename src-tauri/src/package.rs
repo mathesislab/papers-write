@@ -15,9 +15,9 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-use write_core::review::package::{self, PackageKind};
+use write_core::review::package::{self, Merged, Opened, PackageKind};
 use write_core::review::text::slug;
 use write_core::review::{Person, store};
 
@@ -33,6 +33,10 @@ fn root(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("reviews"))
 }
 
+fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
 /// What a name goes into a file name as: no slash or colon.
 fn file_part(s: &str) -> String {
     s.trim().chars().map(|c| if matches!(c, '/' | ':' | '\\' | '\0') { '-' } else { c }).collect()
@@ -41,6 +45,25 @@ fn file_part(s: &str) -> String {
 /// `<stem> — <what>.review`.
 fn file_name(doc: &Path, what: &str) -> String {
     format!("{} — {}.{}", doc.file_stem().unwrap_or_default().to_string_lossy(), file_part(what), package::EXTENSION)
+}
+
+/// What a merge says: "12 suggestions and 3 comments from Jane Doe".
+fn said(merged: &Merged, from: &str) -> String {
+    let (s, c) = (merged.suggestions, merged.comments);
+    let mut parts = Vec::new();
+    if s > 0 {
+        parts.push(plural(s, "suggestion", "suggestions"));
+    }
+    if c > 0 {
+        parts.push(plural(c, "comment", "comments"));
+    }
+    if parts.is_empty() && merged.others > 0 {
+        parts.push(plural(merged.others, "reply or decision", "replies and decisions"));
+    }
+    if parts.is_empty() {
+        return format!("Nothing new from {from}: their review is already joined to this document.");
+    }
+    format!("{} from {from}", parts.join(" and "))
 }
 
 fn unreadable(file: &Path, e: impl std::fmt::Display) -> String {
@@ -163,13 +186,59 @@ fn open_now(app: &AppHandle, file: &Path) -> Result<(), String> {
             let doc = package::unpack(&opened, &root(app)?).map_err(|e| e.to_string())?;
             documents::open_file(app, &doc)
         }
-        PackageKind::Back => Err("A review sent back is joined to its document: not yet".into()),
+        PackageKind::Back => join(app, &opened),
     }
+}
+
+/// The open document that `opened` is a review of: the file name is the same and it has the text the review was made
+/// on (a base of its review, its text now, a commit). Not a document that is itself a review to send back.
+fn find(app: &AppHandle, opened: &Opened) -> Option<PathBuf> {
+    let m = &opened.manifest;
+    documents::open_paths(app)
+        .into_iter()
+        .find(|p| p.file_name().is_some_and(|n| *n == *m.document) && package::of_unpacked(p).is_none() && package::holds(p, &m.base))
+}
+
+/// The document asked for when no window has the one the review is of.
+fn ask(app: &AppHandle, opened: &Opened) -> Option<PathBuf> {
+    let m = &opened.manifest;
+    let said = format!(
+        "{} sent back a review of {} ({}), which is not open here. Choose the document it is a review of.",
+        m.from.name, m.document, m.round
+    );
+    app.dialog().message(said).title("Review").kind(MessageDialogKind::Info).blocking_show();
+    app.dialog().file().set_title(format!("The document {} reviewed", m.document)).blocking_pick_file().and_then(|f| f.into_path().ok())
+}
+
+/// A review sent back joined to its document, which then shows it; a dialog says what came.
+fn join(app: &AppHandle, opened: &Opened) -> Result<(), String> {
+    let Some(doc) = find(app, opened).or_else(|| ask(app, opened)) else {
+        return Ok(());
+    };
+    let merged = package::merge(&doc, opened).map_err(|e| e.to_string())?;
+    match documents::label_of(app, &doc) {
+        Some(label) => {
+            let _ = app.emit_to(EventTarget::webview(label), "review-changed", ());
+        }
+        None => documents::open_file(app, &doc)?,
+    }
+    app.dialog().message(said(&merged, &opened.manifest.from.name)).title("Review received").kind(MessageDialogKind::Info).show(|_| {});
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_is_said_of_a_merge() {
+        let m = |s, c, o| Merged { suggestions: s, comments: c, others: o, ..Default::default() };
+        assert_eq!(said(&m(12, 3, 1), "Jane Doe"), "12 suggestions and 3 comments from Jane Doe");
+        assert_eq!(said(&m(1, 0, 0), "Jane"), "1 suggestion from Jane");
+        assert_eq!(said(&m(0, 1, 5), "Jane"), "1 comment from Jane");
+        assert_eq!(said(&m(0, 0, 2), "Jane"), "2 replies and decisions from Jane");
+        assert!(said(&m(0, 0, 0), "Jane").starts_with("Nothing new from Jane"));
+    }
 
     #[test]
     fn a_document_to_review_is_titled_for_who_sent_it() {

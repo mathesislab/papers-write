@@ -368,11 +368,21 @@ text both show; accepting one leaves the other outdated, to be dealt with.
 ### Sending a review, without git
 
 - To someone with the app: Send for Review… makes one file,
-  `paper — second draft.review` (a zip: the base, the figures it shows, the
-  bib, the review files of the round). It opens in the app as the document with its
-  changes; they suggest and comment, and Send Back makes their own
-  `.review` holding only their file. Dropped on the author's window, it
-  joins the review folder.
+  `paper — second draft.review` (a zip made by the system's `ditto`, macOS
+  first; two small functions know the zip): `manifest.toml` (kind `send` or
+  `back`, the document's name, the base's blob hash, the round, who and when),
+  `document/` (the text as sent, with the figures it shows and the bib files
+  of its front matter at their relative paths; what is outside the document's
+  folder or missing is listed, not sent), `review/` (the review folder: the
+  person files and the bases). It opens in the app as the document with its
+  changes, unpacked once in the app's data folder, in suggest mode, with a bar
+  that says whose draft it is; they suggest and comment, and Send Back makes
+  their own `.review` (kind `back`: their person file and the bases it
+  needs). Opened by the author, it finds the document (the open window with
+  that base among its bases, its text or its history; else it asks) and joins
+  the review folder: bases copied if missing, a person's file copied or the
+  records whose ids it lacks appended (ids are per person, so the same
+  package again adds nothing).
 - To someone with Word: Export as Word with Changes writes a `.docx` with
   real tracked changes and comments (pandoc; the math as Word equations).
   They edit with Track Changes on and send it back; Import Word Review reads

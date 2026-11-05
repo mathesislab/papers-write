@@ -15,4 +15,19 @@ converted to journal-formatted LaTeX/PDF (as with texmark), with the
 library's search, previews and missing-reference checks at hand while
 writing.
 
-Status: an idea; nothing here yet.
+Status: early. The editor (CodeMirror, Markdown) is written here and shared
+with papers-review as `papers-write/editor`; the app is a window with the
+editor.
+
+## Develop
+
+```bash
+npm install
+npm run tauri dev
+```
+
+Rust (stable) and Node.js.
+
+## License
+
+MIT.

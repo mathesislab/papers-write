@@ -1,0 +1,73 @@
+/* The colours of the window, light and dark (as papers-review's). */
+
+:root {
+  --bg: #f6f6f8;
+  --fg: #1d1d1f;
+  --muted: #6e6e73;
+  --border: rgba(0, 0, 0, 0.14);
+  --line: rgba(0, 0, 0, 0.08);
+  --accent: #2f6fde;
+  --on-accent: #ffffff;
+  --selection: rgba(47, 111, 222, 0.16);
+  --sidebar: #eeeef1;
+  --menu-bg: #ffffff;
+  --chip: rgba(0, 0, 0, 0.05);
+  --viewer: #e4e4e9;
+  /* a project without a colour, as a tile of the project bar */
+  --tile-none: #a3a3aa;
+  --error: #c4321f;
+  /* how near a due date is: the dot beside it */
+  --due-far: #34a15a;
+  --due-near: #e2b21c;
+  --due-close: #e8892b;
+  --due-due: #d63c2a;
+  /* the Markdown of the editor */
+  --md-heading: #2f6fde;
+  --md-location: #1f8a70;
+  --md-quote: #5f5f66;
+  --editor-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --editor-size: 13.5px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #262628;
+    --fg: #f2f2f4;
+    --muted: #9a9aa0;
+    --border: rgba(255, 255, 255, 0.16);
+    --line: rgba(255, 255, 255, 0.08);
+    --accent: #3a78e6;
+    --selection: rgba(58, 120, 230, 0.35);
+    --sidebar: #2c2c2f;
+    --menu-bg: #323236;
+    --chip: rgba(255, 255, 255, 0.07);
+    --viewer: #1e1e20;
+    --tile-none: #5b5b61;
+    --error: #ff7a66;
+    --due-far: #4cc171;
+    --due-near: #f0c53a;
+    --due-close: #f29a45;
+    --due-due: #ff6552;
+    --md-heading: #7ea6f5;
+    --md-location: #5fc4a8;
+    --md-quote: #b4b4bc;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+}
+
+kbd {
+  font: 11px ui-monospace, Menlo, monospace;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}

@@ -1,0 +1,43 @@
+{
+  "name": "papers-write",
+  "version": "0.0.1",
+  "description": "Write papers in plain text: Markdown and LaTeX, cited from the papers library, built with texmark",
+  "type": "module",
+  "scripts": {
+    "dev": "svelte-kit sync && vite dev",
+    "build": "svelte-kit sync && vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "tauri": "tauri"
+  },
+  "exports": {
+    "./editor": {
+      "types": "./src/lib/editor/index.ts",
+      "svelte": "./src/lib/editor/index.ts",
+      "default": "./src/lib/editor/index.ts"
+    }
+  },
+  "files": [
+    "src/lib/editor"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
+    "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^3.0.10",
+    "@sveltejs/kit": "^2.65.1",
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@tauri-apps/cli": "^2",
+    "svelte": "^5.56.3",
+    "svelte-check": "^4.6.0",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16"
+  }
+}

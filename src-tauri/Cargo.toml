@@ -1,0 +1,18 @@
+[package]
+name = "papers-write"
+version = "0.0.1"
+description = "Write papers in plain text: Markdown and LaTeX, cited from the papers library, built with texmark"
+authors = ["Alexander Robinson"]
+edition = "2024"
+license = "MIT"
+
+[lib]
+# the `_lib` suffix keeps the name of the library apart from the binary's (Windows)
+name = "papers_write_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

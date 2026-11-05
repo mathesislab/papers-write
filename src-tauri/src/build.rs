@@ -2,6 +2,11 @@
 //! version (Marked-up PDF…): the earlier text and the current one each converted to LaTeX by texmark, compared by
 //! latexdiff, compiled by latexmk.
 //!
+//! A LaTeX document (`name.tex`) is built by latexmk itself, in its folder, with `-outdir=build` (as texmark's, so
+//! `build/name.pdf` and `build/name.log`) and `-file-line-error`, so that the log's errors are `file:line:` and
+//! the ones in the document are lines of the editor's text. Its marked-up PDF is latexdiff of the earlier `.tex` and
+//! the current one (no texmark), compiled by latexmk in the folder with its output in `build/diff/`.
+//!
 //! Where things land, beside the document `name.md`: texmark's `build/name.tex`, `build/name.pdf` and `build/name.log`
 //! (its folder holds the journal's class files and the bibliography too); for the marked-up PDF `build/diff/old/`
 //! (the earlier text as LaTeX), `build/diff/new/` (the current text, built, and `diff.tex` with what latexmk makes of
@@ -56,11 +61,36 @@ pub enum Earlier {
     File { path: String },
 }
 
-/// An error of a LaTeX log: a line that starts with `! `, and the line of the `.tex` it was found at.
+/// What a document is built from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// Markdown (`.md`, `.markdown`): by texmark
+    Markdown,
+    /// LaTeX (`.tex`): by latexmk
+    Latex,
+}
+
+/// The kind of document of `path` by its extension, none for one that cannot be built.
+pub fn kind_of(path: &Path) -> Option<Kind> {
+    let ext = path.extension()?.to_string_lossy().to_ascii_lowercase();
+    match ext.as_str() {
+        "md" | "markdown" => Some(Kind::Markdown),
+        "tex" => Some(Kind::Latex),
+        _ => None,
+    }
+}
+
+/// An error of a LaTeX log: a line that starts with `! ` or, with `-file-line-error`, `file:line: `, and the line of
+/// the `.tex` it was found at.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct LatexError {
     pub message: String,
     pub line: Option<u32>,
+    /// the file the log names (with `-file-line-error`)
+    pub file: Option<String>,
+    /// the line is one of the document the window shows (a LaTeX document's own, not an input file's, nor a
+    /// Markdown document's converted one)
+    pub here: bool,
     /// the text of the line at the error, as the log shows it
     pub context: Option<String>,
 }
@@ -176,6 +206,25 @@ fn latexmk_args(job: &str) -> Vec<String> {
         .collect()
 }
 
+/// The arguments of latexmk for the LaTeX document `source` (relative to where it runs): its PDF and log in `outdir`,
+/// the errors as `file:line:`. With `force`, it goes on after an error (a PDF with what could be set is better than
+/// none); `job` names the output, else it is the source's name.
+fn latexmk_document_args(source: &str, outdir: &str, job: Option<&str>, force: bool) -> Vec<String> {
+    let mut args: Vec<String> = ["-pdf", "-interaction=nonstopmode", "-file-line-error"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    if force {
+        args.push("-f".into());
+    }
+    args.push(format!("-outdir={outdir}"));
+    if let Some(job) = job {
+        args.push(format!("-jobname={job}"));
+    }
+    args.push(source.to_string());
+    args
+}
+
 /// The arguments of latexdiff; `--flatten` when the LaTeX reads other files.
 fn latexdiff_args(old: &str, new: &str, flatten: bool) -> Vec<String> {
     let mut args = Vec::new();
@@ -208,28 +257,42 @@ fn safe_label(label: &str) -> String {
     if s.is_empty() { "earlier".into() } else { s }
 }
 
-/// The errors of a LaTeX log: each line that starts with `! `, with the line number and text of the `l.<n> ` line
-/// that follows it (within a few lines, before another error). The same error twice is one.
+/// A line of a log of `-file-line-error`: `./paper.tex:42: Undefined control sequence.` as file, line and message.
+fn file_line_error(line: &str) -> Option<(&str, u32, &str)> {
+    let (file, rest) = line.split_once(':')?;
+    if file.is_empty() || file.contains(char::is_whitespace) || !file.contains('.') {
+        return None;
+    }
+    let (digits, message) = rest.split_once(": ")?;
+    Some((file, digits.parse().ok()?, message.trim()))
+}
+
+/// The errors of a LaTeX log: each line that starts with `! ` or is `file:line: message` (`-file-line-error`), with
+/// the line number and text of the `l.<n> ` line that follows it (within a few lines, before another error). The same
+/// error twice is one.
 fn parse_log_errors(log: &str) -> Vec<LatexError> {
     let lines: Vec<&str> = log.lines().collect();
     let mut errors: Vec<LatexError> = Vec::new();
     for (i, line) in lines.iter().enumerate() {
-        let Some(message) = line.strip_prefix("! ") else {
+        let located = file_line_error(line);
+        let Some(message) = line.strip_prefix("! ").or(located.map(|(_, _, m)| m)) else {
             continue;
         };
         let mut error = LatexError {
             message: message.trim().to_string(),
-            line: None,
+            line: located.map(|(_, n, _)| n),
+            file: located.map(|(f, _, _)| f.trim_start_matches("./").to_string()),
+            here: false,
             context: None,
         };
         for next in lines.iter().skip(i + 1).take(8) {
-            if next.starts_with("! ") {
+            if next.starts_with("! ") || file_line_error(next).is_some() {
                 break;
             }
             if let Some(rest) = next.strip_prefix("l.") {
                 let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
                 if let Ok(n) = digits.parse() {
-                    error.line = Some(n);
+                    error.line.get_or_insert(n);
                     let text = rest[digits.len()..].trim();
                     if !text.is_empty() {
                         error.context = Some(text.to_string());
@@ -376,8 +439,52 @@ fn failed(what: &'static str, message: String) -> Status {
     }
 }
 
+/// `file` (a LaTeX document) into `build/` beside it by latexmk; the errors of the document's own lines are marked
+/// `here`.
+fn run_latex_build(file: &Path) -> Status {
+    let (Some(folder), Some(name), Some(stem)) = (file.parent(), file.file_name(), file.file_stem()) else {
+        return failed("build", format!("{}: not a file", file.display()));
+    };
+    let latexmk = match find_tool("latexmk") {
+        Ok(t) => t,
+        Err(e) => return failed("build", e),
+    };
+    let (start, clock) = (SystemTime::now() - Duration::from_secs(1), Instant::now());
+    let (name, stem) = (name.to_string_lossy(), stem.to_string_lossy());
+    let out = run(&latexmk, &latexmk_document_args(&name, "build", None, false), folder);
+    let took = clock.elapsed();
+    let build = folder.join("build");
+    let (log, pdf) = (build.join(format!("{stem}.log")), build.join(format!("{stem}.pdf")));
+    match out {
+        Ok(out) => {
+            let mut status = finish(
+                "build",
+                out.status.success(),
+                &log,
+                &pdf,
+                start,
+                took,
+                Some(format!("latexmk failed:\n{}", tail(&out.stderr, &out.stdout))),
+            );
+            mark_here(&mut status, &name);
+            status
+        }
+        Err(e) => failed("build", e),
+    }
+}
+
+/// The errors at lines of the file `name` marked `here`.
+fn mark_here(status: &mut Status, name: &str) {
+    for e in &mut status.errors {
+        e.here = e.file.as_deref() == Some(name) && e.line.is_some();
+    }
+}
+
 /// `file` (a Markdown document) into `build/` beside it by texmark, to LaTeX and a PDF.
 pub fn run_build(file: &Path) -> Status {
+    if kind_of(file) == Some(Kind::Latex) {
+        return run_latex_build(file);
+    }
     let (Some(folder), Some(name), Some(stem)) =
         (file.parent(), file.file_name(), file.file_stem())
     else {
@@ -432,8 +539,64 @@ impl Drop for Temporary {
     }
 }
 
+/// The name of the PDF of a marked-up document: `<stem>-diff-<label of the earlier version>`.
+fn diff_job(stem: &str, earlier: &Earlier) -> String {
+    let label = match earlier {
+        Earlier::Git { label, .. } => safe_label(label),
+        Earlier::File { path } => safe_label(&Path::new(path).file_stem().unwrap_or_default().to_string_lossy()),
+    };
+    format!("{stem}-diff-{label}")
+}
+
+/// The marked-up PDF of the LaTeX document `file` against `earlier`: latexdiff of the two `.tex` files, run in the
+/// document's folder (what it reads is found as the document's own is), the result `build/diff/diff.tex` compiled by
+/// latexmk there into `build/diff/<job>.pdf`.
+fn run_latex_diff(file: &Path, earlier: &Earlier) -> Status {
+    let (clock, start) = (Instant::now(), SystemTime::now() - Duration::from_secs(1));
+    let (Some(folder), Some(name), Some(stem)) = (file.parent(), file.file_name(), file.file_stem()) else {
+        return failed("diff", format!("{}: not a file", file.display()));
+    };
+    let (name, stem) = (name.to_string_lossy().into_owned(), stem.to_string_lossy().into_owned());
+    let job = diff_job(&stem, earlier);
+    let diff = folder.join("build/diff");
+    let log = diff.join(format!("{job}.log"));
+    let pdf = diff.join(format!("{job}.pdf"));
+    let result = (|| -> Result<(), String> {
+        let (latexdiff, latexmk) = (find_tool("latexdiff")?, find_tool("latexmk")?);
+        fs::create_dir_all(&diff).map_err(|e| format!("{}: {e}", diff.display()))?;
+        let old = match earlier {
+            Earlier::Git { rev, .. } => {
+                let old = diff.join("old.tex");
+                fs::write(&old, git_show(folder, &name, rev)?).map_err(|e| format!("{}: {e}", old.display()))?;
+                old
+            }
+            Earlier::File { path } => PathBuf::from(path),
+        };
+        let flatten = needs_flatten(&fs::read_to_string(file).unwrap_or_default());
+        let marked = run_ok(&latexdiff, &latexdiff_args(&s(&old), &name, flatten), folder)?;
+        fs::write(diff.join("diff.tex"), marked.stdout).map_err(|e| format!("diff.tex: {e}"))?;
+        // `-f`: latexmk goes on after errors, and the PDF is its result
+        run(&latexmk, &latexmk_document_args("build/diff/diff.tex", "build/diff", Some(&job), true), folder)?;
+        if !modified_since(&pdf, start) {
+            return Err("latexmk made no PDF".into());
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => finish("diff", true, &log, &pdf, start, clock.elapsed(), None),
+        Err(e) => {
+            let mut status = finish("diff", false, &log, &pdf, start, clock.elapsed(), Some(e));
+            status.pdf = None;
+            status
+        }
+    }
+}
+
 /// The marked-up PDF of `file` against `earlier`; see the module.
 pub fn run_diff(file: &Path, earlier: &Earlier) -> Status {
+    if kind_of(file) == Some(Kind::Latex) {
+        return run_latex_diff(file, earlier);
+    }
     let (clock, start) = (Instant::now(), SystemTime::now() - Duration::from_secs(1));
     let (Some(folder), Some(name), Some(stem)) =
         (file.parent(), file.file_name(), file.file_stem())
@@ -444,16 +607,7 @@ pub fn run_diff(file: &Path, earlier: &Earlier) -> Status {
         name.to_string_lossy().into_owned(),
         stem.to_string_lossy().into_owned(),
     );
-    let label = match earlier {
-        Earlier::Git { label, .. } => safe_label(label),
-        Earlier::File { path } => safe_label(
-            &Path::new(path)
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy(),
-        ),
-    };
-    let job = format!("{stem}-diff-{label}");
+    let job = diff_job(&stem, earlier);
     let diff = folder.join("build/diff");
     let (old_dir, new_dir) = (diff.join("old"), diff.join("new"));
     let log = new_dir.join(format!("{job}.log"));
@@ -600,17 +754,14 @@ fn request(app: &AppHandle, window: &WebviewWindow, file: PathBuf, job: Job) {
     });
 }
 
-/// The Markdown document of the window, to build.
+/// The document of the window, to build: Markdown (texmark) or LaTeX (latexmk).
 fn document_of(window: &WebviewWindow) -> Result<PathBuf, String> {
     let path = documents::path_of(window.app_handle(), window.label())
-        .ok_or("Save the document first (⌘S): texmark builds a file")?;
-    let markdown = path
-        .extension()
-        .is_some_and(|e| ["md", "markdown"].iter().any(|m| e.eq_ignore_ascii_case(m)));
-    if markdown {
+        .ok_or("Save the document first (⌘S): a file is built")?;
+    if kind_of(&path).is_some() {
         Ok(path)
     } else {
-        Err("texmark builds Markdown documents (.md)".into())
+        Err("Build is for Markdown (.md, by texmark) and LaTeX (.tex, by latexmk) documents".into())
     }
 }
 
@@ -763,6 +914,41 @@ mod tests {
         );
         assert!(needs_flatten("\\begin{document}\n\\input{body}\n"));
         assert!(!needs_flatten("% \\input{body}\ntext"));
+    }
+
+    #[test]
+    fn latexmk_of_a_tex_document() {
+        assert_eq!(
+            latexmk_document_args("paper.tex", "build", None, false),
+            ["-pdf", "-interaction=nonstopmode", "-file-line-error", "-outdir=build", "paper.tex"]
+        );
+        assert_eq!(
+            latexmk_document_args("build/diff/diff.tex", "build/diff", Some("p-diff-v1"), true),
+            ["-pdf", "-interaction=nonstopmode", "-file-line-error", "-f", "-outdir=build/diff", "-jobname=p-diff-v1", "build/diff/diff.tex"]
+        );
+    }
+
+    #[test]
+    fn kinds_of_documents() {
+        assert_eq!(kind_of(Path::new("a/p.md")), Some(Kind::Markdown));
+        assert_eq!(kind_of(Path::new("p.TEX")), Some(Kind::Latex));
+        assert_eq!(kind_of(Path::new("p.txt")), None);
+    }
+
+    #[test]
+    fn errors_with_file_and_line() {
+        let log = "(./paper.tex\n./paper.tex:12: Undefined control sequence.\nl.12 Some \\foo\n\n./paper.tex:30: LaTeX Error: Environment bar undefined.\n\nSee the LaTeX manual.\nl.30 \\begin{bar}\n\n(./chap/one.tex\n./chap/one.tex:3: Missing $ inserted.\n\n! Emergency stop.\n<*> paper.tex\n\nOutput written on build/paper.pdf (1 page, 2:3: x).\n";
+        let mut status = Status { errors: parse_log_errors(log), ..Default::default() };
+        mark_here(&mut status, "paper.tex");
+        let e = &status.errors;
+        assert_eq!(e.len(), 4);
+        assert_eq!((e[0].message.as_str(), e[0].line, e[0].file.as_deref(), e[0].here), ("Undefined control sequence.", Some(12), Some("paper.tex"), true));
+        assert_eq!(e[0].context.as_deref(), Some("Some \\foo"));
+        assert_eq!((e[1].line, e[1].here), (Some(30), true));
+        assert_eq!(e[1].context.as_deref(), Some("\\begin{bar}"));
+        // in another file: not a line of the document
+        assert_eq!((e[2].file.as_deref(), e[2].line, e[2].here), (Some("chap/one.tex"), Some(3), false));
+        assert_eq!((e[3].message.as_str(), e[3].line, e[3].here), ("Emergency stop.", None, false));
     }
 
     #[test]
@@ -928,6 +1114,46 @@ mod tests {
         );
         assert_eq!(from_file.state, "done");
         assert!(dir.join("build/diff/paper-diff-draft1.pdf").is_file());
+        println!("kept in {}", dir.display());
+    }
+
+    /// A real build and marked-up PDF of a small .tex document (needs latexmk, latexdiff, pdflatex, bibtex):
+    /// `cargo test -p papers-write real_latex -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn real_latex_build_and_marked_up() {
+        let dir = std::env::temp_dir().join(format!("pw-real-tex-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let paper = dir.join("paper.tex");
+        let text = "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\nIce sheets matter \\cite{lisiecki2005}.\n\\begin{equation}\\label{eq:a} a = b + c \\end{equation}\nSee \\eqref{eq:a}.\n\\bibliographystyle{plain}\n\\bibliography{references}\n\\end{document}\n";
+        fs::write(&paper, text).unwrap();
+        fs::write(dir.join("references.bib"), "@article{lisiecki2005, author={Lisiecki, L. and Raymo, M.}, title={A stack}, journal={Paleoceanography}, year={2005}}\n").unwrap();
+        let git = |args: &[&str]| {
+            let ok = Command::new("git").args(["-c", "user.name=T", "-c", "user.email=t@t"]).args(args).current_dir(&dir).status().unwrap();
+            assert!(ok.success());
+        };
+        git(&["init", "-q"]);
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "First"]);
+        git(&["tag", "v1"]);
+        fs::write(&paper, text.replace("Ice sheets matter", "Ice sheets matter a lot")).unwrap();
+        let built = run_build(&paper);
+        println!("build: {} in {:.1} s, pdf {:?}, errors {:?}, {:?}", built.state, built.seconds.unwrap_or(0.0), built.pdf, built.errors, built.message);
+        assert_eq!(built.state, "done");
+        assert!(dir.join("build/paper.pdf").is_file());
+        let again = run_build(&paper);
+        println!("build again: {:.1} s", again.seconds.unwrap_or(0.0));
+        let diffed = run_diff(&paper, &Earlier::Git { rev: "v1".into(), label: "v1".into() });
+        println!("diff: {} in {:.1} s, pdf {:?}, errors {:?}, {:?}", diffed.state, diffed.seconds.unwrap_or(0.0), diffed.pdf, diffed.errors, diffed.message);
+        assert_eq!(diffed.state, "done");
+        assert!(dir.join("build/diff/paper-diff-v1.pdf").is_file());
+        // an error at its line
+        fs::write(&paper, text.replace("Ice sheets", "Ice \\oops sheets")).unwrap();
+        let broken = run_build(&paper);
+        println!("broken: {} {:?}", broken.state, broken.errors);
+        assert_eq!(broken.state, "failed");
+        assert!(broken.errors.iter().any(|e| e.here && e.line == Some(4)));
         println!("kept in {}", dir.display());
     }
 }

@@ -36,7 +36,7 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   disk, a build rewriting it, is read again at the same page.
 - Build ▸ Build (⌘B) writes the document and runs `texmark <file> --pdf` in its
   folder, into `build/` beside it (`build/name.tex`, `name.pdf`, `name.log`;
-  Markdown documents only, saved). Build and Show PDF (⇧⌘B) then opens the PDF
+  Markdown documents, saved; LaTeX below). Build and Show PDF (⇧⌘B) then opens the PDF
   in a tab, which reloads by itself on each rebuild. A mark in the corner
   says building, done (the time) or failed; a failure lists the first errors
   of the LaTeX log (`!` lines with the line of the `.tex`) in a sheet, with
@@ -51,6 +51,23 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   `build/diff/name-diff-<version>.pdf`, shown in a tab (the work is in
   `build/diff/old` and `build/diff/new`; the current version is built there in
   full, which takes a few seconds more than Build). Errors show as for a build.
+- LaTeX files (`.tex`, also `.sty` and `.cls` for the editing) are edited in
+  monospace with the commands, environment names, math (`$…$`, `\(…\)`,
+  `\[…\]`, `equation` and `align`...), comments and the keys of `\cite`,
+  `\ref` and `\label` coloured as in Markdown. The file stays ASCII LaTeX: no
+  symbols typed (`->`), and `\alpha` with Tab stays as written. The completion
+  is on: citation keys after `\cite{` (and `\citep{`...), from the
+  `\bibliography{a,b}` / `\addbibresource{a.bib}` of the file and the papers
+  library (an accepted key is added to the first of those `.bib` files, which
+  is `references.bib` with its `\bibliography` line put in if the file names
+  none), labels after `\ref{` and `\eqref{`, every command name after a
+  backslash, and environments (`\begin{`). Build (⌘B, ⇧⌘B) runs `latexmk -pdf
+  -interaction=nonstopmode -file-line-error -outdir=build` in the file's folder
+  (`build/name.pdf`, `build/name.log`, as for texmark); an error at a line of
+  the file is listed with it, and a click on it puts the cursor there (errors
+  in an included file show its name). Marked-up PDF… runs `latexdiff` on the
+  earlier and current `.tex` directly (no texmark) and compiles with latexmk
+  into `build/diff/name-diff-<version>.pdf`. `.bib` files stay plain text.
 - File ▸ Exchange ▸ Compare as Suggestions… turns another version into
   suggestions: a commit, tag or branch of the document in git, or an edited
   copy of the file (any path). The word-level changes from this document to

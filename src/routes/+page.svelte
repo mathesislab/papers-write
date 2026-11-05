@@ -423,7 +423,7 @@
       {/if}
     </div>
   {/if}
-  <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
+  <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
   {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
   <Exchange bind:this={exchange} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
   {#if error || problem || session.problem}<p class="error">{problem || error || session.problem}</p>{:else if note}<p class="note">{note}</p>{/if}

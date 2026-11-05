@@ -165,8 +165,11 @@ card asking for these, and offers to start from the paper-draft skeleton.
   reference's citation, a label's target.
 - Outline of the sections; diagnostics for undefined labels and keys;
   spelling from the system. Grammar (Harper, a local Rust checker) later.
-- `.tex` files: a LaTeX mode, the same completion, built with latexmk; the
-  texlab language server later.
+- `.tex` files: a LaTeX mode (`lang/tex.ts`, a stream language with the tags
+  of the Markdown mode; no typed symbols, the file stays ASCII), the same
+  completion (every command name; keys from the `\bibliography` and
+  `\addbibresource` of the file; labels from `\label{}`), built with latexmk;
+  the texlab language server later. `.bib` stays plain.
 
 ## Previews and builds
 
@@ -182,8 +185,11 @@ card asking for these, and offers to start from the paper-draft skeleton.
   shows the PDF in a tab, PDFKit, which reloads by itself when the file
   changes), one build per document at a time, the status only told to the
   page. Failures list the `!` errors of `build/name.log` with their `.tex`
-  lines. Not yet: rebuilt on save; the errors mapped back to the Markdown's
-  lines.
+  lines. A `.tex` document is built by latexmk itself in its folder
+  (`-outdir=build`, so `build/name.pdf` as texmark's, and `-file-line-error`):
+  an error `file:line:` at the document's own file is a line of the editor,
+  and a click puts the cursor there. Not yet: rebuilt on save; the errors
+  mapped back to the Markdown's lines.
 - Marked-up PDF: two versions each converted by texmark to LaTeX, then
   latexdiff and latexmk: the marked-up manuscript journals ask for with a
   revision. Built: a tag or one of the last 30 commits of the file, or
@@ -191,7 +197,9 @@ card asking for these, and offers to start from the paper-draft skeleton.
   LaTeX only, `build/diff/new` the current one built, as texmark copies the
   journal's class files and the bibliography only when it compiles, and there
   `diff.tex` is made and compiled). Not yet: a base and its suggestions
-  accepted, two commits.
+  accepted, two commits. For a `.tex` document: latexdiff of the earlier and
+  the current file directly, `diff.tex` compiled by latexmk from the document's
+  folder into `build/diff/`.
 - TeX: the one installed (MacTeX / TeX Live), through latexmk; the app says
   so when there is none. Not tectonic: latexdiff and the journals' classes
   need a full TeX anyway, and texmark already calls the installed engine.

@@ -1,16 +1,17 @@
 <script lang="ts">
   // The builds of a document, over its editor: Build (⌘B), Build and Show PDF (⇧⌘B) and Marked-up PDF… of the Build
   // menu come to `run`. The document is written first (`flush`), then the backend runs texmark (and for the marked-up
-  // PDF latexdiff and latexmk) and tells only the status: `build-status`, shown as a mark in the corner: building,
+  // PDF latexdiff and latexmk; for a .tex document latexmk, and latexdiff) and tells only the status: `build-status`, shown as a mark in the corner: building,
   // done (the time), failed. A failure, or LaTeX errors in a PDF that was made, are listed in a sheet with the log's
   // path. The marked-up PDF asks first which earlier version: the tags and the last commits of the file in git, or
-  // another file.
+  // another file. The error of a .tex document at one of its own lines (`here`) is a button: it takes the cursor to the
+  // line (`ongoto`).
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { listen } from "$lib/events";
 
-  type LatexError = { message: string; line: number | null; context: string | null };
+  type LatexError = { message: string; line: number | null; file: string | null; here: boolean; context: string | null };
   type Status = {
     what: "build" | "diff";
     state: "building" | "done" | "failed";
@@ -22,7 +23,7 @@
   };
   type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
 
-  let { flush, onfocus }: { flush: () => unknown; onfocus?: () => void } = $props();
+  let { flush, onfocus, ongoto }: { flush: () => unknown; onfocus?: () => void; ongoto?: (line: number) => void } = $props();
 
   let status = $state<Status | null>(null);
   /** the sheet of errors is shown */
@@ -134,7 +135,9 @@
         {#each status.errors.slice(0, 10) as error, i (i)}
           <li>
             <span class="message">{error.message}</span>
-            {#if error.line !== null}<span class="where">tex line {error.line}{error.context ? `: ${error.context}` : ""}</span>{/if}
+            {#if error.here && error.line !== null}
+              <button class="goto" onclick={() => (close(), ongoto?.(error.line!))} title="Go to the line">line {error.line}{error.context ? `: ${error.context}` : ""}</button>
+            {:else if error.line !== null}<span class="where">{error.file ? `${nameOf(error.file)} line` : "tex line"} {error.line}{error.context ? `: ${error.context}` : ""}</span>{/if}
           </li>
         {/each}
       </ul>
@@ -178,6 +181,17 @@
 {/if}
 
 <style>
+  .goto {
+    display: block;
+    font: inherit;
+    font-size: 12px;
+    color: var(--accent);
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+  }
   .mark {
     position: absolute;
     z-index: 5;

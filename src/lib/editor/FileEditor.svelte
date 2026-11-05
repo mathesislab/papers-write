@@ -230,9 +230,17 @@
   /** The lines at the cursor indented less or more (⌘[ and ⌘] of the Go menu). */
   export const outdent = () => editor && indentLess(editor);
   export const indent = () => editor && indentMore(editor);
+  /** The cursor at the start of line `n` (1-based; the last if there are fewer), in view, with the keys. */
+  export function goToLine(n: number) {
+    if (!editor) return;
+    const { doc } = editor.state;
+    const line = doc.line(Math.max(1, Math.min(n, doc.lines)));
+    editor.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
+    editor.focus();
+  }
   /** The symbols listed over the editor, if it is Markdown. */
   export function list() {
-    if (!mono && editor) listing = true;
+    if (!mono && !latex && editor) listing = true;
   }
 
   /** A symbol chosen from the list: at the cursor. */

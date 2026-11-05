@@ -14,6 +14,8 @@
 
   /** the person shown ("" for everyone, else a slug) and whether the decided ones show too */
   let who = $state("");
+  /** the round shown ("" for all) */
+  let round = $state("");
   let decided = $state(false);
   /** the form open: a reply to, or a counter-suggestion to, an item id; and its text */
   let form = $state<{ kind: "reply" | "counter"; on: string; text: string } | null>(null);
@@ -23,9 +25,23 @@
   const name = (id: string) => whoIs(id, session.people);
   const byId = $derived(new Map(session.items.map((i) => [i.id, i])));
   const people = $derived([...new Set(session.items.map((i) => slugOf(i.id)))].sort());
+  /** the rounds present among the suggestions, the latest first */
+  const rounds = $derived(
+    [...session.items.filter((i) => i.kind === "suggestion" && i.record.round).reduce((m, i) => m.set(i.record.round!, Math.max(m.get(i.record.round!) ?? 0, Date.parse(i.record.time) || 0)), new Map<string, number>())]
+      .sort((a, b) => b[1] - a[1])
+      .map(([r]) => r),
+  );
+  $effect(() => {
+    if (round && !rounds.includes(round)) round = "";
+  });
+  /** what the foot's Accept all and Reject all take: the suggestions of the person and the round shown */
+  const scope = $derived({ person: who || undefined, round: round || undefined });
+  const openCount = $derived(
+    session.items.filter((i) => i.kind === "suggestion" && i.state === "open" && (!who || slugOf(i.id) === who) && (!round || i.record.round === round)).length,
+  );
   /** the items shown: a counter-suggestion is in the thread of the suggestion it answers, when that is there */
   const shown = $derived(
-    session.items.filter((i) => !(i.on && byId.has(i.on)) && (decided || i.state === "open") && (!who || slugOf(i.id) === who)),
+    session.items.filter((i) => !(i.on && byId.has(i.on)) && (decided || i.state === "open") && (!who || slugOf(i.id) === who) && (!round || i.record.round === round)),
   );
   const hidden = $derived(session.items.length - session.items.filter((i) => i.state === "open").length);
 
@@ -118,6 +134,12 @@
       <option value="">Everyone</option>
       {#each people as slug (slug)}<option value={slug}>{whoIs(slug + "-0", session.people)}</option>{/each}
     </select>
+    {#if rounds.length}
+      <select bind:value={round} aria-label="Round">
+        <option value="">All rounds</option>
+        {#each rounds as r (r)}<option value={r}>{r}</option>{/each}
+      </select>
+    {/if}
     <label title="Show accepted, rejected and resolved items too"><input type="checkbox" bind:checked={decided} /> Resolved{hidden ? ` (${hidden})` : ""}</label>
   </header>
   <div class="list" bind:this={list}>
@@ -161,6 +183,12 @@
       </article>
     {/each}
   </div>
+  {#if openCount}
+    <div class="all">
+      <button class="primary" onclick={(e) => run(e, () => session.acceptAll(scope))}>{scope.person || scope.round ? `Accept all of ${session.describe(scope)}` : "Accept All"}</button>
+      <button onclick={(e) => run(e, () => session.rejectAll(scope))}>Reject all</button>
+    </div>
+  {/if}
   {#if offer}
     <div class="offer">
       <span>Commit the decisions?</span>
@@ -189,12 +217,13 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
     padding: 8px 10px;
     border-bottom: 1px solid var(--line);
   }
   header select {
     flex: 1;
-    min-width: 0;
+    min-width: 6em;
     font: inherit;
     color: var(--fg);
     background: var(--menu-bg);
@@ -332,6 +361,19 @@
   }
   textarea:focus {
     border-color: var(--accent);
+  }
+  .all {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 6px 10px;
+    border-top: 1px solid var(--line);
+  }
+  .all button.primary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .offer {
     display: flex;

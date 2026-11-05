@@ -9,6 +9,9 @@ export type Me = { name: string; email: string; slug: string };
 type Loaded = { items: ReviewItem[]; errors: string[]; people: Record<string, string> };
 type Decision = "accepted" | "rejected" | "resolved" | "reopened" | "withdrawn";
 
+/** Which suggestions Accept All and Reject All take: those of a person (their slug) and/or of a round; none: all. */
+export type Scope = { person?: string; round?: string };
+
 export type Deps = {
   /** the text as typed */
   text: () => string;
@@ -193,13 +196,27 @@ export class ReviewSession {
     this.reload();
   }
 
-  #open = () => this.items.filter((i) => i.kind === "suggestion" && i.state === "open");
+  #open = (scope: Scope = {}) =>
+    this.items.filter(
+      (i) =>
+        i.kind === "suggestion" &&
+        i.state === "open" &&
+        (!scope.person || i.id.replace(/-\d+$/, "") === scope.person) &&
+        (!scope.round || i.record.round === scope.round),
+    );
 
-  /** Review ▸ Accept All: the open suggestions of everyone, from the end of the text backwards (so those before are
+  /** The scope in words: "everyone", "Jane Doe", "round 'Draft of 5 Nov'", "Jane Doe in round 'Draft of 5 Nov'". */
+  describe(scope: Scope = {}): string {
+    const who = scope.person ? (this.people[scope.person] ?? scope.person) : "";
+    const round = scope.round ? `round '${scope.round}'` : "";
+    return who && round ? `${who} in ${round}` : who || round || "everyone";
+  }
+
+  /** Accept All: the open suggestions of `scope` (everyone by default; the Review menu), from the end of the text backwards (so those before are
    *  where they were). Not those that are outdated or orphaned, nor one that a counter-suggestion answers (accept
    *  that), nor one that overlaps another taken: they are told. */
-  async acceptAll() {
-    const open = this.#open();
+  async acceptAll(scope: Scope = {}) {
+    const open = this.#open(scope);
     const answered = new Set(open.map((i) => i.on).filter(Boolean));
     const ranked = open.filter((i) => !answered.has(i.id) && ["exact", "moved"].includes(i.status.type)).sort((a, b) => b.at.from - a.at.from || b.at.to - a.at.to);
     const take: ReviewItem[] = [];
@@ -213,7 +230,7 @@ export class ReviewSession {
     if (!take.length) return this.#deps.say("None of the suggestions can be accepted at once: they are outdated or answered");
     const left = open.length - take.length;
     const ok = await invoke<boolean>("review_confirm", {
-      message: `Accept ${take.length} suggestion${take.length === 1 ? "" : "s"} of everyone?${left ? ` ${left} more (outdated, answered by a counter-suggestion or overlapping) stay open.` : ""}`,
+      message: `Accept ${take.length} suggestion${take.length === 1 ? "" : "s"} of ${this.describe(scope)}?${left ? ` ${left} more (outdated, answered by a counter-suggestion or overlapping) stay open.` : ""}`,
       ok: "Accept All",
     });
     if (!ok) return;
@@ -227,11 +244,11 @@ export class ReviewSession {
     }
   }
 
-  /** Review ▸ Reject All: the open suggestions of everyone (comments stay). */
-  async rejectAll() {
-    const open = this.#open();
+  /** Reject All: the open suggestions of `scope` (everyone by default; the Review menu). Comments stay. */
+  async rejectAll(scope: Scope = {}) {
+    const open = this.#open(scope);
     if (!open.length) return this.#deps.say("No suggestions to reject");
-    const ok = await invoke<boolean>("review_confirm", { message: `Reject ${open.length} suggestion${open.length === 1 ? "" : "s"} of everyone?`, ok: "Reject All" });
+    const ok = await invoke<boolean>("review_confirm", { message: `Reject ${open.length} suggestion${open.length === 1 ? "" : "s"} of ${this.describe(scope)}?`, ok: "Reject All" });
     if (!ok) return;
     try {
       await this.#write(async () => {

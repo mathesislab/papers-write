@@ -23,9 +23,10 @@
     scrollToItem,
     setReview as showReview,
     setReviewMode,
+    setReviewView,
     undoSuggestion,
   } from "./review/review";
-  import type { ReviewHandlers, ReviewItem, ReviewMode } from "./review/types";
+  import type { ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "./review/types";
   import SymbolList from "./SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "./symbols";
 
@@ -109,6 +110,7 @@
   /** the review's items and mode given before the file was read */
   let items: ReviewItem[] | undefined;
   let mode: ReviewMode = "edit";
+  let shownView: ReviewView = "markup";
 
   const text = () => editor?.state.doc.toString() ?? "";
   function failed(e: unknown) {
@@ -126,6 +128,7 @@
     editor.dispatch({ effects: reviewSlot.reconfigure(now ? reviewOf(now) : []) });
     if (now) {
       if (mode !== "edit") setReviewMode(editor, mode);
+      if (shownView !== "markup") setReviewView(editor, shownView);
       if (items) showReview(editor, items);
     }
   });
@@ -146,6 +149,7 @@
     if (review && reviewed !== review) {
       reviewed = review;
       if (mode !== "edit") setReviewMode(editor, mode);
+      if (shownView !== "markup") setReviewView(editor, shownView);
       if (items) showReview(editor, items);
     }
     onchange?.(file.text);
@@ -221,7 +225,15 @@
   /** Edit or suggest (with `review`). */
   export function setMode(now: ReviewMode) {
     mode = now;
+    if (now === "suggest") shownView = "markup";
     if (editor && review) setReviewMode(editor, now);
+  }
+  /** All Markup, Accepted or Original (with `review`): what is drawn of the suggestions; the text is the file's in all
+   *  (not in suggest mode, which is All Markup). */
+  export function setView(now: ReviewView) {
+    if (mode === "suggest" && now !== "markup") return;
+    shownView = now;
+    if (editor && review) setReviewView(editor, now);
   }
   /** A suggestion accepted: its text put in, as typed (written as any change). */
   export const accept = (item: ReviewItem) => !!editor && !!review && acceptItem(editor, item);

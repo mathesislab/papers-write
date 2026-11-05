@@ -3,7 +3,7 @@
 // the user does with them. The editor is told the items (`setReview`) and the mode by the page, which reads them here.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { FileEditor, ReviewHandlers, ReviewItem, ReviewMode } from "papers-write/editor";
+import type { FileEditor, ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "papers-write/editor";
 
 export type Me = { name: string; email: string; slug: string };
 type Loaded = { items: ReviewItem[]; errors: string[]; people: Record<string, string> };
@@ -29,6 +29,8 @@ export class ReviewSession {
   errors = $state.raw<string[]>([]);
   problem = $state("");
   mode = $state<ReviewMode>("edit");
+  /** what is drawn of the suggestions: All Markup, Accepted or Original (suggesting is All Markup only) */
+  view = $state<ReviewView>("markup");
   /** the item last clicked in the text, to show in the panel */
   selected = $state("");
 
@@ -127,6 +129,14 @@ export class ReviewSession {
     if (!this.me) return this.#deps.say("Save the document first, to review it");
     this.mode = this.mode === "suggest" ? "edit" : "suggest";
     invoke("review_mode", { suggesting: this.mode === "suggest" });
+    if (this.mode === "suggest") this.setView("markup");
+  }
+
+  /** Review ▸ All Markup, Accepted, Original: choosing another than All Markup leaves suggest mode. */
+  setView(view: ReviewView) {
+    if (view !== "markup" && this.mode === "suggest") this.toggleMode();
+    this.view = view;
+    invoke("review_view", { view });
   }
 
   async comment(from: number, to: number, body: string) {

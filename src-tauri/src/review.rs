@@ -7,7 +7,8 @@
 //! the last (a pull writes many files). The page reloads the items, which is cheap and the same whoever wrote.
 //!
 //! The mode of the window (suggesting or editing) is kept here too, for the check mark of Review ▸ Suggest Changes,
-//! which follows the window in front.
+//! which follows the window in front; so is its view (All Markup, Accepted, Original), for the check marks of the
+//! three items of Review ▸ view.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -32,6 +33,8 @@ pub struct Reviews {
     slots: Mutex<HashMap<String, Slot>>,
     /// the windows that are suggesting
     suggesting: Mutex<HashMap<String, bool>>,
+    /// the view of each window, when not All Markup
+    views: Mutex<HashMap<String, String>>,
 }
 
 /// What a window's review was set up for: its document, who the user is for it, and the watch on its review folder.
@@ -270,6 +273,16 @@ pub fn review_mode(window: WebviewWindow, suggesting: bool) {
     }
 }
 
+/// The page says which view its window shows (`markup`, `accepted` or `original`): kept for the check marks.
+#[tauri::command]
+pub fn review_view(window: WebviewWindow, view: String) {
+    let app = window.app_handle();
+    app.state::<Reviews>().views.lock().unwrap().insert(window.label().to_string(), view.clone());
+    if crate::documents::front(app).is_some_and(|w| w.label() == window.label()) {
+        sync_views(app, &view);
+    }
+}
+
 /// Asks before a step that cannot be taken back (Accept All, Reject All): true if the user went on.
 #[tauri::command]
 pub async fn review_confirm(window: WebviewWindow, message: String, ok: String) -> bool {
@@ -288,10 +301,22 @@ fn sync_menu(app: &AppHandle, suggesting: bool) {
     }
 }
 
-/// A window got the keys: the check mark of Suggest Changes shows its mode.
+/// The three views of the menu, the one shown checked.
+fn sync_views(app: &AppHandle, view: &str) {
+    for id in ["markup", "accepted", "original"] {
+        if let Some(item) = app.menu().and_then(|m| m.get(&format!("view-{id}"))).and_then(|k| k.as_check_menuitem().cloned()) {
+            let _ = item.set_checked(id == view);
+        }
+    }
+}
+
+/// A window got the keys: the check marks of Suggest Changes and the views show its.
 pub fn focused(app: &AppHandle, label: &str) {
-    let on = app.state::<Reviews>().suggesting.lock().unwrap().get(label).copied().unwrap_or(false);
+    let state = app.state::<Reviews>();
+    let on = state.suggesting.lock().unwrap().get(label).copied().unwrap_or(false);
+    let view = state.views.lock().unwrap().get(label).cloned().unwrap_or_else(|| "markup".into());
     sync_menu(app, on);
+    sync_views(app, &view);
 }
 
 /// A window gone: its review (and the watch) goes.
@@ -299,6 +324,7 @@ pub fn unload(app: &AppHandle, label: &str) {
     let state = app.state::<Reviews>();
     state.slots.lock().unwrap().remove(label);
     state.suggesting.lock().unwrap().remove(label);
+    state.views.lock().unwrap().remove(label);
 }
 
 /// The watch on a review folder, on a thread of its own that stops when this is dropped. The folder may not be there

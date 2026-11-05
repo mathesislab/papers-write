@@ -98,6 +98,7 @@ pub fn run() {
             review::review_decide,
             review::review_counter,
             review::review_mode,
+            review::review_view,
             review::review_confirm,
             projects::project_bar,
             projects::switch_project,

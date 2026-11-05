@@ -57,6 +57,7 @@
     type Item,
     type Completion,
     type Found,
+    type ReviewView,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
@@ -364,6 +365,7 @@
   /** A choice of the Review menu. */
   function reviewMenu(what: string) {
     if (what === "suggest") session.toggleMode();
+    else if (what.startsWith("view-")) session.setView(what.slice(5) as ReviewView);
     else if (what === "panel") togglePanel();
     else if (what === "comment") comment();
     else if (what === "accept-all") session.acceptAll().catch(() => {});
@@ -406,6 +408,7 @@
   });
   $effect(() => editor?.setReview(session.items));
   $effect(() => editor?.setMode(session.mode));
+  $effect(() => editor?.setView(session.view));
   // a document to review opens suggesting, once (the user may switch to editing)
   let suggested = "";
   $effect(() => {

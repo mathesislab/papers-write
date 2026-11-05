@@ -6,7 +6,17 @@
 
 import { Facet, StateEffect, StateField, type ChangeDesc, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, hoverTooltip, type DecorationSet, type Tooltip } from "@codemirror/view";
-import type { ReviewHandlers, ReviewItem } from "./types.ts";
+import type { ReviewHandlers, ReviewItem, ReviewView } from "./types.ts";
+
+/** Which view of the review is drawn (All Markup, Accepted, Original). */
+export const setView = StateEffect.define<ReviewView>();
+export const viewField = StateField.define<ReviewView>({
+  create: () => "markup",
+  update(view, tr) {
+    for (const e of tr.effects) if (e.is(setView)) view = e.value;
+    return view;
+  },
+});
 
 /** What the app gave the editor's review. */
 export const handlersFacet = Facet.define<ReviewHandlers, ReviewHandlers | null>({ combine: (v) => v[0] ?? null });
@@ -157,19 +167,46 @@ class MarkerWidget extends WidgetType {
   }
 }
 
-function decorations(state: EditorState): DecorationSet {
+/** What is drawn of `shown` in a view. All Markup: as it is. Accepted: the text each suggestion replaces hidden and
+ *  what it puts there as plain text in its author's colour. Original: the suggestions not drawn. Comments are marked
+ *  in all three. The text itself is the file's in all. */
+export function viewDecorations(shown: Shown[], view: ReviewView): DecorationSet {
   const ranges = [];
-  for (const s of shownOf(state)) {
+  for (const s of shown) {
     const attributes: Record<string, string> = s.id ? { "data-review": s.id } : {};
     if (s.kind === "comment") {
       if (s.from < s.to) ranges.push(Decoration.mark({ class: classes(s, "comment"), attributes }).range(s.from, s.to));
       else ranges.push(Decoration.widget({ widget: new MarkerWidget(classes(s, "marker"), s.id), side: -1 }).range(s.from));
       continue;
     }
-    if (s.from < s.to) ranges.push(Decoration.mark({ class: classes(s, "del"), attributes }).range(s.from, s.to));
-    if (s.insert) ranges.push(Decoration.widget({ widget: new InsertWidget(s.insert, classes(s, "ins"), s.id), side: -1 }).range(s.to));
+    if (view === "original") continue;
+    if (view === "markup" && s.from < s.to) ranges.push(Decoration.mark({ class: classes(s, "del"), attributes }).range(s.from, s.to));
+    if (s.insert) {
+      const kind = view === "accepted" ? "acc" : "ins";
+      ranges.push(Decoration.widget({ widget: new InsertWidget(s.insert, classes(s, kind), s.id), side: -1 }).range(s.to));
+    }
   }
   return Decoration.set(ranges, true);
+}
+
+/** The ranges of the text hidden in a view (Accepted: what the suggestions replace), merged where they overlap: the
+ *  cursor cannot land inside them. */
+export function hiddenRanges(shown: Shown[], view: ReviewView): { from: number; to: number }[] {
+  if (view !== "accepted") return [];
+  const out: { from: number; to: number }[] = [];
+  for (const s of shown.filter((s) => s.kind === "suggestion" && s.from < s.to).sort((a, b) => a.from - b.from || a.to - b.to)) {
+    const last = out[out.length - 1];
+    if (last && s.from <= last.to) last.to = Math.max(last.to, s.to);
+    else out.push({ from: s.from, to: s.to });
+  }
+  return out;
+}
+
+const hiddenSet = (state: EditorState): DecorationSet =>
+  Decoration.set(hiddenRanges(shownOf(state), state.field(viewField)).map((r) => Decoration.replace({}).range(r.from, r.to)));
+
+function decorations(state: EditorState): DecorationSet {
+  return viewDecorations(shownOf(state), state.field(viewField));
 }
 
 /** The items whose range holds `pos` (its ends included), in the order of the text. */
@@ -228,8 +265,9 @@ function tipOf(state: EditorState, shown: Shown[], me: string): HTMLElement {
  *  drawn before its end). */
 const tooltip = hoverTooltip(
   (view, pos, side): Tooltip | null => {
+    const markup = view.state.field(viewField) === "markup";
     const shown = shownOf(view.state).filter(
-      (s) => (pos > s.from || (pos === s.from && (side > 0 || s.from === s.to))) && (pos < s.to || (pos === s.to && side < 0)),
+      (s) => (markup || s.kind === "comment") && (pos > s.from || (pos === s.from && (side > 0 || s.from === s.to))) && (pos < s.to || (pos === s.to && side < 0)),
     );
     if (!shown.length) return null;
     const me = view.state.facet(handlersFacet)?.me ?? "";
@@ -271,6 +309,7 @@ const theme = EditorView.baseTheme({
     textUnderlineOffset: "2px",
     whiteSpace: "pre-wrap",
   },
+  ".cm-review-acc": { color: "var(--review-color)", whiteSpace: "pre-wrap" },
   ".cm-review-comment": {
     background: "color-mix(in srgb, var(--review-color) 16%, transparent)",
     borderBottom: "2px solid color-mix(in srgb, var(--review-color) 55%, transparent)",
@@ -302,6 +341,13 @@ const appItems = shownFacet.of((state) => {
   });
 });
 
+/** The text hidden in the Accepted view: drawn as nothing, and skipped by the cursor. */
+const hidden = StateField.define<DecorationSet>({
+  create: hiddenSet,
+  update: (deco, tr) => (tr.docChanged || tr.effects.length || tr.reconfigured ? hiddenSet(tr.state) : deco),
+  provide: (f) => [EditorView.decorations.from(f), EditorView.atomicRanges.of((view) => view.state.field(f))],
+});
+
 /** The decorations, made again as the text or the review changes (any effect: cheaper to make than to tell). */
 const drawn = StateField.define<DecorationSet>({
   create: decorations,
@@ -311,7 +357,9 @@ const drawn = StateField.define<DecorationSet>({
 
 /** The overlay: the items, their decorations, the tooltip and the clicks. */
 export const overlay: Extension = [
+  viewField,
   itemsField,
+  hidden,
   appItems,
   drawn,
   tooltip,

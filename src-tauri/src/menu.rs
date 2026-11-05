@@ -165,6 +165,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &separator()?,
             &item("panel", "Show Review Panel", Some("Alt+CmdOrCtrl+R"))?,
             &separator()?,
+            &CheckMenuItem::with_id(app, "view-markup", "All Markup", true, true, Some("Alt+CmdOrCtrl+1"))?,
+            &CheckMenuItem::with_id(app, "view-accepted", "Accepted", true, false, Some("Alt+CmdOrCtrl+2"))?,
+            &CheckMenuItem::with_id(app, "view-original", "Original", true, false, Some("Alt+CmdOrCtrl+3"))?,
+            &separator()?,
             &item("accept-all", "Accept All", None)?,
             &item("reject-all", "Reject All", None)?,
             &separator()?,
@@ -251,7 +255,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id);
             }
         }
-        "suggest" | "comment" | "panel" | "accept-all" | "reject-all" | "next" | "previous" => {
+        "suggest" | "comment" | "panel" | "view-markup" | "view-accepted" | "view-original" | "accept-all" | "reject-all" | "next" | "previous" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "review-menu", id);
             }

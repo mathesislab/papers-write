@@ -57,6 +57,9 @@ export type ReviewItem = {
 /** Edit: typing changes the text. Suggest: typing makes the user's suggestions; the text does not change. */
 export type ReviewMode = "edit" | "suggest";
 
+/** What the editor shows of the suggestions: all markup, as if all were accepted, or as if none were. */
+export type ReviewView = "markup" | "accepted" | "original";
+
 /** A suggestion of the user's, made or changed by typing in suggest mode. */
 export type Suggested = {
   /** the item it changes, none for a new one */

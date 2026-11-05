@@ -5,10 +5,10 @@
 import { EditorSelection, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { modeField, setMode } from "./mode.ts";
-import { handlersFacet, hideItem, overlay, setItems, shownAt, shownOf, type Shown } from "./overlay.ts";
+import { handlersFacet, hideItem, overlay, setItems, setView, shownAt, shownOf, viewField, type Shown } from "./overlay.ts";
 export { COLOURS as REVIEW_COLOURS, reviewColour, setOwnColour } from "./overlay.ts";
 import { stepSuggestions, suggestMode } from "./own.ts";
-import type { ReviewHandlers, ReviewItem, ReviewMode } from "./types.ts";
+import type { ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "./types.ts";
 
 /** The review of the editor: the items drawn over the text, and suggest mode. One instance per editor; it can sit in
  *  a Compartment. */
@@ -16,10 +16,20 @@ export function review(handlers: ReviewHandlers): Extension {
   return [handlersFacet.of(handlers), overlay, suggestMode];
 }
 
-/** Edit or suggest. */
+/** Edit or suggest. Suggesting is only in All Markup: the view goes back to it. */
 export function setReviewMode(view: EditorView, mode: ReviewMode) {
-  view.dispatch({ effects: setMode.of(mode) });
+  view.dispatch({ effects: mode === "suggest" ? [setMode.of(mode), setView.of("markup")] : setMode.of(mode) });
 }
+
+/** All Markup, Accepted (as if all the suggestions were accepted) or Original (as if none were). The text is never
+ *  changed, only what is drawn over it. Not in suggest mode, which is All Markup only: the call is ignored there. */
+export function setReviewView(view: EditorView, v: ReviewView) {
+  if (v !== "markup" && reviewMode(view.state) === "suggest") return;
+  view.dispatch({ effects: setView.of(v) });
+}
+
+/** The view: All Markup without the review. */
+export const reviewView = (state: EditorState): ReviewView => state.field(viewField, false) ?? "markup";
 
 /** The mode: edit without the review. */
 export const reviewMode = (state: EditorState): ReviewMode => state.field(modeField, false) ?? "edit";

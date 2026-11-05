@@ -98,6 +98,9 @@ pub struct LatexError {
     pub here: bool,
     /// the text of the line at the error, as the log shows it
     pub context: Option<String>,
+    /// for a Markdown document's build: the line of the Markdown the `.tex` line was matched to (none when no
+    /// line is clearly the one; texmark keeps no source map)
+    pub md_line: Option<u32>,
 }
 
 /// What a build came to, told to the page as `build-status`.
@@ -292,6 +295,7 @@ fn parse_log_errors(log: &str) -> Vec<LatexError> {
             file: located.map(|(f, _, _)| f.trim_start_matches("./").to_string()),
             here: false,
             context: None,
+            md_line: None,
         };
         for next in lines.iter().skip(i + 1).take(8) {
             if next.starts_with("! ") || file_line_error(next).is_some() {
@@ -445,6 +449,18 @@ fn run_latex_build(file: &Path) -> Status {
     }
 }
 
+/// The errors of a texmark build with the line of the Markdown they came from (`md_line`): the `.tex` line at the error
+/// (the text of `tex`, else the log's context) matched against the lines of `markdown`
+/// (`write_core::srcmap::markdown_line`).
+fn mark_markdown_lines(errors: &mut [LatexError], markdown: &str, tex: &str) {
+    let tex_lines: Vec<&str> = tex.lines().collect();
+    for e in errors {
+        let Some(n) = e.line else { continue };
+        let text = tex_lines.get((n as usize).wrapping_sub(1)).copied().or(e.context.as_deref());
+        e.md_line = text.and_then(|t| write_core::srcmap::markdown_line(markdown, t));
+    }
+}
+
 /// The errors at lines of the file `name` marked `here`.
 fn mark_here(status: &mut Status, name: &str) {
     for e in &mut status.errors {
@@ -480,18 +496,26 @@ pub fn run_build(file: &Path) -> Status {
         build.join(format!("{stem}.pdf")),
     );
     match out {
-        Ok(out) => finish(
-            "build",
-            out.status.success(),
-            &log,
-            &pdf,
-            start,
-            took,
-            Some(format!(
-                "texmark failed:\n{}",
-                tail(&out.stderr, &out.stdout)
-            )),
-        ),
+        Ok(out) => {
+            let mut status = finish(
+                "build",
+                out.status.success(),
+                &log,
+                &pdf,
+                start,
+                took,
+                Some(format!(
+                    "texmark failed:\n{}",
+                    tail(&out.stderr, &out.stdout)
+                )),
+            );
+            if !status.errors.is_empty()
+                && let (Ok(markdown), Ok(tex)) = (fs::read_to_string(file), fs::read_to_string(build.join(format!("{stem}.tex"))))
+            {
+                mark_markdown_lines(&mut status.errors, &markdown, &tex);
+            }
+            status
+        }
         Err(e) => failed("build", e),
     }
 }
@@ -884,6 +908,21 @@ mod tests {
     }
 
     #[test]
+    fn errors_get_their_markdown_line() {
+        let mut errors = parse_log_errors("! Undefined control sequence.\nl.3 This paragraph has an \\bad\n\n! Emergency stop.\n");
+        let tex = "\\begin{document}\n\nThis paragraph has an \\bad problem and more words\n\\end{document}\n";
+        let md = "# T\n\nThis paragraph has an \\bad problem and **more** words\n";
+        mark_markdown_lines(&mut errors, md, tex);
+        assert_eq!(errors[0].md_line, Some(3));
+        // no line number, no Markdown line
+        assert_eq!(errors[1].md_line, None);
+        // a line that matches two lines of the Markdown equally is none
+        let mut errors = parse_log_errors("! Oops.\nl.1 Same words here\n");
+        mark_markdown_lines(&mut errors, "Same words here\nSame words here\n", "Same words here\n");
+        assert_eq!(errors[0].md_line, None);
+    }
+
+    #[test]
     fn names_of_versions() {
         assert_eq!(safe_label("v1.0/rc 2"), "v1_0_rc_2");
         assert_eq!(safe_label("a1b2c3d"), "a1b2c3d");
@@ -1065,5 +1104,23 @@ mod tests {
         assert_eq!(broken.state, "failed");
         assert!(broken.errors.iter().any(|e| e.here && e.line == Some(4)));
         println!("kept in {}", dir.display());
+    }
+
+    /// A real texmark build of a Markdown sample with an error in a paragraph and one in math: the errors come with
+    /// the Markdown line (needs texmark, latexmk, pdflatex): `cargo test -p papers-write real_markdown_errors -- --ignored`.
+    #[test]
+    #[ignore]
+    fn real_markdown_errors_at_their_line() {
+        let dir = std::env::temp_dir().join(format!("pw-real-md-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let paper = dir.join("p.md");
+        fs::write(&paper, "---\ntitle: Sample\nbibliography: r.bib\n---\n\n# Intro\n\nSome **bold** text and *emph* with a citation [@key1] in the first paragraph.\n\nThis paragraph has an \\undefinedmacro problem and more words to follow after it.\n\nThe equation is $a = \\badmath{b}$ in the middle of a sentence here.\n\nFinal paragraph with nothing wrong.\n").unwrap();
+        fs::write(dir.join("r.bib"), "@article{key1, author={A, B}, title={T}, year={2000}, journal={J}}\n").unwrap();
+        let built = run_build(&paper);
+        println!("{:?}", built.errors);
+        assert_eq!(built.errors.len(), 2, "{:?}", built.errors);
+        assert_eq!(built.errors[0].md_line, Some(10));
+        assert_eq!(built.errors[1].md_line, Some(12));
     }
 }

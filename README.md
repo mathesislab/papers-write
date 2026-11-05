@@ -74,6 +74,12 @@ them) are proposed upstream; until they are released,
   in an included file show its name). Marked-up PDF… runs `latexdiff` on the
   earlier and current `.tex` directly (no texmark) and compiles with latexmk
   into `build/diff/name-diff-<version>.pdf`. `.bib` files stay plain text.
+- A Markdown build's LaTeX errors come with the line of the Markdown when it
+  can be told: texmark keeps no source map, so the `.tex` line at the error is
+  matched against the Markdown lines by their words (`\textbf{x}` as `x`,
+  `\citep{k}` as `@k`, math as written); the line with the longest run of
+  words in common is offered ("line N", a click goes there). A tie, or less
+  than two words in common, gives no line (the `.tex` line is shown).
 - File ▸ Exchange ▸ Send for Review… makes one file, `<name> — <round>.review`
   (round: "Draft of <date>" to begin with; saved beside the document unless a
   dialog says otherwise), for someone who has the app but not git: a zip (the

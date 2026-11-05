@@ -25,6 +25,8 @@
     img { max-width: 100%; height: auto; }
     figcaption, caption { font-size: .85em; color: var(--muted); margin-top: .4em; text-align: left; }
     math[display="block"] { display: block; margin: 1em 0; text-align: center; overflow-x: auto; }
+    .eqn { position: relative; } .eqn p { margin: 0; text-align: center; }
+    .eqno { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
     table { border-collapse: collapse; margin: 1.2em auto; font-size: .92em; border-top: 1.5px solid var(--fg); border-bottom: 1.5px solid var(--fg); }
     caption { caption-side: top; text-align: center; margin-bottom: .4em; }
     th { border-bottom: 1px solid var(--fg); } th, td { padding: .25em .7em; text-align: left; }

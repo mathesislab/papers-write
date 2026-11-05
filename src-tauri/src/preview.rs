@@ -1,6 +1,7 @@
 //! The quick preview: the Markdown as typed rendered by pandoc to an HTML fragment, for the pane beside the text.
 //! MathML for the math (WebKit renders it natively: no MathJax, no network), `--citeproc` for the citations (the
-//! default CSL), run in the document's folder so `bibliography:` and the images resolve. One run per window at a
+//! default CSL, after a Lua filter that numbers the equations, figures, tables and sections and resolves their
+//! references, as pandoc-crossref does: `preview/crossref.lua`), run in the document's folder so `bibliography:` and the images resolve. One run per window at a
 //! time: a request while one runs supersedes it, and the process of the old one is killed.
 //!
 //! Images: the local ones are rewritten to base64 data URIs here, after pandoc, when the file is under 5 MB. Not
@@ -14,7 +15,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -77,27 +78,66 @@ fn pandoc() -> Result<PathBuf, String> {
         .ok_or_else(|| "pandoc is not installed: brew install pandoc".to_string())
 }
 
+const CROSSREF: &str = include_str!("../preview/crossref.lua");
+
+/// The cross-reference filter, written once to the temp folder (pandoc reads filters from files); None when it
+/// cannot be written: the preview is then without it.
+fn crossref_filter() -> Option<&'static Path> {
+    static FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
+    FILE.get_or_init(|| {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        CROSSREF.hash(&mut h);
+        let path = std::env::temp_dir().join(format!("papers-write-crossref-{:016x}.lua", h.finish()));
+        if std::fs::read_to_string(&path).is_ok_and(|s| s == CROSSREF) {
+            return Some(path);
+        }
+        let part = path.with_extension(format!("{}.part", std::process::id()));
+        std::fs::write(&part, CROSSREF).ok()?;
+        std::fs::rename(&part, &path).ok()?;
+        Some(path)
+    })
+    .as_deref()
+}
+
 /// The text rendered in `dir`. An untitled document (`saved` false) has no citeproc unless it names a bibliography.
 pub fn render(text: &str, dir: &Path, saved: bool, generation: &AtomicU64, mine: u64) -> Result<Preview, String> {
+    render_with(text, dir, saved, generation, mine, crossref_filter())
+}
+
+/// `render` with the Lua `filter`. What fails is dropped in turn, the filter first (an error that speaks of Lua or
+/// a filter), then the citations (a bibliography that is missing, or one that does not parse): the text still shows.
+fn render_with(text: &str, dir: &Path, saved: bool, generation: &AtomicU64, mine: u64, filter: Option<&Path>) -> Result<Preview, String> {
     let start = Instant::now();
     let pandoc = pandoc()?;
-    let wants = saved || text.contains("bibliography") || text.contains("references:");
+    let mut citeproc = saved || text.contains("bibliography") || text.contains("references:");
+    let mut filter = filter;
     let mut error = None;
-    let mut run = run(&pandoc, text, dir, wants, generation, mine);
-    if let Err(e) = &run
-        && wants
-        && e != SUPERSEDED
-    {
-        // a bibliography that is missing, or one that does not parse: the text without the citations
-        error = Some(e.clone());
-        run = self::run(&pandoc, text, dir, false, generation, mine);
-    }
-    let html = embed(&run?, dir);
-    Ok(Preview { html, error, ms: start.elapsed().as_millis() as u64 })
+    let html = loop {
+        match run(&pandoc, text, dir, filter, citeproc, generation, mine) {
+            Ok(html) => break html,
+            Err(e) if e == SUPERSEDED => return Err(e),
+            Err(e) => {
+                let lower = e.to_lowercase();
+                let filtered = filter.is_some() && (lower.contains("lua") || lower.contains("filter"));
+                if error.is_none() {
+                    error = Some(e.clone());
+                }
+                if filtered {
+                    filter = None;
+                } else if citeproc {
+                    citeproc = false;
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    };
+    Ok(Preview { html: embed(&html, dir), error, ms: start.elapsed().as_millis() as u64 })
 }
 
 /// One run of pandoc: its HTML, or what it said when it failed.
-fn run(pandoc: &Path, text: &str, dir: &Path, citeproc: bool, generation: &AtomicU64, mine: u64) -> Result<String, String> {
+fn run(pandoc: &Path, text: &str, dir: &Path, filter: Option<&Path>, citeproc: bool, generation: &AtomicU64, mine: u64) -> Result<String, String> {
     let mut command = Command::new(pandoc);
     command
         .args(["-f", "markdown", "-t", "html5", "--mathml", "--wrap=none"])
@@ -106,6 +146,10 @@ fn run(pandoc: &Path, text: &str, dir: &Path, citeproc: bool, generation: &Atomi
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // the filter before citeproc: the references are resolved before citeproc takes them for citations
+    if let Some(filter) = filter {
+        command.arg(format!("--lua-filter={}", filter.display()));
+    }
     if citeproc {
         command.arg("--citeproc");
     }
@@ -279,6 +323,96 @@ mod tests {
         assert!(p.error.is_some() && p.html.contains("<h1"));
         // superseded: a newer generation
         assert_eq!(render(&text, &dir, true, &generation, 0).unwrap_err(), SUPERSEDED);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    const SAMPLE: &str = r#"# Intro {#sec:intro}
+
+$$
+\frac{\partial H}{\partial t} = -\nabla\cdot(\mathbf{u}H) + \dot{a}
+$$ {#eq:mass}
+
+\begin{equation}
+  \tau_b = C |u_b|^{m-1} u_b \label{eq:friction}
+\end{equation}
+
+Equation @eq:mass and \eqref{eq:friction} give Fig. @fig:loop, see @sec:intro and @tbl:params.
+
+![The hysteresis loop](figures/loop.png){#fig:loop}
+
+| a | b |
+|---|---|
+| 1 | 2 |
+
+: Parameters {#tbl:params}
+
+Unknown @fig:nope, and a range [@fig:loop; @fig:second].
+
+![Another](figures/second.png){#fig:second}
+"#;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pw-preview-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn crossrefs_resolved() {
+        if pandoc().is_err() {
+            return;
+        }
+        let dir = scratch("xref");
+        let generation = AtomicU64::new(1);
+        let p = render(SAMPLE, &dir, false, &generation, 1).unwrap();
+        println!("cross-reference sample: {} ms", p.ms);
+        assert!(p.error.is_none(), "{:?}", p.error);
+        let h = &p.html;
+        assert!(!h.contains("eq:mass?") && !h.contains("fig:loop?"), "{h}");
+        assert!(h.contains("Eq.\u{a0}(1)") && h.contains(r#"<span class="eqno">(2)</span>"#), "{h}");
+        assert!(h.contains(r#"<span class="eqno">(1)</span>"#) && h.contains(r##"<a href="#eq:friction">(2)</a>"##), "{h}");
+        assert!(!h.contains("\\begin{equation}") && !h.contains("{#eq:mass}") && !h.contains("\\label"), "{h}");
+        assert_eq!(h.matches("<math").count(), 2, "both equations are MathML: {h}");
+        assert!(h.contains("Figure 1: The hysteresis loop") && h.contains("Table 1: Parameters"), "{h}");
+        assert!(h.contains("Fig.\u{a0}1</a>") && h.contains("Sec.\u{a0}1</a>") && h.contains("Table\u{a0}1</a>"), "{h}");
+        assert!(h.contains("<strong>??</strong>"), "{h}");
+        assert!(h.contains("Figs.\u{a0}") && h.contains("1</a>\u{2013}<a href=\"#fig:second\">2"), "{h}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn environments_and_refs() {
+        if pandoc().is_err() {
+            return;
+        }
+        let dir = scratch("env");
+        let generation = AtomicU64::new(1);
+        let text = "\\begin{align}\n a &= b \\label{eq:a} \\nonumber\\\\\n c &= d\n\\end{align}\n\n\\begin{gather*}\n x = 1\n\\end{gather*}\n\nSee \\ref{eq:a} and \\eqref{eq:a}, \\ref{nope}.\n";
+        let p = render(text, &dir, false, &generation, 1).unwrap();
+        let h = &p.html;
+        assert_eq!(h.matches("<math").count(), 2, "{h}");
+        assert!(h.contains(r#"<span class="eqno">(1)</span>"#) && !h.contains(r#"eqno">(2)"#), "gather* is not numbered: {h}");
+        assert!(h.contains(r##"<a href="#eq:a">1</a> and <a href="#eq:a">(1)</a>"##) && h.contains("<strong>??</strong>"), "{h}");
+        assert!(!h.contains("\\label") && !h.contains("\\nonumber"), "{h}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn broken_filter_still_gives_html() {
+        if pandoc().is_err() {
+            return;
+        }
+        let dir = scratch("broken");
+        let bad = dir.join("bad.lua");
+        std::fs::write(&bad, "this is not lua (").unwrap();
+        let generation = AtomicU64::new(1);
+        let p = render_with("# Title\n\nSome $x^2$ text.\n", &dir, false, &generation, 1, Some(&bad)).unwrap();
+        assert!(p.html.contains("<h1") && p.html.contains("<math"), "{}", p.html);
+        assert!(p.error.is_some(), "the message is shown");
+        // an error raised while running, outside the filter's own pcall
+        std::fs::write(&bad, "function Pandoc(d) error('boom') end").unwrap();
+        let p = render_with("# Title\n", &dir, false, &generation, 1, Some(&bad)).unwrap();
+        assert!(p.html.contains("<h1") && p.error.as_deref().is_some_and(|e| e.contains("boom")));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

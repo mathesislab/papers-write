@@ -50,8 +50,11 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   typing stops, and again when the file changes on disk; the pane scrolls to
   the block the cursor is in (matched by order, as pandoc gives no source
   positions). What pandoc says that went wrong is in a bar at its foot; a
-  bibliography it cannot read leaves the citations as typed. Cross-references
-  (`@fig:x`) stay as pandoc leaves them: pandoc-crossref is not run here.
+  bibliography it cannot read leaves the citations as typed. Equations
+  (`$$..$$ {#eq:x}`, `equation`/`align`/`gather`), figures, tables and
+  sections (`{#fig:x}`, `{#tbl:x}`, `{#sec:x}`) are numbered, and `@fig:x`,
+  `@eq:x`, `\eqref{x}` ... resolved, by a Lua filter of pandoc (not
+  pandoc-crossref, which need not be installed) as texmark does.
   Drag the split to resize; its width is kept for the window.
 
 ## Develop

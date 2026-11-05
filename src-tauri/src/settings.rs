@@ -168,7 +168,8 @@ fn put(app: &AppHandle, settings: Settings) {
     let settings = settings.normalised();
     let who_changed = {
         let mut current = CURRENT.write().unwrap();
-        let changed = (&current.review_name, &current.review_email) != (&settings.review_name, &settings.review_email);
+        let changed = (&current.review_name, &current.review_email, current.review_colour)
+            != (&settings.review_name, &settings.review_email, settings.review_colour);
         *current = settings.clone();
         changed
     };

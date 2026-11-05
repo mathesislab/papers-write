@@ -7,7 +7,7 @@ import type { FileEditor, ReviewHandlers, ReviewItem, ReviewMode, ReviewView } f
 import { decided, type Entry } from "$lib/commitLog";
 
 export type Me = { name: string; email: string; slug: string };
-type Loaded = { items: ReviewItem[]; errors: string[]; people: Record<string, string> };
+type Loaded = { items: ReviewItem[]; errors: string[]; people: Record<string, { name: string; colour: number | null }> };
 type Decision = "accepted" | "rejected" | "resolved" | "reopened" | "withdrawn";
 
 /** Which suggestions Accept All and Reject All take: those of a person (their slug) and/or of a round; none: all. */
@@ -22,6 +22,8 @@ export type Deps = {
   /** what was done to the review (suggestions accepted or rejected, the review cleaned up), for the message of the
    *  next commit */
   log?: (entry: Entry) => void;
+  /** told the colours of the people of the review before the items they colour (the page adds the user's own) */
+  colours?: (colours: Record<string, number>) => void;
 };
 
 export class ReviewSession {
@@ -30,6 +32,8 @@ export class ReviewSession {
   items = $state.raw<ReviewItem[]>([]);
   /** the names of the people of the review, by slug */
   people = $state.raw<Record<string, string>>({});
+  /** the colour each person chose (1 to 6, by slug; those who chose none are not in it) */
+  colours = $state.raw<Record<string, number>>({});
   /** the review files that could not be read, and what went wrong with the last step */
   errors = $state.raw<string[]>([]);
   problem = $state("");
@@ -122,7 +126,11 @@ export class ReviewSession {
       try {
         const got = await invoke<Loaded>("review_items", { text: this.#deps.text() });
         if (seq !== this.#seq) return;
-        [this.items, this.errors, this.people] = [got.items, got.errors, got.people];
+        const entries = Object.entries(got.people);
+        const colours = Object.fromEntries(entries.flatMap(([slug, p]) => (p.colour ? [[slug, p.colour]] : [])));
+        this.#deps.colours?.(colours);
+        [this.items, this.errors, this.colours] = [got.items, got.errors, colours];
+        this.people = Object.fromEntries(entries.map(([slug, p]) => [slug, p.name]));
       } catch (e) {
         if (seq === this.#seq) this.problem = String(e);
       }

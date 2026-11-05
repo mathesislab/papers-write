@@ -32,8 +32,8 @@ pub use anchor::{Anchor, Status};
 pub use cleanup::{Cleanup, cleanup, cleanup_plan};
 pub use fold::{Item, State};
 pub use ops::{NewRecord, apply, apply_all};
-pub use record::{Decision, Kind, Person, Record};
-pub use store::{Error, Result};
+pub use record::{COLOURS, Decision, Kind, Person, Record};
+pub use store::{Error, Result, set_colour};
 pub use text::{blob_hash, byte_of, utf16_of};
 
 use std::collections::HashMap;

@@ -128,6 +128,44 @@ pub(crate) fn rewrite(path: &Path, person: &Person, records: &[&Record]) -> Resu
     })
 }
 
+/// The `colour` (1 to 6, or none for the one from the name) of the person whose file is `path`, written in its
+/// `[person]` header only: the records after the header are kept byte for byte, and the file is written beside and
+/// moved over, so that it is the old one or the new one. The one other rewrite by an owner (with Clean Up). Whether
+/// the file changed: false when it has no header or the colour is already that.
+pub fn set_colour(path: &Path, colour: Option<u8>) -> Result<bool> {
+    let fail = |e| Error::Io(path.to_path_buf(), e);
+    let text = match fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(fail(e)),
+    };
+    let content = parse(path)?;
+    let Some(person) = content.person else { return Ok(false) };
+    let colour = colour.filter(|c| (1..=super::record::COLOURS).contains(c));
+    if person.colour == colour {
+        return Ok(false);
+    }
+    // the records start at the first `[[record]]` line; what is before it is the header
+    let at = text.lines().scan(0usize, |pos, l| {
+        let start = *pos;
+        *pos += l.len() + 1;
+        Some((start, l))
+    }).find(|(_, l)| l.starts_with("[[record]]")).map(|(p, _)| p);
+    let person = Person { colour, ..person };
+    let mut out = toml::to_string(&Header { person: &person }).map_err(|e| Error::Format(path.to_path_buf(), e.to_string()))?;
+    if let Some(at) = at {
+        out.push('\n');
+        out.push_str(&text[at..]);
+    }
+    let tmp = path.with_extension("toml.tmp");
+    fs::write(&tmp, out).map_err(fail)?;
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        fail(e)
+    })?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,6 +191,35 @@ mod tests {
         std::fs::write(base_path(&d, &h), "changed").unwrap();
         write_base(&d, "hello\n").unwrap();
         assert_eq!(read_base(&d, &h).as_deref(), Some("changed"));
+    }
+
+    #[test]
+    fn the_colour_is_in_the_header_and_the_records_are_kept_byte_for_byte() {
+        let d = doc("paper.md");
+        let path = person_path(&d, "jane-doe");
+        let me = Person::new("Jane Doe", "jane@example.org");
+        append(&path, &me, &rec("jane-doe-1", "one")).unwrap();
+        append(&path, &me, &rec("jane-doe-2", "two \"quoted\"")).unwrap();
+        let before = std::fs::read_to_string(&path).unwrap();
+        let records = &before[before.find("[[record]]").unwrap()..];
+        assert!(!before.contains("colour"));
+        assert!(set_colour(&path, Some(4)).unwrap());
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(after.starts_with("[person]\nname = \"Jane Doe\"\nemail = \"jane@example.org\"\ncolour = 4\n\n[[record]]"), "{after}");
+        assert!(after.ends_with(records));
+        // the same again changes nothing; none takes it out; 9 is none
+        assert!(!set_colour(&path, Some(4)).unwrap());
+        assert!(set_colour(&path, Some(9)).unwrap());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+        let review = Review::load(&d).unwrap();
+        assert_eq!(review.files[0].person.as_ref().unwrap().colour, None);
+        assert_eq!(review.files[0].records.len(), 2);
+        // no file, nothing
+        assert!(!set_colour(&person_path(&d, "nobody"), Some(2)).unwrap());
+        // a file made with a colour has it from the start
+        let alex = Person::new("Alex", "").with_colour(Some(2));
+        append(&person_path(&d, "alex"), &alex, &rec("alex-1", "x")).unwrap();
+        assert_eq!(Review::load(&d).unwrap().files[0].person.as_ref().unwrap().colour, Some(2));
     }
 
     #[test]

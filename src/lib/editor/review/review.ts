@@ -6,7 +6,7 @@ import { EditorSelection, type EditorState, type Extension } from "@codemirror/s
 import { EditorView } from "@codemirror/view";
 import { modeField, setMode } from "./mode.ts";
 import { handlersFacet, hideItem, overlay, setItems, setView, shownAt, shownOf, viewField, type Shown } from "./overlay.ts";
-export { COLOURS as REVIEW_COLOURS, reviewColour, setOwnColour } from "./overlay.ts";
+export { COLOURS as REVIEW_COLOURS, reviewColour, setColours } from "./overlay.ts";
 import { stepSuggestions, suggestMode } from "./own.ts";
 import type { ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "./types.ts";
 

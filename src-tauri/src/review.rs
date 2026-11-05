@@ -23,7 +23,7 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use crate::sheet::Level;
 use crate::settings::Settings;
 use write_core::review::text::slug;
-use write_core::review::{Cleanup, Decision, Item, NewRecord, Person, Review, cleanup, cleanup_plan, store, utf16_of};
+use write_core::review::{COLOURS, Cleanup, Decision, Item, NewRecord, Person, Review, cleanup, cleanup_plan, store, utf16_of};
 
 const UNSAVED: &str = "Save the document first";
 
@@ -64,8 +64,15 @@ pub struct Items {
     items: Vec<Item>,
     /// the files that could not be read, each as "file: why"
     errors: Vec<String>,
-    /// the names of the people of the review files, by slug (the id of a record starts with its person's slug)
-    people: HashMap<String, String>,
+    /// the people of the review files, by slug (the id of a record starts with its person's slug)
+    people: HashMap<String, Who>,
+}
+
+/// A person of the review: their name and the colour of their file's header (1 to 6), if they chose one.
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub struct Who {
+    name: String,
+    colour: Option<u8>,
 }
 
 /// Who the user is for `folder`: the name and e-mail of the settings where set, else those of the git configuration
@@ -89,10 +96,11 @@ fn system_person() -> Person {
 fn identity(settings: &Settings, git: impl FnOnce() -> Option<Person>, system: impl FnOnce() -> Person) -> Person {
     let (name, email) = (settings.review_name.trim(), settings.review_email.trim());
     if !name.is_empty() && !email.is_empty() {
-        return Person::new(name, email);
+        return Person::new(name, email).with_colour(settings.review_colour);
     }
     let base = git().unwrap_or_else(system);
     Person::new(if name.is_empty() { base.name } else { name.to_string() }, if email.is_empty() { base.email } else { email.to_string() })
+        .with_colour(settings.review_colour)
 }
 
 /// Who the user is changed (the settings): each window's review of a file has the new person from now on.
@@ -100,6 +108,10 @@ pub fn identity_changed(app: &AppHandle) {
     let state = app.state::<Reviews>();
     for slot in state.slots.lock().unwrap().values_mut() {
         slot.me = person_in(folder_of(&slot.path));
+        // the colour is the person's: their file's header says it to the co-authors (the header only)
+        if let Err(e) = store::set_colour(&store::person_path(&slot.path, &slug(&slot.me.name)), slot.me.colour) {
+            eprintln!("{}: colour not written ({e})", slot.path.display());
+        }
     }
 }
 
@@ -139,7 +151,13 @@ fn load(doc: &Path, text: &str) -> Result<Items, String> {
     let people = review
         .files
         .iter()
-        .map(|f| (f.slug.clone(), f.person.as_ref().map_or_else(|| f.slug.clone(), |p| p.name.clone())))
+        .map(|f| {
+            let who = match &f.person {
+                Some(p) => Who { name: p.name.clone(), colour: p.colour.filter(|c| (1..=COLOURS).contains(c)) },
+                None => Who { name: f.slug.clone(), colour: None },
+            };
+            (f.slug.clone(), who)
+        })
         .collect();
     Ok(Items {
         items: review.items(text),
@@ -453,6 +471,29 @@ mod tests {
     }
 
     #[test]
+    fn the_colour_of_the_settings_is_the_users_whoever_they_are() {
+        let coloured = |c| Settings { review_colour: c, ..settings("", "") };
+        assert_eq!(identity(&coloured(Some(3)), || None, system).colour, Some(3));
+        assert_eq!(identity(&coloured(Some(9)), || None, system).colour, None);
+        assert_eq!(identity(&Settings { review_colour: Some(2), ..settings("A", "a@x.org") }, || None, system).colour, Some(2));
+        assert_eq!(identity(&coloured(None), || None, system).colour, None);
+    }
+
+    #[test]
+    fn each_person_of_the_review_has_their_name_and_chosen_colour() {
+        let d = doc();
+        let (f, t) = range(TEXT, "rapidly");
+        suggest(&d, &jane().with_colour(Some(5)), TEXT, None, f, t, "fast").unwrap();
+        suggest(&d, &Person::new("Alex Robinson", ""), TEXT, None, f, t, "slowly").unwrap();
+        let got = load(&d, TEXT).unwrap();
+        assert_eq!(got.people["jane-doe"], Who { name: "Jane Doe".into(), colour: Some(5) });
+        assert_eq!(got.people["alex-robinson"], Who { name: "Alex Robinson".into(), colour: None });
+        // the owner changes it: the co-author sees it from the header
+        store::set_colour(&store::person_path(&d, "jane-doe"), Some(2)).unwrap();
+        assert_eq!(load(&d, TEXT).unwrap().people["jane-doe"].colour, Some(2));
+    }
+
+    #[test]
     fn git_and_the_system_are_not_asked_when_the_settings_say_it_all() {
         let asked = || -> Option<Person> { panic!("asked") };
         assert_eq!(identity(&settings("A", "a@x.org"), asked, || panic!("asked")), Person::new("A", "a@x.org"));
@@ -486,7 +527,7 @@ mod tests {
         assert_eq!(got.items[0].replacement.as_deref(), Some("fast"));
         assert_eq!(got.items[1].record.text.as_deref(), Some("Which one?"));
         assert_eq!(got.items[1].thread.len(), 1);
-        assert_eq!(got.people["jane-doe"], "Jane Doe");
+        assert_eq!(got.people["jane-doe"].name, "Jane Doe");
         assert!(got.errors.is_empty());
         // an edit of somebody else's suggestion is refused
         assert!(suggest(&d, &Person::new("Alex Robinson", ""), TEXT, Some("jane-doe-2"), 0, 1, "x").is_err());

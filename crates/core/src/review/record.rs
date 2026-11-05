@@ -12,7 +12,13 @@ pub struct Person {
     /// above it, so that an id removed is never given again (a decision of someone else may still name it)
     #[serde(default, skip_serializing_if = "is_zero")]
     pub through: u64,
+    /// the colour of this person among the review's authors, 1 to 6 (`COLOURS`); none: from the name
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<u8>,
 }
+
+/// How many colours a person can choose from.
+pub const COLOURS: u8 = 6;
 
 fn is_zero(n: &u64) -> bool {
     *n == 0
@@ -20,7 +26,7 @@ fn is_zero(n: &u64) -> bool {
 
 impl Person {
     pub fn new(name: impl Into<String>, email: impl Into<String>) -> Self {
-        Self { name: name.into(), email: email.into(), through: 0 }
+        Self { name: name.into(), email: email.into(), through: 0, colour: None }
     }
 
     /// `user.name` and `user.email` of the git configuration in `folder` (the `git` command); `None` without a name
@@ -31,7 +37,13 @@ impl Person {
             let v = String::from_utf8(out.stdout).ok()?.trim().to_string();
             (out.status.success() && !v.is_empty()).then_some(v)
         };
-        Some(Person { name: get("user.name")?, email: get("user.email").unwrap_or_default(), through: 0 })
+        Some(Person { name: get("user.name")?, email: get("user.email").unwrap_or_default(), through: 0, colour: None })
+    }
+
+    /// This person with their colour (a number out of 1 to 6 only; else none).
+    pub fn with_colour(mut self, colour: Option<u8>) -> Self {
+        self.colour = colour.filter(|c| (1..=COLOURS).contains(c));
+        self
     }
 
     /// Who the user is for the document in `folder`: the git person, else the full name of the user in the system

@@ -56,7 +56,7 @@
     citation,
     insertSymbol,
     replaceText,
-    setOwnColour,
+    setColours,
     type EditorPrefs,
     type Item,
     type Completion,
@@ -141,7 +141,7 @@
     } catch {}
     if (!outlining) editor?.focus();
   }
-  const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), log: (e) => log.push(e) });
+  const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), log: (e) => log.push(e), colours: (m) => setColours(withOwn(m)) });
   /** the review panel at the right: shown (the preview is not while it is) */
   let panel = $state(false);
   /** the comment being written: the selection it is on and where the box goes */
@@ -495,9 +495,16 @@
     return colorOf(session.me?.slug ?? "");
   });
 
+  /** the people's colours with the user's own as the settings have it (their file's header follows a moment later) */
+  function withOwn(m: Record<string, number>): Record<string, number | null> {
+    const slug = session.me?.slug;
+    return slug && colour ? { ...m, [slug]: colour } : m;
+  }
+
   $effect(() => {
-    setOwnColour(session.me?.slug, colour);
+    void colour;
     untrack(() => {
+      setColours(withOwn(session.colours));
       coloured++;
       session.reload();
     });

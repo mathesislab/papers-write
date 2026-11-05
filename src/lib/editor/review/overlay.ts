@@ -95,19 +95,21 @@ export const shownOf = (state: EditorState): Shown[] =>
 /** The number of colours of the authors: `--review-1` … `--review-6`. */
 export const COLOURS = ["#c2410c", "#7c3aed", "#0f766e", "#be185d", "#1d4ed8", "#4d7c0f"];
 
-/** The colour the user chose for themselves (the app's settings), with their slug: the others' stay as the hash. */
-let own: { slug: string; colour: number } | null = null;
+/** The colours people chose for themselves (the `colour` of their review file's header), by slug; whoever is not in
+ *  it has the colour of the hash of their slug. */
+let chosen: Record<string, number> = {};
 
-/** The user `slug` shown in `colour` (1 to 6) from now on; none: from the slug, as everyone's. The editor shows it
- *  from its next items. */
-export function setOwnColour(slug: string | null | undefined, colour: number | null | undefined) {
-  own = slug && colour && colour >= 1 && colour <= COLOURS.length ? { slug, colour } : null;
+/** The chosen colours (1 to 6, by slug) from now on; what is not 1 to 6 is dropped. The editor shows them from its
+ *  next items. */
+export function setColours(colours: Record<string, number | null | undefined>) {
+  chosen = {};
+  for (const [slug, c] of Object.entries(colours)) if (c && Number.isInteger(c) && c >= 1 && c <= COLOURS.length) chosen[slug] = c;
 }
 
-/** A person's colour, 1 to 6: their own choice if it is the user, else a hash of their slug. The slug, not the name:
+/** A person's colour, 1 to 6: the one they chose (`setColours`), else a hash of their slug. The slug, not the name:
  *  a suggestion the app has not yet written has no item and no name, and is coloured as the person's others. */
 export function colourOf(slug: string): number {
-  if (own && own.slug === slug) return own.colour;
+  if (Object.hasOwn(chosen, slug)) return chosen[slug];
   let h = 5381;
   for (let i = 0; i < slug.length; i++) h = ((h << 5) + h + slug.charCodeAt(i)) | 0;
   return (Math.abs(h) % COLOURS.length) + 1;

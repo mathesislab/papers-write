@@ -11,7 +11,7 @@
   // the suggestions and comments are drawn over the text and typing in suggest mode makes the user's suggestions.
 
   import { indentLess, indentMore, redo as stepForward, undo as stepBack } from "@codemirror/commands";
-  import { Prec, type Extension } from "@codemirror/state";
+  import { Compartment, Prec, type Extension } from "@codemirror/state";
   import { EditorView, keymap } from "@codemirror/view";
   import { onMount } from "svelte";
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "./editor";
@@ -113,8 +113,19 @@
     error = String(e);
   }
 
-  /** whether the review given before the editor was made is in it */
-  let shown = false;
+  /** the review in the editor: given as the app has it, which may be after the file is read */
+  const reviewSlot = new Compartment();
+  let reviewed: ReviewHandlers | undefined;
+  $effect(() => {
+    const now = review;
+    if (!editor || now === reviewed) return;
+    reviewed = now;
+    editor.dispatch({ effects: reviewSlot.reconfigure(now ? reviewOf(now) : []) });
+    if (now) {
+      if (mode !== "edit") setReviewMode(editor, mode);
+      if (items) showReview(editor, items);
+    }
+  });
 
   /** The file read, into the editor: made the first time. */
   function show(file: { path: string; text: string }) {
@@ -126,10 +137,10 @@
         prefs,
         completion,
         placeholder,
-        extensions: [...extensions, selection, ...(mono ? [] : [listKey]), ...(review ? [reviewOf(review)] : [])],
+        extensions: [...extensions, selection, ...(mono ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });
-    if (review && !shown) {
-      shown = true;
+    if (review && reviewed !== review) {
+      reviewed = review;
       if (mode !== "edit") setReviewMode(editor, mode);
       if (items) showReview(editor, items);
     }

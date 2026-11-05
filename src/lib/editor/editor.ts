@@ -51,6 +51,7 @@ const style = HighlightStyle.define([
   { tag: [lang.mathCommand, lang.latexCommand, lang.latexEnvName], color: "var(--md-math, var(--accent))" },
   { tag: lang.citationKey, color: "var(--md-cite, var(--accent))" },
   { tag: [lang.crossRefKey, lang.labelName], color: "var(--md-ref, var(--md-cite, var(--accent)))" },
+  { tag: tags.comment, color: "var(--muted)", fontStyle: "italic" },
   { tag: lang.mathNumber, color: "var(--md-math-number, var(--md-quote, var(--muted)))" },
 ]);
 
@@ -316,12 +317,14 @@ export function insertSymbol(view: EditorView, symbol: string) {
 /** The history's keys but ⌘U and ⇧⌘U (undo and redo the selection): ⌘U is the menu's Quote Selection. */
 const historyKeys = historyKeymap.filter((k) => k.run !== undoSelection && k.run !== redoSelection);
 
-/** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `rules` are the sequences
+/** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `latex` is a LaTeX file,
+ *  highlighted, in monospace, completed, and with no symbols typed (it stays ASCII); `rules` are the sequences
  *  that become symbols as they are typed (Markdown only); `prefs` those of the settings; `completion` what the app
  *  gives for the completion of citations, references and LaTeX (Markdown only; without it there is none); `extensions`
  *  are more. */
 export type Options = {
   mono?: boolean;
+  latex?: boolean;
   rules?: readonly Rule[];
   prefs?: EditorPrefs;
   completion?: Completion;
@@ -332,8 +335,9 @@ export type Options = {
 
 /** An editor of `text` in `parent`; `changed` with the text after each change typed. */
 export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, options: Options = {}) {
-  const mono = options.mono ?? false;
-  const complete = !mono && options.completion;
+  const latexFile = options.latex ?? false;
+  const mono = (options.mono ?? false) || latexFile;
+  const complete = (!mono || latexFile) && options.completion;
   return new EditorView({
     parent,
     state: EditorState.create({
@@ -351,9 +355,11 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
           ...historyKeys,
         ]),
         prefsSlot.of(prefsOf(options.prefs ?? PREFS)),
-        ...(mono
-          ? []
-          : [
+        ...(latexFile
+          ? [lang.tex, syntaxHighlighting(style)]
+          : mono
+            ? []
+            : [
               markdown({ extensions: lang.paperMarkdown }),
               symbolRules.init(() => options.rules ?? DEFAULTS),
               typedSymbols,
@@ -361,7 +367,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
               shown,
             ]),
         ...(options.placeholder ? [placeholder(options.placeholder)] : []),
-        ...(complete ? [completion(complete)] : []),
+        ...(complete ? [completion(complete, latexFile)] : []),
         theme(mono),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {

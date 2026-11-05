@@ -68,3 +68,79 @@ export const TEXT_NAMES: LatexName[] = [
     (env): LatexName => ({ name: `\\begin{${env}}`, snippet: `\\begin{${env}}\n  \${}\n\\end{${env}}`, detail: "environment" }),
   ),
 ];
+
+const env = (name: string, body = "${}"): LatexName => ({
+  name: `\\begin{${name}}`,
+  snippet: `\\begin{${name}}\n  ${body}\n\\end{${name}}`,
+  detail: "environment",
+});
+
+/** The commands of the document: the structure, the text, the references, the packages. */
+const DOCUMENT: LatexName[] = [
+  args("documentclass", "${}"),
+  args("usepackage", "${}"),
+  args("input", "${}"),
+  args("include", "${}"),
+  args("includegraphics", "${}"),
+  args("title", "${}"),
+  args("author", "${}"),
+  args("date", "${}"),
+  args("part", "${}"),
+  args("chapter", "${}"),
+  args("section", "${}"),
+  args("subsection", "${}"),
+  args("subsubsection", "${}"),
+  args("paragraph", "${}"),
+  args("caption", "${}"),
+  args("footnote", "${}"),
+  args("texttt", "${}"),
+  args("textsc", "${}"),
+  args("textrm", "${}"),
+  args("underline", "${}"),
+  args("url", "${}"),
+  args("href", "${}", "${}"),
+  args("newcommand", "\\\\${}", "${}"),
+  args("renewcommand", "\\\\${}", "${}"),
+  args("bibliography", "${}"),
+  args("bibliographystyle", "${}"),
+  args("addbibresource", "${}"),
+  args("parencite", "${}"),
+  args("textcite", "${}"),
+  args("autoref", "${}"),
+  args("cref", "${}"),
+  args("pageref", "${}"),
+  ...plain(
+    ..."maketitle tableofcontents appendix newpage clearpage centering noindent item hline toprule midrule bottomrule printbibliography today".split(" "),
+    ..."tiny scriptsize footnotesize small normalsize large Large LARGE huge Huge bfseries itshape ttfamily".split(" "),
+    ..."textwidth linewidth columnwidth vspace hspace par ldots dots".split(" "),
+  ),
+];
+
+/** The environments of the document. */
+const ENVIRONMENTS: LatexName[] = [
+  env("document"),
+  env("abstract"),
+  env("itemize", "\\item ${}"),
+  env("enumerate", "\\item ${}"),
+  env("description", "\\item[${}] "),
+  env("equation"),
+  env("equation*"),
+  env("align"),
+  env("align*"),
+  env("gather"),
+  env("multline"),
+  env("figure", "\\centering\n  \\includegraphics[width=\\linewidth]{${}}\n  \\caption{}\n  \\label{fig:}"),
+  env("table", "\\centering\n  \\caption{}\n  \\label{tab:}\n  \\begin{tabular}{${}}\n  \\end{tabular}"),
+  env("tabular", "${}"),
+  env("quote"),
+  env("verbatim"),
+  env("center"),
+  env("minipage"),
+  env("thebibliography"),
+];
+
+/** In a LaTeX file, anywhere after a backslash: all the names, those of the environments last. */
+export const TEX_NAMES: LatexName[] = (() => {
+  const seen = new Set<string>();
+  return [...DOCUMENT, ...TEXT_NAMES, ...MATH_NAMES, ...ENVIRONMENTS].filter((n) => !seen.has(n.name) && !!seen.add(n.name));
+})();

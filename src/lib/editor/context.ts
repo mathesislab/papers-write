@@ -2,7 +2,7 @@
 // text of the line before the cursor (`before`), so that they are tested without an editor.
 
 import type { syntaxTree } from "@codemirror/language";
-import { MATH_NAMES, TEXT_NAMES, type LatexName } from "./lang/latex-names.ts";
+import { MATH_NAMES, TEXT_NAMES, TEX_NAMES, type LatexName } from "./lang/latex-names.ts";
 
 type Tree = ReturnType<typeof syntaxTree>;
 
@@ -117,4 +117,26 @@ export function refOptions(labels: string[], context: { prefix: string; refKind?
 /** The names that `context` (a LaTeX command) can be, those that begin as typed. */
 export function nameOptions(context: { prefix: string; names: LatexName[] }): LatexName[] {
   return context.names.filter((n) => n.name.slice(1).startsWith(context.prefix));
+}
+
+/** The text of a line without its comment (the first `%` that is no `\%`). */
+const uncommented = (line: string) => /^(?:[^%\\]|\\.)*/.exec(line)?.[0] ?? line;
+
+/** What is to be completed at the end of `before` (the line before the cursor at `pos`) in a LaTeX file: the keys of
+ *  citations and references, paths, and the names of commands (all of them, in math and out of it); none in a comment. */
+export function texContextAt(pos: number, before: string): Context | null {
+  if (uncommented(before).length < before.length) return null;
+  let m: RegExpExecArray | null;
+  if ((m = PATH_COMMAND.exec(before))) return { kind: "path", from: pos - m[1].length, prefix: m[1] };
+  if ((m = CITE_COMMAND.exec(before))) return { kind: "citation", from: pos - m[1].length, prefix: m[1] };
+  if ((m = REF_COMMAND.exec(before))) return { kind: "ref", from: pos - m[1].length, prefix: m[1] };
+  if ((m = NAME.exec(before))) return { kind: "latex", from: pos - m[1].length - 1, prefix: m[1], names: TEX_NAMES };
+  return null;
+}
+
+/** The labels defined in a LaTeX text (`\label{x}`), in order, each once; comments left out. */
+export function texLabelsOf(text: string): string[] {
+  const labels = new Set<string>();
+  for (const line of text.split("\n")) for (const m of uncommented(line).matchAll(/\\label\{([^}\s]+)\}/g)) labels.add(m[1]);
+  return [...labels];
 }

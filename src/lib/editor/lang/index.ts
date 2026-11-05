@@ -9,6 +9,7 @@ import { mathBlock, mathInline } from "./math.ts";
 import * as t from "./tags.ts";
 
 export * from "./tags.ts";
+export { tex, texParser } from "./tex.ts";
 
 const frontMatter: MarkdownConfig = {
   defineNodes: [

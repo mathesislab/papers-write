@@ -14,7 +14,7 @@ import { FileEditor, RefList, SymbolList, makeEditor, prefsFrom, setEditorFont }
 
 `FileEditor.svelte`:
 - `load: () => Promise<{ path: string; text: string }>` and `save: (path: string, text: string) => Promise<void>`: where the file is read from and written to.
-- `prefs: EditorPrefs`, made with `prefsFrom(settings)` from anything shaped as `EditorSettings` (`{ indent, readable_width, line_numbers }`); `symbols`, the user's own `[sequence, symbol]` pairs; `mono`; `onchange`; the bindable `status`, `error`, `path`, `selected`.
+- `prefs: EditorPrefs`, made with `prefsFrom(settings)` from anything shaped as `EditorSettings` (`{ indent, readable_width, line_numbers }`); `symbols`, the user's own `[sequence, symbol]` pairs; `mono`; `latex` (a `.tex`, `.sty` or `.cls` file: highlighted by `lang/tex.ts`, in monospace, completed as Markdown is but with every LaTeX name after a backslash and the labels read from `\label{}`; the sequences typed and `\name` with Tab are off, the file stays ASCII LaTeX); `onchange`; the bindable `status`, `error`, `path`, `selected`.
 - `extensions: Extension[]`: more CodeMirror extensions, for what is the app's own (Papers Review colours the page and line of a PDF quote this way).
 - `placeholder`: what an empty editor shows (none by default; Papers Review says how to write a review).
 - `autofocus`: the keys to the editor once the file is read (a window that is the editor).

@@ -33,6 +33,7 @@
     load,
     save,
     mono = false,
+    latex = false,
     extensions = [],
     completion,
     review,
@@ -52,6 +53,8 @@
     save: (path: string, text: string) => Promise<void>;
     /** plain text in monospace, not Markdown */
     mono?: boolean;
+    /** a LaTeX file: highlighted and completed in monospace, no symbols typed */
+    latex?: boolean;
     /** more extensions of the editor */
     extensions?: Extension[];
     /** what the completion of citations, references and LaTeX takes from the app (none without it) */
@@ -133,11 +136,12 @@
     if (editor) replaceText(editor, file.text);
     else editor = makeEditor(host, file.text, typed, {
         mono,
+        latex,
         rules,
         prefs,
         completion,
         placeholder,
-        extensions: [...extensions, selection, ...(mono ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
+        extensions: [...extensions, selection, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });
     if (review && reviewed !== review) {
       reviewed = review;

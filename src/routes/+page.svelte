@@ -1,6 +1,6 @@
 <script lang="ts">
   // The page of a document window: the file of the window in the editor, filling it, or untitled text kept in the
-  // window until it is saved. Markdown for .md, .markdown and .txt, monospace for the others. A file written as
+  // window until it is saved. Markdown for .md, .markdown and .txt, LaTeX for .tex, .sty and .cls, monospace for the others. A file written as
   // typed (FileEditor); the changes made to it elsewhere come as `file-changed`; the window made to show another
   // file (an untitled one opened over) comes as `opened`. Save (⌘S) of the menu comes as `menu`: it writes what is
   // typed, or for untitled text asks where to; Undo, Redo and Symbols… as `edit`. Whether untitled text is blank is
@@ -95,6 +95,8 @@
   /** the comment being written: the selection it is on and where the box goes */
   let commenting = $state<{ from: number; to: number; x: number; y: number } | null>(null);
   const markdown = $derived(!path || /\.(md|markdown|txt)$/i.test(path));
+  /** a LaTeX file: highlighted and completed, with no symbols typed */
+  const latex = $derived(!!path && /\.(tex|sty|cls)$/i.test(path));
 
   async function ask() {
     path = (await invoke<{ path: string | null }>("document")).path;
@@ -362,7 +364,8 @@
           ? async () => ({ path: file, text: await invoke<string>("read_text", { path: file }) })
           : async () => ({ path: "", text: "" })}
         save={file ? (p, text) => invoke("write_text", { path: p, text }) : async () => {}}
-        mono={!markdown}
+        mono={!markdown && !latex}
+        {latex}
         prefs={PREFS}
         {completion}
         autofocus

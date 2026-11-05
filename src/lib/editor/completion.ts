@@ -6,7 +6,7 @@ import { acceptCompletion, autocompletion, pickedCompletion, snippet, type Compl
 import { syntaxTree } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { contextAt, labelsOf, nameOptions, refOptions } from "./context.ts";
+import { contextAt, labelsOf, nameOptions, refOptions, texContextAt, texLabelsOf } from "./context.ts";
 import { suggesting } from "./review/mode.ts";
 import type { Completion } from "./types.ts";
 
@@ -26,12 +26,13 @@ const put = (insert: string, after?: () => void): Option["apply"] => (view, opti
 };
 
 /** The source of the options: it answers by what the text before the cursor is in. */
-export const completionSource = (app: Completion) => async (cx: CompletionContext): Promise<CompletionResult | null> => {
+export const completionSource = (app: Completion, tex = false) => async (cx: CompletionContext): Promise<CompletionResult | null> => {
   const { state, pos } = cx;
   // in suggest mode what is typed is not in the text before the cursor
   if (suggesting(state)) return null;
   const line = state.doc.lineAt(pos);
-  const context = contextAt(syntaxTree(state), pos, line.text.slice(0, pos - line.from));
+  const before = line.text.slice(0, pos - line.from);
+  const context = tex ? texContextAt(pos, before) : contextAt(syntaxTree(state), pos, before);
   if (!context) return null;
   // the options are chosen here (by the beginning of the name), not by CodeMirror's fuzzy matching, and given again
   // after each key typed
@@ -58,7 +59,7 @@ export const completionSource = (app: Completion) => async (cx: CompletionContex
       return result(found.map((p): Option => ({ label: p, type: "file", apply: put(p) })));
     }
     case "ref": {
-      const labels = labelsOf(syntaxTree(state), state.doc.toString());
+      const labels = tex ? texLabelsOf(state.doc.toString()) : labelsOf(syntaxTree(state), state.doc.toString());
       return result(refOptions(labels, context).map((o): Option => ({ label: o.label, type: "variable", apply: put(o.insert) })));
     }
     case "latex":
@@ -92,8 +93,8 @@ const popup = EditorView.theme({
 /** The completion given by the app. Enter accepts the option marked, and Esc closes the list, when it is open (the
  *  extension's own keys: Enter does what it did otherwise when it is not). Tab does so too, before the other keys of
  *  Tab; the keymap of the editor puts `acceptCompletion` first. */
-export const completion = (app: Completion): Extension => [
-  autocompletion({ override: [completionSource(app)], icons: false, defaultKeymap: true, closeOnBlur: true }),
+export const completion = (app: Completion, tex = false): Extension => [
+  autocompletion({ override: [completionSource(app, tex)], icons: false, defaultKeymap: true, closeOnBlur: true }),
   popup,
 ];
 

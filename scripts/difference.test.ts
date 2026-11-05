@@ -2,7 +2,7 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { difference } from "../src/lib/difference.ts";
+import { difference } from "../src/lib/editor/difference.ts";
 
 const apply = (before: string, c: { from: number; to: number; insert: string }) =>
   before.slice(0, c.from) + c.insert + before.slice(c.to);

@@ -2,8 +2,8 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { citation, familyName, fullReference, initials, latex, pandoc, splitName } from "../src/lib/refs.ts";
-import type { Item } from "../src/lib/types.ts";
+import { citation, familyName, fullReference, initials, latex, pandoc, splitName } from "../src/lib/editor/refs.ts";
+import type { Item } from "../src/lib/editor/types.ts";
 
 const item = (over: Partial<Item> = {}): Item => ({
   id: "feldmann15",

@@ -2,7 +2,7 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { DEFAULTS, LATEX, find, latex, merged, typed } from "../src/lib/symbols.ts";
+import { DEFAULTS, LATEX, find, latex, merged, typed } from "../src/lib/editor/symbols.ts";
 
 const rules = merged(DEFAULTS, []);
 

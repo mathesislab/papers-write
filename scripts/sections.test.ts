@@ -2,7 +2,7 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { sections } from "../src/lib/sections.ts";
+import { sections } from "../src/lib/editor/sections.ts";
 
 test("the shallowest level with two headings or more", () => {
   const text = "# Review\n\nintro\n\n## Round 1\n\n### General\n\na\n\n## Round 2\n\nb\n";

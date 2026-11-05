@@ -3,6 +3,7 @@
 export {
   PREFS,
   inCode,
+  literalIn,
   insertQuote,
   insertSymbol,
   makeEditor,
@@ -24,6 +25,7 @@ export { difference } from "./difference";
 export { citation, familyName, fullReference, initials, latex as latexCite, pandoc, splitName } from "./refs";
 export { sections, type Section } from "./sections";
 export { DEFAULTS, LATEX, find as findSymbols, latex, merged, typed, type Entry, type Rule } from "./symbols";
+export { literalAt, type Literal } from "./context";
 export type { EditorFont, Found, Hit, Indent, Item, Span, YearCount } from "./types";
 export { default as FileEditor } from "./FileEditor.svelte";
 export type { Status } from "./FileEditor.svelte";

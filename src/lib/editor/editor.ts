@@ -26,6 +26,7 @@ import {
   type DecorationSet,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { literalAt, type Literal } from "./context";
 import { difference } from "./difference";
 import * as lang from "./lang/index.ts";
 import { sections } from "./sections";
@@ -200,6 +201,13 @@ export function inCode(state: EditorState, pos: number): boolean {
   return false;
 }
 
+/** What `pos` is in apart from code that keeps the symbols typed out: math, a LaTeX environment, the front matter, a
+ *  key or a path (see `literalAt`). */
+export function literalIn(state: EditorState, pos: number): Literal | null {
+  const line = state.doc.lineAt(pos);
+  return literalAt(syntaxTree(state), pos, line.text.slice(0, pos - line.from));
+}
+
 /** The `back` characters before the cursor replaced by `insert`, the cursor after it. The change is an undo step of its
  *  own: undone, what was typed is back. */
 function replaceBack(view: EditorView, back: number, insert: string) {
@@ -218,7 +226,7 @@ const typedSymbols = EditorView.inputHandler.of((view, from, to, text, insert) =
   if (view.composing || text.length !== 1 || from !== to || state.selection.ranges.length !== 1) return false;
   const line = state.doc.lineAt(from);
   const hit = typed(line.text.slice(0, from - line.from), text, state.field(symbolRules));
-  if (!hit || inCode(state, from)) return false;
+  if (!hit || inCode(state, from) || literalIn(state, from)) return false;
   view.dispatch(insert());
   replaceBack(view, hit.from + 1, hit.insert);
   return true;
@@ -227,7 +235,7 @@ const typedSymbols = EditorView.inputHandler.of((view, from, to, text, insert) =
 /** Tab after a LaTeX name (`\alpha`) gives its symbol; after anything else it is left to the indent. */
 const latexTab = (view: EditorView) => {
   const { main } = view.state.selection;
-  if (!main.empty) return false;
+  if (!main.empty || inCode(view.state, main.head) || literalIn(view.state, main.head)) return false;
   const line = view.state.doc.lineAt(main.head);
   const hit = latex(line.text.slice(0, main.head - line.from));
   if (hit) replaceBack(view, hit.length, hit.insert);
@@ -238,6 +246,10 @@ const latexTab = (view: EditorView) => {
 const tab = (view: EditorView) => {
   const { state } = view;
   if (state.selection.ranges.some((r) => !r.empty)) return indentMore(view);
+  // in math and in LaTeX the text is left alone mid-line: no indent into a formula
+  const { head } = state.selection.main;
+  const kind = literalIn(state, head);
+  if ((kind === "math" || kind === "latex") && state.doc.lineAt(head).text.slice(0, head - state.doc.lineAt(head).from).trim()) return true;
   view.dispatch(state.replaceSelection(state.facet(indentUnit)), { scrollIntoView: true, userEvent: "input.indent" });
   return true;
 };

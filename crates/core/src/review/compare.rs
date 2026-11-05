@@ -1,5 +1,6 @@
-//! An edited copy, a commit or a branch as suggestions: the word-level difference from the current text to the
-//! edited one, a suggestion per changed stretch. Whoever made the edited text is not asked to use the app.
+//! An edited copy as suggestions: the word-level difference from the current text to the edited one, a suggestion per
+//! changed stretch. Whoever made the edited text is not asked to use the app. (A commit or a branch is compared from
+//! where it started, not with the current text: `history`.)
 
 use super::anchor::{Anchor, Status};
 use super::byte_of;

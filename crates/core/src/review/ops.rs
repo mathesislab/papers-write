@@ -19,15 +19,17 @@ pub struct NewRecord {
     /// a comment: the body; a suggestion: its note
     pub text: Option<String>,
     pub round: Option<String>,
+    /// when it was made, RFC 3339 (none: now); a change taken from git is dated by its commit
+    pub time: Option<String>,
 }
 
 impl NewRecord {
     pub fn suggestion(from: usize, to: usize, insert: impl Into<String>) -> Self {
-        Self { kind: Kind::Suggestion, from, to, insert: Some(insert.into()), text: None, round: None }
+        Self { kind: Kind::Suggestion, from, to, insert: Some(insert.into()), text: None, round: None, time: None }
     }
 
     pub fn comment(from: usize, to: usize, text: impl Into<String>) -> Self {
-        Self { kind: Kind::Comment, from, to, insert: None, text: Some(text.into()), round: None }
+        Self { kind: Kind::Comment, from, to, insert: None, text: Some(text.into()), round: None, time: None }
     }
 
     pub fn note(mut self, text: impl Into<String>) -> Self {
@@ -37,6 +39,11 @@ impl NewRecord {
 
     pub fn round(mut self, round: impl Into<String>) -> Self {
         self.round = Some(round.into());
+        self
+    }
+
+    pub fn at(mut self, time: impl Into<String>) -> Self {
+        self.time = Some(time.into());
         self
     }
 }
@@ -66,6 +73,9 @@ fn anchored(doc: &Path, id: String, text: &str, new: &NewRecord) -> Result<Recor
     let (start, end) = (byte_of(text, new.from), byte_of(text, new.to));
     let hash = store::write_base(doc, text)?;
     let mut r = Record::blank(id, new.kind);
+    if let Some(time) = &new.time {
+        r.time = time.clone();
+    }
     r.round = new.round.clone();
     r.base = Some(hash);
     r.start = Some(start);

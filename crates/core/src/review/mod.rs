@@ -5,7 +5,8 @@
 //! - [`anchor`]: a record carried onto the current text (three-way merge, the quote when the base is lost).
 //! - [`fold`]: all the records folded into items.
 //! - [`critic`]: the document with the open suggestions and comments as CriticMarkup.
-//! - [`compare`]: an edited copy, a commit or a branch as suggestions.
+//! - [`compare`]: an edited copy as suggestions.
+//! - [`history`]: a co-author's commits as suggestions, from where they started, each under the commit's author.
 //! - [`ops`]: add, reply, decide, supersede and counter-suggest (appending); apply a suggestion.
 //! - [`package`]: a review sent in one `.review` file (the document, what it shows, the review) and sent back.
 //! - [`record`]: the records of a review file, and who writes it.
@@ -19,6 +20,7 @@ pub mod critic;
 pub mod compare;
 pub mod diff;
 pub mod fold;
+pub mod history;
 pub mod ops;
 pub mod package;
 pub mod record;

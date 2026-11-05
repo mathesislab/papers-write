@@ -18,5 +18,7 @@ papers-rs = { git = "https://github.com/mathesislab/papers-rs", rev = "40d17b600
 similar = "2"
 sha1_smol = "1"
 toml = "0.8"
+# write.toml read as written and changed key by key, its comments kept
+toml_edit = { version = "0.25", features = ["serde"] }
 # the .docx as pandoc reads it (its JSON)
 serde_json = "1"

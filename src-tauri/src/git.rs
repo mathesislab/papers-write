@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use write_core::review::Item;
 use write_core::review::compare::{as_items, suggestions};
 use write_core::review::history::{self, Added, Attribution};
@@ -536,6 +536,100 @@ pub async fn review_branches(window: WebviewWindow, fetch: bool) -> Result<Vec<B
     blocking(move || branches_of(&doc, fetch)).await?
 }
 
+// ---- Review Commits…
+
+/// A commit of the current branch that touched the document, to review from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Recent {
+    pub rev: String,
+    /// the short hash
+    pub label: String,
+    /// YYYY-MM-DD
+    pub date: String,
+    pub author: String,
+    pub subject: String,
+    /// made by the user (their git e-mail, else name)
+    pub mine: bool,
+}
+
+/// The last commits of the branch that touched the document, the latest first, and the one to review from to begin
+/// with: the first after the user's own last one (none when that is the latest, or there is none of theirs).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Recents {
+    pub commits: Vec<Recent>,
+    pub first: Option<String>,
+}
+
+/// The last 30 commits of HEAD that touched `doc`, for Review Commits….
+pub(crate) fn recent_of(doc: &Path) -> Result<Recents, String> {
+    let folder = folder_of(doc);
+    let name = doc.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let config = |key: &str| git_lines(folder, &["config", "--get", key]).map(|v| v.trim().to_lowercase()).filter(|v| !v.is_empty());
+    let (email, me) = (config("user.email"), config("user.name"));
+    let log = git(folder, &["log", "-n", "30", "--format=%H%x1f%h%x1f%as%x1f%an%x1f%ae%x1f%s", "HEAD", "--", &name])?;
+    let commits: Vec<Recent> = log
+        .lines()
+        .filter_map(|line| {
+            let f: Vec<&str> = line.splitn(6, '\u{1f}').collect();
+            let [rev, label, date, author, mail, subject] = f.as_slice() else { return None };
+            let mine = match &email {
+                Some(e) => mail.to_lowercase() == *e,
+                None => me.as_deref() == Some(author.to_lowercase().as_str()),
+            };
+            Some(Recent { rev: rev.to_string(), label: label.to_string(), date: date.to_string(), author: author.to_string(), subject: subject.to_string(), mine })
+        })
+        .collect();
+    let first = commits.iter().position(|c| c.mine).and_then(|i| i.checked_sub(1)).map(|i| commits[i].rev.clone());
+    Ok(Recents { commits, first })
+}
+
+/// What Review Commits… did: the suggestions written (by whom), and the commit the text went back to (short).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Reviewed {
+    #[serde(flatten)]
+    pub added: Added,
+    pub since: String,
+}
+
+/// The edits committed to `doc` from the commit `first` to HEAD turned back into suggestions: each change of them
+/// under the author of its commit, on the text before `first` as their base, and the file set back to that text, so
+/// that accepting a suggestion brings its change back. The document must have no changes not committed (they would
+/// be lost). Nothing is committed: the Commit sheet does it.
+pub(crate) fn review_commits_of(doc: &Path, first: &str) -> Result<Reviewed, String> {
+    let folder = folder_of(doc);
+    let name = doc.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    if !git(folder, &["status", "--porcelain", "--", &name])?.trim().is_empty() {
+        return Err(format!("{name} has changes not committed. Commit them first (Git ▸ Commit…): the text is set back to before the edits reviewed."));
+    }
+    let first = commit_of(folder, first)?;
+    if git(folder, &["merge-base", "--is-ancestor", &first, "HEAD"]).is_err() {
+        return Err(format!("{} is not on this branch (Git ▸ Review Branch… takes another branch's edits)", short(&first)));
+    }
+    let start = commit_of(folder, &format!("{first}^")).map_err(|_| format!("{} is the first commit: there is nothing before it to go back to", short(&first)))?;
+    let head = commit_of(folder, "HEAD")?;
+    let (text, added) = as_suggestions(doc, &start, &head)?;
+    if read(doc)? != text {
+        crate::files::write(doc, &text).map_err(|e| format!("{}: {e}", doc.display()))?;
+    }
+    Ok(Reviewed { added, since: short(&start).to_string() })
+}
+
+/// The last commits of the window's document on this branch, for Git ▸ Review Commits….
+#[tauri::command]
+pub async fn recent_commits(window: WebviewWindow) -> Result<Recents, String> {
+    let doc = doc_of(&window)?;
+    blocking(move || recent_of(&doc)).await?
+}
+
+/// The window's document from the commit `first` on, back as suggestions (the page has written it first).
+#[tauri::command]
+pub async fn review_commits(app: AppHandle, window: WebviewWindow, first: String) -> Result<Reviewed, String> {
+    let doc = doc_of(&window)?;
+    let made = blocking(move || review_commits_of(&doc, &first)).await??;
+    let _ = app.emit_to(tauri::EventTarget::webview(window.label()), "review-changed", ());
+    Ok(made)
+}
+
 // ---- Compare with Commit…
 
 /// A document as it was at a commit, with what changed since as tracked changes.
@@ -904,6 +998,40 @@ mod tests {
         sh(&a, &["branch", "jane/edits", "origin/jane/edits"]);
         let found = branches_of(&a.join("paper.md"), false).unwrap();
         assert_eq!(found.iter().map(|b| b.name.as_str()).collect::<Vec<_>>(), vec!["jane/edits"]);
+    }
+
+    #[test]
+    fn committed_edits_come_back_as_suggestions() {
+        let dir = repo("recall");
+        let doc = dir.join("paper.md");
+        let as_jane = |text: &str, subject: &str| {
+            std::fs::write(&doc, text).unwrap();
+            sh(&dir, &["-c", "user.name=Jane Doe", "-c", "user.email=jane@example.org", "commit", "-q", "-am", subject]);
+        };
+        as_jane("The line retreats slowly now.\n", "Slower");
+        as_jane("The line retreats slowly now.\nReally.\n", "Really");
+        let recent = recent_of(&doc).unwrap();
+        let got: Vec<(&str, bool)> = recent.commits.iter().map(|c| (c.subject.as_str(), c.mine)).collect();
+        assert_eq!(got, vec![("Really", false), ("Slower", false), ("First", true)]);
+        assert_eq!(recent.first.as_deref(), Some(recent.commits[1].rev.as_str()), "the first after the user's own last");
+        // not with changes not committed
+        std::fs::write(&doc, "typed\n").unwrap();
+        assert!(review_commits_of(&doc, &recent.commits[1].rev).unwrap_err().contains("not committed"));
+        sh(&dir, &["checkout", "--", "paper.md"]);
+        let done = review_commits_of(&doc, &recent.commits[1].rev).unwrap();
+        assert_eq!((done.added.added, done.added.people.clone()), (2, vec!["Jane Doe".to_string()]));
+        assert_eq!(done.since, sh(&dir, &["rev-parse", "--short=7", "HEAD~2"]).trim());
+        // the text is back to before them, and accepting the suggestions brings the edits back
+        let now = std::fs::read_to_string(&doc).unwrap();
+        assert_eq!(now, "The line retreats rapidly now.\n");
+        let items = write_core::review::Review::load(&doc).unwrap().items(&now);
+        let rounds: Vec<&str> = items.iter().map(|i| i.record.round.as_deref().unwrap()).collect();
+        assert!(rounds[0].ends_with(" Slower") && rounds[1].ends_with(" Really"), "{rounds:?}");
+        assert_eq!(write_core::review::apply_all(&now, &items), "The line retreats slowly now.\nReally.\n");
+        // the first commit has nothing before it
+        let root = sh(&dir, &["rev-list", "--max-parents=0", "HEAD"]);
+        sh(&dir, &["checkout", "--", "paper.md"]);
+        assert!(review_commits_of(&doc, root.trim()).unwrap_err().contains("first commit"));
     }
 
     #[test]

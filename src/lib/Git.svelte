@@ -16,12 +16,20 @@
   // Review Branch…: the remotes fetched quietly, the branches that have commits touching the document that HEAD has not
   // (with their authors, how many, the last date); the one chosen is compared as suggestions from where it left this
   // branch (as File ▸ Exchange ▸ Compare as Suggestions does), each change under its commit's author.
+  //
+  // Review Commits…: for edits already committed on this branch (a co-author pushed to it). The first commit to review
+  // is chosen among the last that touched the document (to begin with, the first after the user's own last one); its
+  // changes and all after it become suggestions of their authors and the file goes back to the text before them, so
+  // that accepting a suggestion brings its change back. The document must have nothing uncommitted. A short sheet says
+  // what happened; the commit is the user's, through the Commit sheet.
 
   import { invoke } from "@tauri-apps/api/core";
   import { said, type Added, type Changed } from "$lib/git";
 
   type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
   type Branch = { name: string; authors: string[]; count: number; last: string };
+  type Recent = { rev: string; label: string; date: string; author: string; subject: string; mine: boolean };
+  type Reviewed = Added & { since: string };
   type Candidate = Changed & { kind: "document" | "bibliography" | "review" | "other"; ticked: boolean };
 
   let {
@@ -58,17 +66,20 @@
   let comparing = $state<{ revisions: Revision[]; chosen: string; typed: string; busy: boolean; error: string } | null>(null);
   /** the sheet of Review Branch…: the branches (none while they are fetched), the one chosen, what came of it */
   let branching = $state<{ branches: Branch[] | null; chosen: string; busy: boolean; done: string; error: string } | null>(null);
+  /** the sheet of Review Commits…: the commits to choose the first from, the one chosen, what came of it */
+  let recalling = $state<{ commits: Recent[]; first: string; busy: boolean; done: Reviewed | null; error: string } | null>(null);
   /** what a pull or a push could not do, as git says it */
   let failure = $state<{ what: string; error: string } | null>(null);
 
   /** The menu's items: "git-commit", "git-pull", "git-push"; `message` prefills the commit's. */
   export async function run(what: string, message = "") {
     failure = null;
-    if (!["git-commit", "git-pull", "git-push", "git-compare", "git-review-branch"].includes(what)) return;
+    if (!["git-commit", "git-pull", "git-push", "git-compare", "git-review-branch", "git-review-commits"].includes(what)) return;
     await flush();
     if (what === "git-commit") return open(message);
     if (what === "git-compare") return compareSheet();
     if (what === "git-review-branch") return branchSheet();
+    if (what === "git-review-commits") return commitsSheet();
     const [name, go, done] =
       what === "git-pull" ? (["Pull", "git_pull", "Pulled"] as const) : (["Push", "git_push", "Pushed"] as const);
     say(`${name}ing…`);
@@ -143,6 +154,37 @@
     b.busy = false;
   }
 
+  async function commitsSheet() {
+    try {
+      const got = await invoke<{ commits: Recent[]; first: string | null }>("recent_commits");
+      recalling = { commits: got.commits, first: got.first ?? "", busy: false, done: null, error: "" };
+    } catch (e) {
+      failure = { what: "Review Commits", error: String(e) };
+    }
+  }
+
+  /** "Jane Doe's edits since a1b2c3d", "Jane Doe and Bob's edits since a1b2c3d" */
+  const whose = (r: Reviewed) => {
+    const p = r.people;
+    const names = p.length > 1 ? `${p.slice(0, -1).join(", ")} and ${p[p.length - 1]}` : (p[0] ?? "");
+    return `${names ? `${names}'s edits` : "edits"} since ${r.since}`;
+  };
+
+  async function reviewCommits() {
+    const r = recalling;
+    if (!r || !r.first || r.busy) return;
+    await flush();
+    [r.busy, r.error] = [true, ""];
+    try {
+      r.done = await invoke<Reviewed>("review_commits", { first: r.first });
+      if (r.done.added) onlog?.(`${whose(r.done)} back as suggestions`);
+      onchange();
+    } catch (e) {
+      r.error = String(e);
+    }
+    r.busy = false;
+  }
+
   const chosen = $derived(committing ? committing.files.filter((_, i) => committing!.ticks[i]) : []);
   const ready = $derived(!!committing && !committing.busy && chosen.length > 0 && !!committing.message.trim());
 
@@ -167,6 +209,7 @@
     committing = null;
     comparing = null;
     branching = null;
+    recalling = null;
     failure = null;
     onfocus?.();
   }
@@ -268,6 +311,48 @@
     {/if}
     {#if branching.done}<p>{branching.done}</p>{/if}
     {#if branching.error}<p class="error">{branching.error}</p>{/if}
+  </div>
+{/if}
+{#if recalling}
+  {@const r = recalling}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="sheet" role="dialog" aria-label="Review Commits" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+    <header>
+      <b>Review Commits</b>
+      <button onclick={close}>{r.done ? "Close" : "Cancel"}</button>
+    </header>
+    {#if r.done}
+      {#if r.done.added}
+        <p>{whose(r.done)}, back as suggestions: {r.done.added} suggestion{r.done.added === 1 ? "" : "s"}.</p>
+        <p class="hint">The text is as it was before them; accepting a suggestion brings its change back. A commit records the text and the review.</p>
+      {:else}
+        <p>{said(r.done)}</p>
+      {/if}
+      <div class="buttons"><button class="primary" onclick={() => ((recalling = null), open(""))}>Commit…</button></div>
+    {:else}
+      <p class="hint">
+        Edits already committed on this branch become suggestions again, each under the author of its commit, and {docName()} goes back to the text before
+        them: accepting a suggestion brings its change back.
+      </p>
+      {#if !r.commits.length}
+        <p>No commit of this branch touched {docName()}.</p>
+      {:else}
+        <label>
+          From
+          <select bind:value={r.first}>
+            <option value="">Choose the first commit to review…</option>
+            {#each r.commits as c (c.rev)}
+              <option value={c.rev}>{c.label} {c.date} {c.author}{c.mine ? " (you)" : ""}: {c.subject}</option>
+            {/each}
+          </select>
+        </label>
+        <p class="hint">That commit and all after it, to the latest.</p>
+        <div class="buttons">
+          <button class="primary" disabled={!r.first || r.busy} onclick={reviewCommits}>Back as Suggestions</button>
+        </div>
+      {/if}
+    {/if}
+    {#if r.error}<p class="error">{r.error}</p>{/if}
   </div>
 {/if}
 {#if failure}

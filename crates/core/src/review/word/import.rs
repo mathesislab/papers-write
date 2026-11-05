@@ -40,6 +40,8 @@ struct Tracked {
     insertion: bool,
     author: String,
     words: Vec<String>,
+    /// the text as it stands in the span (words and the white space between them)
+    text: String,
 }
 
 struct Comment {
@@ -100,6 +102,9 @@ fn plain(v: &Value, out: &mut String) {
 
 impl Stream {
     fn say(&mut self, text: &str, mode: Mode) {
+        if let Mode::Insertion(t) | Mode::Deletion(t) = mode {
+            self.tracked[t].text.push_str(text);
+        }
         for r in words(text) {
             let w = text[r].to_string();
             match mode {
@@ -126,6 +131,11 @@ impl Stream {
                 };
                 let c = v.get("c");
                 match t {
+                    "Space" | "SoftBreak" => {
+                        if let Mode::Insertion(t) | Mode::Deletion(t) = mode {
+                            self.tracked[t].text.push(' ');
+                        }
+                    }
                     "Str" => self.say(c.and_then(Value::as_str).unwrap_or(""), mode),
                     "Math" | "Code" | "CodeBlock" => self.say(c.and_then(|c| c.get(1)).and_then(Value::as_str).unwrap_or(""), mode),
                     "Span" | "Div" => {
@@ -148,7 +158,7 @@ impl Stream {
                             }
                         } else if class("insertion") || class("deletion") {
                             let insertion = class("insertion");
-                            self.tracked.push(Tracked { insertion, author, words: Vec::new() });
+                            self.tracked.push(Tracked { insertion, author, words: Vec::new(), text: String::new() });
                             let t = self.tracked.len() - 1;
                             self.walk(content, if insertion { Mode::Insertion(t) } else { Mode::Deletion(t) });
                         } else {
@@ -204,7 +214,7 @@ fn pieces<'a>(text: &'a str, ws: &[Range<usize>]) -> Vec<&'a str> {
 
 /// A change of `source` (a plain text: the Markdown rendered, or what Word had) into `target`, placed in the Markdown
 /// by `index`; the suggestion, or what to say of it.
-fn placed(index: &Index, source: &str, target: &str, hunk: &Hunk, floor: usize) -> Result<NewRecord, String> {
+fn placed(index: &Index, source: &str, target: &str, hunk: &Hunk, floor: usize, insert: Option<String>) -> Result<NewRecord, String> {
     let (mut old, mut new) = (hunk.old.clone(), hunk.new.clone());
     let src_words = words(source);
     // a change of punctuation or white space only: the word before it goes in with it, to be found by
@@ -221,7 +231,7 @@ fn placed(index: &Index, source: &str, target: &str, hunk: &Hunk, floor: usize) 
     let suffix = pieces(source, &after[..after.len().min(CONTEXT)]);
     let exact = pieces(source, &inside);
     let found = index.locate(&exact, &prefix, &suffix).ok_or("its place is not found in the text")?;
-    let insert = target[new].to_string();
+    let insert = insert.unwrap_or_else(|| target[new].to_string());
     let range = if found.0 == found.1 {
         let p = index.point(found.0, &insert);
         p..p
@@ -241,6 +251,29 @@ fn placed(index: &Index, source: &str, target: &str, hunk: &Hunk, floor: usize) 
         r
     };
     Ok(NewRecord::suggestion(utf16_of(index.text, range.start), utf16_of(index.text, range.end), insert))
+}
+
+/// An insertion that Word has run into the word beside it ("very" before "unstable", with no space: what pandoc's
+/// docx writer makes of a span that ends in a space) is found by the diff as a replacement of that word. When a hunk
+/// is one unused insertion plus the words it was run into, it is the insertion alone, as it was made (with the space
+/// that keeps it a word of its own): the hunk with nothing taken out, the text inserted, and the span's index.
+fn glued(spans: &[(Tracked, bool)], old: &str, new: &str) -> Option<(Range<usize>, String, usize)> {
+    if old.trim().is_empty() {
+        return None;
+    }
+    spans.iter().enumerate().filter(|(_, (t, used))| t.insertion && !used).find_map(|(k, (t, _))| {
+        let ins = collapse(t.text.trim());
+        if ins.is_empty() {
+            return None;
+        }
+        if new.strip_prefix(ins.as_str()) == Some(old) {
+            Some((0..0, format!("{ins} "), k))
+        } else if new.strip_suffix(ins.as_str()) == Some(old) {
+            Some((old.len()..old.len(), format!(" {ins}"), k))
+        } else {
+            None
+        }
+    })
 }
 
 /// The author of the tracked change whose words a hunk has, taking it (and the others of that author that fit) out of
@@ -290,8 +323,15 @@ pub fn import(current: &str, docx_all_json: &str, docx_reject_text: &str, docx_a
         let (old_words, new_words) = (words(&reject[h.old.clone()]), words(&accept[h.new.clone()]));
         let old_text: Vec<&str> = pieces(&reject[h.old.clone()], &old_words);
         let new_text: Vec<&str> = pieces(&accept[h.new.clone()], &new_words);
-        let author = author_of(&mut spans, &old_text, &new_text);
-        match placed(&index, &reject, &accept, &h, floor) {
+        let (h, insert, author) = match glued(&spans, &reject[h.old.clone()], &accept[h.new.clone()]) {
+            Some((at, insert, k)) => {
+                spans[k].1 = true;
+                let h = Hunk { old: h.old.start + at.start..h.old.start + at.end, new: h.new.clone() };
+                (h, Some(insert), spans[k].0.author.clone())
+            }
+            None => (h.clone(), None, author_of(&mut spans, &old_text, &new_text)),
+        };
+        match placed(&index, &reject, &accept, &h, floor, insert) {
             Ok(s) => out.suggestions.push((author, s)),
             Err(why) => out.unplaced.push(format!("{author}: {} ({why})", say_change(&reject[h.old.clone()], &accept[h.new.clone()]))),
         }
@@ -312,7 +352,7 @@ pub fn import(current: &str, docx_all_json: &str, docx_reject_text: &str, docx_a
                 if words(&rendered[h.old.clone()]).is_empty() && words(&reject[h.new.clone()]).is_empty() {
                     continue;
                 }
-                match placed(&index, rendered, &reject, &h, after_previous) {
+                match placed(&index, rendered, &reject, &h, after_previous, None) {
                     // a change the tracked pass has is not found again
                     Ok(s) if tracked.iter().any(|&(a, b)| (s.from < b && a < s.to) || (s.from, s.to) == (a, b)) => drop(s),
                     Ok(s) => out.suggestions.push((who.to_string(), s)),
@@ -530,6 +570,24 @@ The ice shelf thins [and the ice sheet]{.deletion author="Bob"} stays, as $x^2$ 
         let current = std::fs::read_to_string(d.join("paper-at-import.md")).unwrap();
         let (json, reject, accept) = read(&d.join("paper-bob.docx"));
         (current, json, reject, accept)
+    }
+
+    #[test]
+    fn bobs_two_changes_come_in_as_his_and_nothing_else_unless_asked() {
+        if pandoc().is_none() {
+            return;
+        }
+        let (current, json, reject, accept) = fixture();
+        let got = import(&current, &json, &reject, &accept, None);
+        assert!(got.unplaced.is_empty(), "{:?}", got.unplaced);
+        assert_eq!(got.suggestions.len(), 2, "{:?}", got.suggestions);
+        assert!(got.suggestions.iter().all(|(a, _)| a == "Bob Smith"), "{:?}", got.suggestions);
+        // "very " goes in before "unstable": a point, not a replacement of the word
+        let (_, s) = &got.suggestions[0];
+        assert_eq!((on(&current, s), s.insert.as_deref()), ("", Some("very ")));
+        assert_eq!(current[byte_of(&current, s.from)..].split_whitespace().next(), Some("unstable"), "{}", &current[byte_of(&current, s.from)..][..20]);
+        let (_, s) = &got.suggestions[1];
+        assert_eq!((on(&current, s), s.insert.as_deref()), ("which is not math", Some("as a joke")));
     }
 
     #[test]

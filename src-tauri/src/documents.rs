@@ -171,6 +171,7 @@ pub fn closed(app: &AppHandle, label: &str) {
     drop(focused);
     files::unwatch(app, label);
     crate::refs::unload(app, label);
+    crate::review::unload(app, label);
     // the window may still be among the windows as this is told
     if app.webview_windows().keys().all(|l| l == label) {
         regular(app, false);
@@ -192,6 +193,7 @@ pub fn set_blank(window: WebviewWindow, blank: bool) {
 /// A window that got the keys: the one in front from now on.
 pub fn focused(app: &AppHandle, label: &str) {
     *app.state::<Documents>().focused.lock().unwrap() = Some(label.to_string());
+    crate::review::focused(app, label);
 }
 
 /// The window in front: the last that got the keys, as the windows say whether they have them wrongly once they

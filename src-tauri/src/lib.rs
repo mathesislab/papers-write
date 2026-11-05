@@ -6,6 +6,7 @@ mod files;
 mod menu;
 mod preview;
 mod refs;
+mod review;
 mod tabs;
 mod tray;
 
@@ -22,6 +23,7 @@ pub fn run() {
         .manage(build::Builds::default())
         .manage(refs::Loaded::default())
         .manage(preview::Runs::default())
+        .manage(review::Reviews::default())
         .setup(|app| {
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
@@ -56,7 +58,17 @@ pub fn run() {
             refs::reference_sources,
             refs::cite_key,
             refs::bib_check,
-            refs::bibliography_files
+            refs::bibliography_files,
+            review::review_me,
+            review::review_items,
+            review::review_suggest,
+            review::review_withdraw,
+            review::review_comment,
+            review::review_reply,
+            review::review_decide,
+            review::review_counter,
+            review::review_mode,
+            review::review_confirm
         ])
         .build(tauri::generate_context!())
         .expect("error while building papers-write")

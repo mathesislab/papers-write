@@ -16,6 +16,13 @@ import { FileEditor, RefList, SymbolList, makeEditor, prefsFrom, setEditorFont }
 - `load: () => Promise<{ path: string; text: string }>` and `save: (path: string, text: string) => Promise<void>`: where the file is read from and written to.
 - `prefs: EditorPrefs`, made with `prefsFrom(settings)` from anything shaped as `EditorSettings` (`{ indent, readable_width, line_numbers }`); `symbols`, the user's own `[sequence, symbol]` pairs; `mono`; `onchange`; the bindable `status`, `error`, `path`, `selected`.
 - `extensions: Extension[]`: more CodeMirror extensions, for what is the app's own (Papers Review colours the page and line of a PDF quote this way).
+- `completion: Completion` (optional; without it the editor has no completion, as in Papers Review): what the app gives for the popup of citations, references and LaTeX names (`makeEditor` takes it as `options.completion`). The types are in `types.ts`:
+  - `citations(prefix) => Promise<CitationOption[]>`: the papers for `@key`, `[@key`, `[-@key`, `; @key` and `\cite{`, `\citep{`, `\citet{`, `\citeauthor{` (after `{` or `,`). A `CitationOption` is `{ key, label, detail?, inBib }`: `label` is shown ("Schoof 2007"), `detail` beside it (the title); those not `inBib` are listed under "From the library" with a "＋" before the detail. The app does the matching of `prefix`; the list is asked again after each key typed.
+  - `oncite(key)`: a citation key was accepted (the app adds it to the bibliography). Accepting inserts the key, nothing else.
+  - `paths(prefix) => Promise<string[]>` (optional): the files for `![…](` and `\includegraphics{`, `\input{`, `\include{`.
+  - Not the app's: the labels of the document (`{#fig:x}`, `\label{x}`) after `@fig:`, `@eq:`, `@tbl:`, `@sec:`, `@lst:` (of that kind) and in `\ref{`, `\eqref{`; LaTeX names after a backslash: in math and LaTeX environments the usual ones (`lang/latex-names.ts`), in the text only the structural commands and the environments (`\begin{equation}`, `align`, `figure`, `table`), so that `\alpha` and Tab there is still α.
+  - Tab and Enter accept the option marked when the list is open (Tab before the symbols and the indent; Enter does what it did otherwise when it is not), Esc closes it. Ordinary prose never opens it.
+- The sequences typed (`->`, `^2`, `--`) and `\name` with Tab do not apply in code, in math (`$…$`, `$$…$$`, `equation`, `align`...), in LaTeX environments, in the front matter, nor in citation keys, labels and paths. In math and LaTeX Tab in the middle of a line leaves the text alone (no indent).
 - It calls `changedOnDisk()` when the file changed elsewhere; `flush`, `reload`, `focus`, `view`, `undo`, `redo`, `indent`, `outdent`, `list` are exported.
 
 `RefList.svelte` (the references over the editor):

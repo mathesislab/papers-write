@@ -14,6 +14,7 @@
   import { EditorView, keymap } from "@codemirror/view";
   import { onMount } from "svelte";
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "./editor";
+  import type { Completion } from "./types";
   import SymbolList from "./SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "./symbols";
 
@@ -22,6 +23,7 @@
     save,
     mono = false,
     extensions = [],
+    completion,
     symbols = [],
     prefs = PREFS,
     onchange,
@@ -38,6 +40,8 @@
     mono?: boolean;
     /** more extensions of the editor */
     extensions?: Extension[];
+    /** what the completion of citations, references and LaTeX takes from the app (none without it) */
+    completion?: Completion;
     /** the user's own sequences typed that become symbols, and the defaults they turn off (Markdown only) */
     symbols?: [string, string][];
     /** what the editor takes from the settings */
@@ -93,6 +97,7 @@
         mono,
         rules,
         prefs,
+        completion,
         extensions: [...extensions, selection, ...(mono ? [] : [listKey])],
       });
     onchange?.(file.text);

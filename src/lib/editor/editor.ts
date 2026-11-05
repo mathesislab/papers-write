@@ -26,12 +26,13 @@ import {
   type DecorationSet,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { acceptCompletion, completion } from "./completion";
 import { literalAt, type Literal } from "./context";
 import { difference } from "./difference";
 import * as lang from "./lang/index.ts";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
-import type { EditorFont, Indent } from "./types";
+import type { Completion, EditorFont, Indent } from "./types";
 
 const style = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "650", color: "var(--md-heading)" },
@@ -315,12 +316,15 @@ export function insertSymbol(view: EditorView, symbol: string) {
 const historyKeys = historyKeymap.filter((k) => k.run !== undoSelection && k.run !== redoSelection);
 
 /** The kind of editor: `mono` is plain text in monospace, for a file that is not Markdown; `rules` are the sequences
- *  that become symbols as they are typed (Markdown only); `prefs` those of the settings; `extensions` are more. */
-export type Options = { mono?: boolean; rules?: readonly Rule[]; prefs?: EditorPrefs; extensions?: Extension[] };
+ *  that become symbols as they are typed (Markdown only); `prefs` those of the settings; `completion` what the app
+ *  gives for the completion of citations, references and LaTeX (Markdown only; without it there is none); `extensions`
+ *  are more. */
+export type Options = { mono?: boolean; rules?: readonly Rule[]; prefs?: EditorPrefs; completion?: Completion; extensions?: Extension[] };
 
 /** An editor of `text` in `parent`; `changed` with the text after each change typed. */
 export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, options: Options = {}) {
   const mono = options.mono ?? false;
+  const complete = !mono && options.completion;
   return new EditorView({
     parent,
     state: EditorState.create({
@@ -330,6 +334,8 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
         drawSelection(),
         dragScroll,
         keymap.of([
+          // an open list takes Tab before the symbols and the indent (Enter and Esc are the list's own keys)
+          ...(complete ? [{ key: "Tab", run: acceptCompletion }] : []),
           ...(mono ? [] : [{ key: "Tab", run: latexTab }]),
           { key: "Tab", run: tab, shift: indentLess },
           ...defaultKeymap,
@@ -346,6 +352,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
               placeholder("Your review, in Markdown: ## for its sections, a section a round, say."),
               shown,
             ]),
+        ...(complete ? [completion(complete)] : []),
         theme(mono),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {

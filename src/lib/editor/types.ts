@@ -57,3 +57,17 @@ export type Found = {
   /** the matches of each year, the years between included (none for `closest_references`) */
   years: YearCount[];
 };
+
+/** A paper offered for a citation: its key, what shows it ("Schoof 2007"), its title, and whether the key is in the
+ *  bibliography of the project yet (if not, accepting it adds it). */
+export type CitationOption = { key: string; label: string; detail?: string; inBib: boolean };
+
+/** What the app supplies for the completion of the editor (see `Options.completion`). */
+export type Completion = {
+  /** the papers whose key or name begins with `prefix`: from the bibliography of the document and the library */
+  citations?: (prefix: string) => Promise<CitationOption[]>;
+  /** a citation key was accepted: the app adds it to the bibliography */
+  oncite?: (key: string) => void;
+  /** the figure and other files whose path begins with `prefix` */
+  paths?: (prefix: string) => Promise<string[]>;
+};

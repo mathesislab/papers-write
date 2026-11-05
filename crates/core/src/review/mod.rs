@@ -4,6 +4,7 @@
 //! - [`diff`]: the word-level difference between two versions, and positions carried through it.
 //! - [`anchor`]: a record carried onto the current text (three-way merge, the quote when the base is lost).
 //! - [`fold`]: all the records folded into items.
+//! - [`critic`]: the document with the open suggestions and comments as CriticMarkup.
 //! - [`compare`]: an edited copy, a commit or a branch as suggestions.
 //! - [`ops`]: add, reply, decide, supersede and counter-suggest (appending); apply a suggestion.
 //! - [`package`]: a review sent in one `.review` file (the document, what it shows, the review) and sent back.
@@ -14,6 +15,7 @@
 
 pub mod anchor;
 pub mod cleanup;
+pub mod critic;
 pub mod compare;
 pub mod diff;
 pub mod fold;

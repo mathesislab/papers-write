@@ -149,6 +149,13 @@ pub fn init(app: &AppHandle) {
         *CURRENT.write().unwrap() = Settings::load(&dir);
         let _ = DIR.set(dir);
     }
+    chosen_tools(&get());
+}
+
+/// The tools the settings name, where the core finds them itself (pandoc, for the Word round trip).
+fn chosen_tools(settings: &Settings) {
+    let pandoc = settings.pandoc_path.trim();
+    write_core::exchange::set_pandoc((!pandoc.is_empty()).then(|| PathBuf::from(pandoc)));
 }
 
 /// The current settings.
@@ -165,6 +172,7 @@ fn put(app: &AppHandle, settings: Settings) {
         *current = settings.clone();
         changed
     };
+    chosen_tools(&settings);
     if let Some(dir) = DIR.get() {
         settings.save(dir);
     }

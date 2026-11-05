@@ -1,0 +1,18 @@
+[package]
+name = "papers-write-cli"
+version = "0.1.0"
+description = "pw: Papers Write from the command line (open files; list, accept, reject, export and import a review)"
+authors = ["Alexander Robinson"]
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "pw"
+path = "src/main.rs"
+
+[dependencies]
+papers-write-core = { version = "0.1.0", path = "../core" }
+serde_json = "1"
+
+[dev-dependencies]
+serde_json = "1"

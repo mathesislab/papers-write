@@ -33,6 +33,21 @@ impl Person {
         };
         Some(Person { name: get("user.name")?, email: get("user.email").unwrap_or_default(), through: 0 })
     }
+
+    /// Who the user is for the document in `folder`: the git person, else the full name of the user in the system
+    /// (macOS `id -F`), else `$USER`.
+    pub fn in_folder(folder: &std::path::Path) -> Person {
+        Person::from_git(folder).unwrap_or_else(|| {
+            let full = std::process::Command::new("id").arg("-F").output().ok().filter(|o| o.status.success()).and_then(|o| String::from_utf8(o.stdout).ok());
+            Person::from_names(full, std::env::var("USER").ok())
+        })
+    }
+
+    /// A person from a full name and a user name, as the system gives them (either may be missing or blank).
+    pub fn from_names(full: Option<String>, user: Option<String>) -> Person {
+        let pick = |s: Option<String>| s.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        Person::new(pick(full).or(pick(user)).unwrap_or_else(|| "Unknown".into()), "")
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

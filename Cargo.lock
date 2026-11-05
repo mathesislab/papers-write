@@ -2855,6 +2855,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "papers-write-cli"
+version = "0.1.0"
+dependencies = [
+ "papers-write-core",
+ "serde_json",
+]
+
+[[package]]
 name = "papers-write-core"
 version = "0.1.0"
 dependencies = [

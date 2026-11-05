@@ -74,7 +74,7 @@ pub(crate) fn person_in(folder: &Path) -> Person {
     identity(&crate::settings::get(), || Person::from_git(folder), system_person)
 }
 
-/// The user as the system says.
+/// The user as the system says (the full name, else the user name).
 fn system_person() -> Person {
     let full = std::process::Command::new("id")
         .arg("-F")
@@ -82,7 +82,7 @@ fn system_person() -> Person {
         .ok()
         .filter(|o| o.status.success())
         .and_then(|o| String::from_utf8(o.stdout).ok());
-    fallback(full, std::env::var("USER").ok())
+    Person::from_names(full, std::env::var("USER").ok())
 }
 
 /// The name and the e-mail each from the settings if set, else from `git` (asked only when needed), else `system`.
@@ -101,12 +101,6 @@ pub fn identity_changed(app: &AppHandle) {
     for slot in state.slots.lock().unwrap().values_mut() {
         slot.me = person_in(folder_of(&slot.path));
     }
-}
-
-/// A person from a full name and a user name, as the system gives them (either may be missing or blank).
-fn fallback(full: Option<String>, user: Option<String>) -> Person {
-    let pick = |s: Option<String>| s.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-    Person::new(pick(full).or(pick(user)).unwrap_or_else(|| "Unknown".into()), "")
 }
 
 fn folder_of(doc: &Path) -> &Path {
@@ -471,9 +465,9 @@ mod tests {
 
     #[test]
     fn who_falls_back_to_the_full_name_then_the_user() {
-        assert_eq!(fallback(Some(" Alex Robinson\n".into()), Some("alrobi001".into())).name, "Alex Robinson");
-        assert_eq!(fallback(Some("  ".into()), Some("alrobi001".into())).name, "alrobi001");
-        assert_eq!(fallback(None, None).name, "Unknown");
+        assert_eq!(Person::from_names(Some(" Alex Robinson\n".into()), Some("alrobi001".into())).name, "Alex Robinson");
+        assert_eq!(Person::from_names(Some("  ".into()), Some("alrobi001".into())).name, "alrobi001");
+        assert_eq!(Person::from_names(None, None).name, "Unknown");
         assert_eq!(Me::of(&Person::new("José Núñez", "j@x.org")).slug, "jose-nunez");
     }
 

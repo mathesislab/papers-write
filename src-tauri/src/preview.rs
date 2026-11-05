@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -64,33 +64,8 @@ fn home() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// pandoc: the file of the settings, else on the PATH or where Homebrew puts it (an app started from the Dock has a
-/// short PATH).
-pub(crate) fn pandoc() -> Result<PathBuf, String> {
-    crate::build::find_tool("pandoc")
-}
-
-const CROSSREF: &str = include_str!("../preview/crossref.lua");
-
-/// The cross-reference filter, written once to the temp folder (pandoc reads filters from files); None when it
-/// cannot be written: the preview is then without it. The export to Word runs it too, so the numbers are the same.
-pub fn crossref_filter() -> Option<&'static Path> {
-    static FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
-    FILE.get_or_init(|| {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        CROSSREF.hash(&mut h);
-        let path = std::env::temp_dir().join(format!("papers-write-crossref-{:016x}.lua", h.finish()));
-        if std::fs::read_to_string(&path).is_ok_and(|s| s == CROSSREF) {
-            return Some(path);
-        }
-        let part = path.with_extension(format!("{}.part", std::process::id()));
-        std::fs::write(&part, CROSSREF).ok()?;
-        std::fs::rename(&part, &path).ok()?;
-        Some(path)
-    })
-    .as_deref()
-}
+/// pandoc: the file of the settings (given to the core as they change), else searched.
+pub(crate) use write_core::exchange::{crossref_filter, pandoc};
 
 /// The text rendered in `dir`. An untitled document (`saved` false) has no citeproc unless it names a bibliography.
 pub fn render(text: &str, dir: &Path, saved: bool, generation: &AtomicU64, mine: u64) -> Result<Preview, String> {

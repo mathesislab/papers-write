@@ -234,6 +234,29 @@ with papers-review as `papers-write/editor`, and so is the project bar
   tabs (off: a window each, for the files opened from then on) and the app
   stays in the menu bar when its last window closes (off: it quits).
 
+## Command line
+
+`pw` opens files in the app and works on a document's review without it.
+
+```bash
+cargo install --path crates/cli     # puts `pw` in ~/.cargo/bin
+
+pw paper.md refs.bib                # open in Papers Write (macOS: `open -a`, starting the app if needed)
+pw review list paper.md [--json]    # open suggestions and comments: id, line:col, author, "old" → "new"
+pw review accept paper.md --all     # or --author NAME, or --id ID...
+pw review reject paper.md --author "Jane Doe"
+pw review export paper.md --word paper.docx      # tracked changes and comments (pandoc)
+pw review export paper.md --markdown paper.crit.md   # CriticMarkup: {++ ++} {-- --} {~~ ~> ~~} {>> <<}
+pw review import paper.md reviewed.docx          # a Word review (--untracked: also changes made with tracking off)
+pw review import paper.md back.review            # a review sent back, merged
+```
+
+Accept writes the suggestions into the file (from the end of the text) and appends the decisions to the review
+under the user's name, as the app does (git `user.name` of the document's folder, else the system's full name, else
+`$USER`). A suggestion whose text has changed since (outdated) or that overlaps another is skipped, said, and stays
+open; Reject only records the decisions. Exit status 0 on success, 1 on an error, 2 on a command line that cannot be
+understood.
+
 ## Develop
 
 ```bash

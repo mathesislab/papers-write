@@ -2,7 +2,7 @@
 // `\end{name}`). The content of `equation`, `align` ... is highlighted as math, that of the others as LaTeX.
 
 import type { BlockParser, Element, InlineParser } from "@lezer/markdown";
-import { MATH_ENVS, inside, readRest, tokens, type Elt } from "./tokens.ts";
+import { MATH_ENVS, commandLength, inside, readRest, tokens, type Elt } from "./tokens.ts";
 import { latexBrace, latexCommand, latexEnvName } from "./tags.ts";
 
 export { latexBrace, latexCommand, latexEnvName };
@@ -14,8 +14,10 @@ export const latexInline: InlineParser = {
   name: "LatexCommand",
   parse(cx, next, pos) {
     if (next !== 92) return -1;
-    const m = /^\\(?:(?:begin|end)\{[^}\n]*\}|[A-Za-z]+\*?)/.exec(cx.slice(pos, Math.min(cx.end, pos + 200)));
-    if (!m) return -1;
+    const text = cx.slice(pos, Math.min(cx.end, pos + 400));
+    const len = commandLength(text);
+    if (!len) return -1;
+    const m = [text.slice(0, len)];
     for (const e of tokens(m[0], pos, (t, f, to, c) => cx.elt(t, f, to, c), "latex")) cx.addElement(e);
     return pos + m[0].length;
   },

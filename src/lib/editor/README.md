@@ -47,4 +47,6 @@ The editor and the components use these, set by the app's theme (light and dark)
 | `--md-meta` | the keys of the YAML front matter | `--md-heading` |
 | `--md-math` | the LaTeX commands, in math and in the text, and the names of environments | `--accent` |
 | `--md-math-number` | the numbers in math | `--md-quote`, else `--muted` |
+| `--md-cite` | the keys of citations (`[@key]`, `@key`, `\cite{key}`) | `--accent` |
+| `--md-ref` | cross-references (`@fig:x`, `\ref{x}`) and labels (`{#fig:x}`, `\label{x}`) | `--md-cite` |
 | `--editor-font`, `--editor-size` | the font and size of the Markdown (with a default); set by `setEditorFont` | |

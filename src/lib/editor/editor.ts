@@ -43,9 +43,11 @@ const style = HighlightStyle.define([
   { tag: tags.url, color: "var(--muted)" },
   { tag: tags.monospace, fontFamily: "ui-monospace, Menlo, monospace", fontSize: "0.92em" },
   // front matter: the fences and the keys; math and LaTeX: the marks and braces dimmed, the commands coloured
-  { tag: [lang.frontMatterMark, lang.mathMark, lang.mathBrace, lang.mathOperator, lang.latexBrace], color: "var(--muted)" },
+  { tag: [lang.frontMatterMark, lang.mathMark, lang.mathBrace, lang.mathOperator, lang.latexBrace, lang.citeMark], color: "var(--muted)" },
   { tag: lang.frontMatterKey, color: "var(--md-meta, var(--md-heading))" },
   { tag: [lang.mathCommand, lang.latexCommand, lang.latexEnvName], color: "var(--md-math, var(--accent))" },
+  { tag: lang.citationKey, color: "var(--md-cite, var(--accent))" },
+  { tag: [lang.crossRefKey, lang.labelName], color: "var(--md-ref, var(--md-cite, var(--accent)))" },
   { tag: lang.mathNumber, color: "var(--md-math-number, var(--md-quote, var(--muted)))" },
 ]);
 

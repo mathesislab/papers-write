@@ -3,6 +3,7 @@
 // a block. Inside, the commands, `^` `_`, the braces and the numbers are nodes of their own.
 
 import type { BlockParser, Element, InlineParser } from "@lezer/markdown";
+import { attributes } from "./cite.ts";
 import { MATH_ENVS, inside, tokens, type Elt } from "./tokens.ts";
 import { mathBrace, mathCommand, mathMark, mathNumber, mathOperator } from "./tags.ts";
 
@@ -75,6 +76,10 @@ export const mathBlock: BlockParser = {
       }
       children.push(...tokens(text.slice(0, close), at, elt, "math"), cx.elt("MathMark", at + close, at + close + 2));
       end = at + close + 2;
+      // a label after it: `$$ ... $$ {#eq:x}`
+      const rest = text.slice(close + 2);
+      const label = attributes(rest.trimStart(), end + rest.length - rest.trimStart().length, elt);
+      if (label) children.push(label), (end = label.to);
       cx.nextLine();
       break;
     }

@@ -97,3 +97,70 @@ test("display math and environments in a quote or a list stop with it", () => {
   assert.deepEqual(nodes("> $$\n> x\n> $$\n\nafter", "DisplayMath"), ["DisplayMath:$$\n> x\n> $$"]);
   assert.deepEqual(nodes("> $$\n> x\n\nafter $$ y", "DisplayMath"), ["DisplayMath:$$\n> x"]);
 });
+
+const CITE = ["Citation", "CitationKey", "CrossRef", "CrossRefKey", "CiteMark"] as const;
+
+test("bracketed citations, with the key as a node", () => {
+  assert.deepEqual(nodes("see [@a; @b, p. 3] there", "Citation", "CitationKey"), ["Citation:[@a; @b, p. 3]", "CitationKey:a", "CitationKey:b"]);
+  assert.deepEqual(nodes("[-@a]", "Citation", "CitationKey", "CiteMark"), ["Citation:[-@a]", "CiteMark:[", "CiteMark:-", "CiteMark:@", "CitationKey:a", "CiteMark:]"]);
+  assert.deepEqual(nodes("[see @smith:2020, p. 3; also @b-c]", "CitationKey"), ["CitationKey:smith:2020", "CitationKey:b-c"]);
+  assert.deepEqual(nodes("[a link](http://x.org) and [@a](http://x.org)", "Citation"), ["Citation:@a"]); // a link, with a citation as its text
+  assert.deepEqual(nodes("[no key] and [only @ here]", "Citation"), []);
+});
+
+test("citations in the text", () => {
+  assert.deepEqual(nodes("@a says so; @b.c. And @d_e:f.", "Citation", "CitationKey"), [
+    "Citation:@a",
+    "CitationKey:a",
+    "Citation:@b.c",
+    "CitationKey:b.c",
+    "Citation:@d_e:f",
+    "CitationKey:d_e:f",
+  ]);
+});
+
+test("an email address is no citation", () => {
+  assert.deepEqual(nodes("write to me@example.org or <me@example.org>", ...CITE), []);
+});
+
+test("\\cite commands give their keys", () => {
+  assert.deepEqual(nodes("as \\citep{a,b} and \\citet[p. 3]{ c }", "LatexCommand", "CitationKey"), [
+    "LatexCommand:\\citep",
+    "CitationKey:a",
+    "CitationKey:b",
+    "LatexCommand:\\citet",
+    "CitationKey:c",
+  ]);
+});
+
+test("cross-references are no citations", () => {
+  assert.deepEqual(nodes("in @fig:x and @eq:y, @tbl:z, @sec:w", "CrossRef", "CrossRefKey", "Citation"), [
+    "CrossRef:@fig:x",
+    "CrossRefKey:fig:x",
+    "CrossRef:@eq:y",
+    "CrossRefKey:eq:y",
+    "CrossRef:@tbl:z",
+    "CrossRefKey:tbl:z",
+    "CrossRef:@sec:w",
+    "CrossRefKey:sec:w",
+  ]);
+  assert.deepEqual(nodes("@fig says", "Citation", "CitationKey", "CrossRefKey"), ["Citation:@fig", "CitationKey:fig"]);
+  assert.deepEqual(nodes("see [@fig:x; @a]", "CrossRefKey", "CitationKey"), ["CrossRefKey:fig:x", "CitationKey:a"]);
+});
+
+test("labels in attributes and in LaTeX", () => {
+  assert.deepEqual(nodes("![caption](f.png){#fig:x width=50%}", "Attributes", "LabelName"), ["Attributes:{#fig:x width=50%}", "LabelName:fig:x"]);
+  assert.deepEqual(nodes("## Methods {#sec:methods .unnumbered}", "LabelName"), ["LabelName:sec:methods"]);
+  assert.deepEqual(nodes("$$ a = b $$ {#eq:x}", "DisplayMath", "LabelName"), ["DisplayMath:$$ a = b $$", "LabelName:eq:x"]);
+  assert.deepEqual(nodes("$$\na = b\n$$ {#eq:y}\n", "DisplayMath", "LabelName"), ["DisplayMath:$$\na = b\n$$ {#eq:y}", "LabelName:eq:y"]);
+  assert.deepEqual(nodes("{.class} and {not attributes #} and {a b}", "Attributes"), []);
+  assert.deepEqual(nodes("see \\label{x}, \\ref{x} and \\eqref{eq:y}", "LatexCommand", "LabelName", "CrossRefKey"), [
+    "LatexCommand:\\label",
+    "LabelName:x",
+    "LatexCommand:\\ref",
+    "CrossRefKey:x",
+    "LatexCommand:\\eqref",
+    "CrossRefKey:eq:y",
+  ]);
+  assert.deepEqual(nodes("\\begin{equation}\\label{eq:z}\nx\n\\end{equation}", "LabelName"), ["LabelName:eq:z"]);
+});

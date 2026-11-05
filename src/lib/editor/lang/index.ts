@@ -2,6 +2,7 @@
 // cross-references), as Lezer Markdown extensions. `paperMarkdown` is the list to give `markdown({ extensions })`.
 
 import type { MarkdownConfig, MarkdownExtension } from "@lezer/markdown";
+import { attributesInline, citationGroup, citationInline } from "./cite.ts";
 import { frontMatterBlock } from "./frontmatter.ts";
 import { latexBlock, latexInline } from "./latex.ts";
 import { mathBlock, mathInline } from "./math.ts";
@@ -45,5 +46,18 @@ const latex: MarkdownConfig = {
   parseInline: [latexInline],
 };
 
+const cite: MarkdownConfig = {
+  defineNodes: [
+    "Citation",
+    "CrossRef",
+    { name: "CiteMark", style: t.citeMark },
+    { name: "CitationKey", style: t.citationKey },
+    { name: "CrossRefKey", style: t.crossRefKey },
+    { name: "Attributes", style: t.citeMark },
+    { name: "LabelName", style: t.labelName },
+  ],
+  parseInline: [citationGroup, citationInline, attributesInline],
+};
+
 /** The extensions of Markdown for academic text, to give to `markdown({ extensions: paperMarkdown })`. */
-export const paperMarkdown: MarkdownExtension[] = [frontMatter, math, latex];
+export const paperMarkdown: MarkdownExtension[] = [frontMatter, math, latex, cite];

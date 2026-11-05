@@ -1,8 +1,8 @@
-// The tiles of the project bar (src/lib/bar.ts).
+// The tiles of the project bar (src/lib/project/bar.ts).
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { initials, label } from "../src/lib/bar.ts";
+import { initials, label } from "../src/lib/project/bar.ts";
 
 test("the first letters of the first two words, in capitals", () => {
   assert.equal(initials("Ice sheet paper"), "IS");

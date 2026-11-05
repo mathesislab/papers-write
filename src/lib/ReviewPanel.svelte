@@ -10,7 +10,7 @@
   import type { ReviewRecord } from "$lib/editor/review/types";
   import { ago, colorOf, whoIs } from "$lib/reviewFormat";
 
-  let { session, offer = "", oncommit, ondismiss }: { session: ReviewSession; offer?: string; oncommit?: () => void; ondismiss?: () => void } = $props();
+  let { session }: { session: ReviewSession } = $props();
 
   /** the person shown ("" for everyone, else a slug) and whether the decided ones show too */
   let who = $state("");
@@ -187,13 +187,6 @@
     <div class="all">
       <button class="primary" onclick={(e) => run(e, () => session.acceptAll(scope))}>{scope.person || scope.round ? `Accept all of ${session.describe(scope)}` : "Accept All"}</button>
       <button onclick={(e) => run(e, () => session.rejectAll(scope))}>Reject all</button>
-    </div>
-  {/if}
-  {#if offer}
-    <div class="offer">
-      <span>Commit the decisions?</span>
-      <button class="primary" onclick={oncommit}>Commit…</button>
-      <button onclick={ondismiss} aria-label="Not now" title="Not now">×</button>
     </div>
   {/if}
   {#if session.errors.length}
@@ -374,17 +367,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .offer {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    border-top: 1px solid var(--line);
-  }
-  .offer span {
-    flex: 1;
-    color: var(--muted);
   }
   footer {
     padding: 6px 10px;

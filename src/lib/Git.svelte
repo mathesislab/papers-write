@@ -1,11 +1,13 @@
 <script lang="ts">
-  // The Git menu: Commit… (⌥⌘K, or a click on the line at the foot of the window, or the offer of the review panel),
-  // Pull and Push. The menu's items come to `run`; the document is written first (`flush`).
+  // The Git menu: Commit… (⌥⌘K, or a click on the line at the foot of the window), Pull and Push. The menu's items come
+  // to `run`; the document is written first (`flush`).
   //
-  // Commit…: a sheet lists the files of the repository that changed. The document, its bibliography files and its
-  // review folder are ticked; the rest is not. The message is prefilled when the app knows why (`message`: after
-  // accepting suggestions); else, when only the review changed, as a review of the document. Commit runs `git add` of
-  // the ticked files and `git commit` of them (never `-a`, never an amend); a failure is shown as git says it.
+  // Commit…, the one way to commit, for writing and reviewing alike: a sheet lists the files of the repository that
+  // changed. The document, its bibliography files and its review folder are ticked; the rest is not. The message is
+  // prefilled from what the window did since the last commit (`message`, the page's log: suggestions accepted or
+  // rejected, a branch reviewed…); else, when only the review changed, as a review of the document; else (writing
+  // only) it is the user's. Commit runs `git add` of the ticked files and `git commit` of them (never `-a`, never an
+  // amend); a failure is shown as git says it.
   //
   // Compare with Commit…: a tag or a commit that touched the document (or any revision typed), and a tab of its own
   // opens, read only: the text of that commit with the changes since drawn as tracked changes (the route `history`).
@@ -38,6 +40,7 @@
     docName,
     me,
     say,
+    message,
     onchange,
     onfocus,
     oncommitted,
@@ -51,6 +54,8 @@
     me: () => string | undefined;
     /** told for a moment */
     say: (what: string) => void;
+    /** the message of the next commit, from what the window did since the last one ("" when it only wrote) */
+    message: () => string;
     /** git changed the repository: its state is read again */
     onchange: () => void;
     onfocus?: () => void;
@@ -71,12 +76,12 @@
   /** what a pull or a push could not do, as git says it */
   let failure = $state<{ what: string; error: string } | null>(null);
 
-  /** The menu's items: "git-commit", "git-pull", "git-push"; `message` prefills the commit's. */
-  export async function run(what: string, message = "") {
+  /** The menu's items: "git-commit", "git-pull", "git-push", "git-compare", "git-review-branch", "git-review-commits". */
+  export async function run(what: string) {
     failure = null;
     if (!["git-commit", "git-pull", "git-push", "git-compare", "git-review-branch", "git-review-commits"].includes(what)) return;
     await flush();
-    if (what === "git-commit") return open(message);
+    if (what === "git-commit") return open();
     if (what === "git-compare") return compareSheet();
     if (what === "git-review-branch") return branchSheet();
     if (what === "git-review-commits") return commitsSheet();
@@ -91,12 +96,12 @@
     onchange();
   }
 
-  async function open(message: string) {
+  async function open() {
     try {
       const files = await invoke<Candidate[]>("git_changes", { text: text() });
       if (!files.length) return say("Nothing to commit: no file has changed");
       const review = files.some((f) => f.kind === "review") && !files.some((f) => f.kind === "document");
-      const given = message || (review && me() ? `Review of ${docName()} by ${me()}` : "");
+      const given = message() || (review && me() ? `Review of ${docName()} by ${me()}` : "");
       committing = { files, ticks: files.map((f) => f.ticked), message: given, busy: false, error: "" };
     } catch (e) {
       failure = { what: "Commit", error: String(e) };
@@ -328,7 +333,7 @@
       {:else}
         <p>{said(r.done)}</p>
       {/if}
-      <div class="buttons"><button class="primary" onclick={() => ((recalling = null), open(""))}>Commit…</button></div>
+      <div class="buttons"><button class="primary" onclick={() => ((recalling = null), open())}>Commit…</button></div>
     {:else}
       <p class="hint">
         Edits already committed on this branch become suggestions again, each under the author of its commit, and {docName()} goes back to the text before

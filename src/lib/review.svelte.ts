@@ -4,6 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { FileEditor, ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "papers-write/editor";
+import { decided, type Entry } from "$lib/commitLog";
 
 export type Me = { name: string; email: string; slug: string };
 type Loaded = { items: ReviewItem[]; errors: string[]; people: Record<string, string> };
@@ -18,8 +19,9 @@ export type Deps = {
   editor: () => FileEditor | undefined;
   /** told for a moment (a note at the foot of the window) */
   say: (what: string) => void;
-  /** suggestions accepted or rejected, the decisions in the files of the review: told with a message for a commit */
-  decided?: (message: string) => void;
+  /** what was done to the review (suggestions accepted or rejected, the review cleaned up), for the message of the
+   *  next commit */
+  log?: (entry: Entry) => void;
 };
 
 export class ReviewSession {
@@ -177,14 +179,12 @@ export class ReviewSession {
   async accept(item: ReviewItem) {
     await this.#write(() => this.#accept(item));
     this.reload();
-    this.#decided("Accept", [item]);
+    this.#decided("accept", [item]);
   }
 
-  /** The commit offered for what was decided: "Accept 3 suggestions of Jane Doe". */
-  #decided(verb: "Accept" | "Reject", items: ReviewItem[]) {
-    const names = [...new Set(items.map((i) => i.author))];
-    const who = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
-    this.#deps.decided?.(`${verb} ${items.length} suggestion${items.length === 1 ? "" : "s"} of ${who}`);
+  /** Logged for the message of the next commit: "Accept 3 suggestions of Jane Doe". */
+  #decided(decision: "accept" | "reject", items: ReviewItem[]) {
+    for (const e of decided(decision, items)) this.#deps.log?.(e);
   }
 
   /** Rejected, and with it the counter-suggestions still open that answer it. */
@@ -194,6 +194,7 @@ export class ReviewSession {
       for (const c of this.items.filter((i) => i.on === item.id && i.state === "open")) await invoke("review_decide", { on: c.id, decision: "rejected" });
     });
     this.reload();
+    this.#decided("reject", [item]);
   }
 
   #open = (scope: Scope = {}) =>
@@ -238,7 +239,7 @@ export class ReviewSession {
       await this.#write(async () => {
         for (const i of take) await this.#accept(i);
       });
-      this.#decided("Accept", take);
+      this.#decided("accept", take);
     } finally {
       this.reload();
     }
@@ -254,7 +255,7 @@ export class ReviewSession {
       await this.#write(async () => {
         for (const i of open) await invoke("review_decide", { on: i.id, decision: "rejected" });
       });
-      this.#decided("Reject", open);
+      this.#decided("reject", open);
     } finally {
       this.reload();
     }
@@ -277,6 +278,7 @@ export class ReviewSession {
       if (!ok) return;
       await this.#write(() => invoke("review_cleanup"));
       this.#deps.say("Review cleaned up");
+      this.#deps.log?.({ did: "clean up the review" });
     } catch {
       // `problem` says what went wrong
     } finally {

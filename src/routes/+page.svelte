@@ -15,8 +15,10 @@
   // document's own bibliography lacks (each to add from the library) and the entries it never cites.
   //
   // The foot of the window says the state of the document's repository (GitBar; a click opens the Commit sheet). The Git
-  // menu (`git-menu`) is Git: Commit…, Pull, Push. After suggestions are accepted or rejected the review panel offers
-  // a commit with a message that says what was decided.
+  // menu (`git-menu`) is Git: Commit…, Pull, Push, Review Branch…, Review Commits…. The Commit sheet is the one way to
+  // commit; its message is prefilled from the window's log (`log`, commitLog.ts) of what it did since the last commit:
+  // suggestions accepted or rejected, the review cleaned up, edits brought in as suggestions. The log is emptied by a
+  // commit, and when the window shows another file.
   //
   // File ▸ Exchange (`exchange`) is Exchange: Compare as Suggestions… and the Word round trip.
   //
@@ -45,6 +47,7 @@
   import ReviewPanel from "$lib/ReviewPanel.svelte";
   import { ReviewSession } from "$lib/review.svelte";
   import { colorOf } from "$lib/reviewFormat";
+  import { message, type Entry } from "$lib/commitLog";
   import { openPath } from "@tauri-apps/plugin-opener";
   import {
     FileEditor,
@@ -86,8 +89,8 @@
   /** the repository of the document (git.rs); none when it is not in one */
   let repo = $state<GitState | null>(null);
   let git = $state<Git>();
-  /** the message of the commit offered in the review panel after suggestions were decided; none when not offered */
-  let offered = $state("");
+  /** what the window did since the last commit, for the message of the next one */
+  let log = $state<Entry[]>([]);
   /** whose draft this window is a review of, when it was opened from a `.review` (a bar at the top; suggest mode to begin with) */
   let reviewing = $state<{ name: string; email: string; round: string; document: string } | null>(null);
   let error = $state("");
@@ -138,7 +141,7 @@
     } catch {}
     if (!outlining) editor?.focus();
   }
-  const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), decided: (m) => (offered = m) });
+  const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), log: (e) => log.push(e) });
   /** the review panel at the right: shown (the preview is not while it is) */
   let panel = $state(false);
   /** the comment being written: the selection it is on and where the box goes */
@@ -148,6 +151,7 @@
   const latex = $derived(!!path && /\.(tex|sty|cls)$/i.test(path));
 
   async function ask() {
+    log = [];
     path = (await invoke<{ path: string | null }>("document")).path;
     loadBar();
   }
@@ -584,7 +588,7 @@
     <div class="pane" style:width={width ? `${width}px` : "45%"}><Preview {html} error={said} {block} /></div>
   {/if}
   {#if panel}
-    <div class="pane review"><ReviewPanel {session} offer={offered} oncommit={() => git?.run("git-commit", offered)} ondismiss={() => (offered = "")} /></div>
+    <div class="pane review"><ReviewPanel {session} /></div>
   {/if}
   </div>
   {#if listing}
@@ -621,7 +625,7 @@
       {/if}
     </div>
   {/if}
-  <GitBar bind:this={gitbar} {path} bind:state={repo} onopen={() => git?.run("git-commit", offered)} />
+  <GitBar bind:this={gitbar} {path} bind:state={repo} onopen={() => git?.run("git-commit")} />
   <Git
     bind:this={git}
     flush={() => editor?.flush()}
@@ -629,13 +633,22 @@
     docName={() => (path ? nameOf(path) : "")}
     me={() => session.me?.name}
     say={(what) => say(what)}
+    message={() => message(log)}
     onchange={() => gitbar?.refresh(0)}
     onfocus={() => editor?.focus()}
-    oncommitted={() => (offered = "")}
+    oncommitted={() => (log = [])}
+    onlog={(did) => log.push({ did })}
   />
   <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
   {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
-  <Exchange bind:this={exchange} bind:reviewing mode={session.mode} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
+  <Exchange
+    bind:this={exchange}
+    bind:reviewing
+    mode={session.mode}
+    flush={() => editor?.flush()}
+    onfocus={() => editor?.focus()}
+    onlog={(did) => log.push({ did })}
+  />
   {#if error || problem || session.problem}<p class="error">{problem || error || session.problem}</p>{:else if note}<p class="note">{note}</p>{/if}
 </main>
 </div>

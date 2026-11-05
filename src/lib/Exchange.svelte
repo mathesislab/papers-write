@@ -171,6 +171,7 @@
     [i.busy, problem] = [true, ""];
     try {
       i.result = await invoke<Imported>("import_word", { path: i.file, alsoUntracked: i.untracked, fallbackAuthor: i.author.trim() });
+      if (i.result.suggestions + i.result.comments) onlog?.(`import of the Word review ${nameOf(i.file)}`);
     } catch (e) {
       problem = String(e);
     }

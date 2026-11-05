@@ -15,7 +15,8 @@
   import { EditorView, keymap } from "@codemirror/view";
   import { onMount } from "svelte";
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "./editor";
-  import type { Completion, HoverSources } from "./types";
+  import type { Completion, Diagnostics, HoverSources } from "./types";
+  import { recheck } from "./diagnostics";
   import Outline from "./Outline.svelte";
   import { currentHeading, outline as outlineOf, type Heading } from "./outline";
   import {
@@ -40,6 +41,7 @@
     extensions = [],
     completion,
     hover,
+    diagnostics,
     outline = false,
     review,
     placeholder,
@@ -67,6 +69,9 @@
     /** what the tooltips over formulas, citation keys and images take from the app (cross-references need none; no
      *  tooltips without it) */
     hover?: HoverSources;
+    /** the keys underlined where the text cannot resolve them (labels, and the citations the app says are missing; none
+     *  without it) */
+    diagnostics?: Diagnostics;
     /** the outline of the headings in a column at the left of the text (Markdown and LaTeX) */
     outline?: boolean;
     /** what the review asks of the app: with it, the items given by `setReview` are drawn over the text and typing in
@@ -176,6 +181,7 @@
         prefs,
         completion,
         hover,
+        diagnostics,
         placeholder,
         extensions: [...extensions, selection, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });
@@ -242,6 +248,9 @@
       failed(e);
     }
   }
+
+  /** The citation keys asked of the app again (its bibliography or library changed), with `diagnostics`. */
+  export const recheckKeys = () => editor && recheck(editor);
 
   /** The editor of CodeMirror (undefined until the file is read). */
   export const view = () => editor;

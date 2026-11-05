@@ -169,6 +169,13 @@ pub async fn reference_of(window: WebviewWindow, key: String, text: String) -> O
     references_of(&window, &text).entry(&key).map(|e| e.item)
 }
 
+/// Of the citation `keys` of `text`, those neither the document's own bibliography nor the library has (the editor
+/// underlines them, 800 ms after the typing stops).
+#[tauri::command]
+pub async fn missing_keys(window: WebviewWindow, keys: Vec<String>, text: String) -> Vec<String> {
+    references_of(&window, &text).missing(&keys)
+}
+
 /// The keys cited in `text` against those of the `.bib` files its front matter names (not the papers library).
 #[tauri::command]
 pub async fn bib_check(window: WebviewWindow, text: String) -> Result<Check, String> {

@@ -94,6 +94,7 @@ pub fn run() {
             refs::bib_check,
             refs::cite_options,
             refs::reference_of,
+            refs::missing_keys,
             review::review_me,
             review::review_items,
             review::review_suggest,

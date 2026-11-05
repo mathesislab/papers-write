@@ -57,6 +57,7 @@
     type EditorPrefs,
     type Item,
     type Completion,
+    type Diagnostics,
     type Found,
     type ReviewView,
     type HoverSources,
@@ -324,6 +325,16 @@
     image: (path) => invoke<string | null>("image_data", { path }),
   };
 
+  /** The keys underlined: the citations neither the document's bibliography nor the library has (labels the editor sees itself). */
+  const diagnostics: Diagnostics = {
+    missingKeys: async (keys) => new Set(await invoke<string[]>("missing_keys", { keys, text: current() })),
+  };
+  // the references changed (a .bib was edited, a key added): the keys are asked again
+  $effect(() => {
+    version;
+    untrack(() => editor?.recheckKeys());
+  });
+
   function say(what: string) {
     note = what;
     clearTimeout(noteTimer);
@@ -549,6 +560,7 @@
         {symbols}
         {completion}
         {hover}
+        {diagnostics}
         outline={outlining && (markdown || latex)}
         autofocus
         extensions={[cursor]}

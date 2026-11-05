@@ -82,3 +82,11 @@ export type HoverSources = {
   /** the image at a path of the document (as `![…](path)` and `\includegraphics{path}` write it) as a data URL; null if none */
   image?: (path: string) => Promise<string | null>;
 };
+
+/** What the app supplies for the diagnostics of the editor (see `Options.diagnostics`). The cross-references to labels the
+ *  document lacks and the labels it defines twice are found by the editor itself. */
+export type Diagnostics = {
+  /** of these citation keys (each once), those found neither in the document's bibliography nor in the library; asked
+   *  800 ms after the typing stops and again on `recheck` */
+  missingKeys?: (keys: string[]) => Promise<Set<string>>;
+};

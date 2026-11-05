@@ -87,6 +87,17 @@ impl References {
     pub fn has(&self, key: &str) -> bool {
         self.library().is_some_and(|l| l.items().iter().any(|i| i.key == key))
     }
+
+    /// Of `keys`, those no file of the references has, in order, each once. Empty when the files could not be read:
+    /// nothing can then be said to be missing.
+    pub fn missing(&self, keys: &[String]) -> Vec<String> {
+        let Some(library) = self.library() else {
+            return Vec::new();
+        };
+        let known: std::collections::HashSet<&str> = library.items().iter().map(|i| i.key.as_str()).collect();
+        let mut seen = std::collections::HashSet::new();
+        keys.iter().filter(|k| !known.contains(k.as_str()) && seen.insert(k.as_str())).cloned().collect()
+    }
 }
 
 /// The names of the `.bib` files a document says it uses, as written: the front matter's `bibliography` of Markdown, the
@@ -260,6 +271,17 @@ mod tests {
         assert_eq!(&keys[..2], ["joughin2019", "jourdain2025"]);
         assert!(got[0].in_bib && !got[1].in_bib);
         assert_eq!(keys.len(), 10);
+    }
+
+    #[test]
+    fn keys_no_file_has_are_missing() {
+        let dir = folder("missing");
+        let refs = References::load(vec![bib(&dir, "a.bib", REFS)]);
+        let keys = ["robinson2012", "nobody1999", "feldmann2017", "nobody1999", "other"].map(String::from);
+        assert_eq!(refs.missing(&keys), ["nobody1999", "other"]);
+        // a file that does not parse: nothing is said to be missing
+        let broken = References::load(vec![bib(&dir, "b.bib", "@article{x, title = {unclosed")]);
+        assert!(broken.error().is_some() && broken.missing(&keys).is_empty());
     }
 
     /// An empty folder of its own for a test.

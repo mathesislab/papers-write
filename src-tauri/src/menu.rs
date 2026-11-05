@@ -1,7 +1,8 @@
 //! The menu bar. New, Open…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
 //! front (event `edit`, the id of the item), Cite as [@key] to the list of references (event `cite-key`), and Save to its page (event `menu`).
+//! The Review menu goes to the page of the window in front as `review-menu` with the id of the item.
 
-use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, EventTarget, Wry};
 
 use crate::documents;
@@ -96,6 +97,24 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("pdf-previous", "Find Previous", Some("Shift+CmdOrCtrl+G"))?,
         ],
     )?;
+    let review = Submenu::with_items(
+        app,
+        "Review",
+        true,
+        &[
+            // a check mark the window in front sets (its mode; `review::focused`, `review_mode`), not the click
+            &CheckMenuItem::with_id(app, "suggest", "Suggest Changes", true, false, Some("Shift+CmdOrCtrl+E"))?,
+            &item("comment", "Add Comment…", Some("Alt+CmdOrCtrl+M"))?,
+            &separator()?,
+            &item("panel", "Show Review Panel", Some("Alt+CmdOrCtrl+R"))?,
+            &separator()?,
+            &item("accept-all", "Accept All", None)?,
+            &item("reject-all", "Reject All", None)?,
+            &separator()?,
+            &item("next", "Next Change", Some("Alt+CmdOrCtrl+Down"))?,
+            &item("previous", "Previous Change", Some("Alt+CmdOrCtrl+Up"))?,
+        ],
+    )?;
     let window = Submenu::with_items(
         app,
         "Window",
@@ -108,7 +127,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
-    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &build, &pdf, &window])
+    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &review, &build, &pdf, &window])
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
@@ -145,6 +164,11 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "zoom-in" | "zoom-out" | "zoom-fit" | "pdf-find" | "pdf-next" | "pdf-previous" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id);
+            }
+        }
+        "suggest" | "comment" | "panel" | "accept-all" | "reject-all" | "next" | "previous" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "review-menu", id);
             }
         }
         "undo" | "redo" | "symbols" | "references" | "check" => {

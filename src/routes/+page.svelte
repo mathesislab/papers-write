@@ -18,11 +18,15 @@
   // as typed (`preview`), asked 300 ms after the typing stops, and scrolled to the block the cursor is in.
 
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
   import { ensureSyntaxTree } from "@codemirror/language";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import Preview from "$lib/Preview.svelte";
+  import CommentBox from "$lib/CommentBox.svelte";
+  import { ReviewSession } from "$lib/review.svelte";
+  import { reviewing, reviewProps } from "$lib/reviewEditor";
+  import { colorOf } from "$lib/reviewFormat";
   import { openPath } from "@tauri-apps/plugin-opener";
   import {
     FileEditor,
@@ -39,6 +43,11 @@
   import Build from "$lib/Build.svelte";
   import { listen } from "$lib/events";
   import "$lib/theme.css";
+
+  // The review (Review menu, `review-menu`): suggesting or editing (a badge at the top right while suggesting), the
+  // suggestions and comments of the review files carried onto the text as typed (`review_items`, asked again 500 ms
+  // after the typing stops, after each write of the user's, on `review-changed` and when the file changes on disk),
+  // given to the editor with `setReview`. Add Comment… (⌥⌘M) opens a box at the selection; ⌘↵ posts.
 
   /** the file of the window; none while untitled; undefined until the backend says */
   let path = $state<string | null | undefined>();
@@ -75,6 +84,9 @@
   })();
   let width = $state(stored >= 240 ? stored : 0);
   let panes = $state<HTMLElement>();
+  const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what) });
+  /** the comment being written: the selection it is on and where the box goes */
+  let commenting = $state<{ from: number; to: number; x: number; y: number } | null>(null);
   const markdown = $derived(!path || /\.(md|markdown|txt)$/i.test(path));
 
   async function ask() {
@@ -84,6 +96,7 @@
   function changed(text: string) {
     typed = text;
     if (previewing) later();
+    session.reload(500);
     if (!path && blank !== !text.trim()) invoke("set_blank", { blank: (blank = !text.trim()) });
   }
 
@@ -255,6 +268,33 @@
     editor?.focus();
   }
 
+  /** A choice of the Review menu. */
+  function reviewMenu(what: string) {
+    if (what === "suggest") session.toggleMode();
+    else if (what === "comment") comment();
+    else if (what === "accept-all") session.acceptAll().catch(() => {});
+    else if (what === "reject-all") session.rejectAll().catch(() => {});
+    else if (what === "next" || what === "previous") session.step(what === "next");
+  }
+
+  /** Add Comment…: the box beside the end of the selection. */
+  function comment() {
+    const view = editor?.view();
+    if (!view) return;
+    if (!session.me) return say("Save the document first, to comment on it");
+    const { from, to } = view.state.selection.main;
+    if (from === to) return say("Select the text to comment on");
+    const at = view.coordsAtPos(to) ?? view.coordsAtPos(from);
+    commenting = { from, to, x: at?.left ?? 40, y: (at?.bottom ?? 40) + 4 };
+  }
+
+  async function post(body: string) {
+    const c = commenting;
+    commenting = null;
+    editor?.focus();
+    if (c) await session.comment(c.from, c.to, body).catch(() => {});
+  }
+
   function edit(what: string) {
     if (!editor) return;
     if (what === "check") check();
@@ -266,12 +306,24 @@
   /** The keys to the sheet as it opens, so Esc reaches it. */
   const grab = (node: HTMLElement) => node.focus();
 
+  // the review begins again for each file, and the editor is told its items and the mode
+  $effect(() => {
+    if (path !== undefined) untrack(() => session.start(!!path));
+  });
+  $effect(() => reviewing(editor)?.setReview(session.items));
+  $effect(() => reviewing(editor)?.setMode(session.mode));
+
   onMount(() => {
     setEditorFont("system", 13.5);
     ask();
     const unlisten = [
       listen("opened", ask),
-      listen("file-changed", () => editor?.changedOnDisk()),
+      listen("file-changed", () => {
+        editor?.changedOnDisk();
+        session.reload(300);
+      }),
+      listen<string>("review-menu", (e) => reviewMenu(e.payload)),
+      listen("review-changed", () => session.reload(100)),
       listen<string>("menu", (e) => (e.payload === "save" ? save() : builds?.run(e.payload))),
       listen<string>("edit", (e) => edit(e.payload)),
       listen("preview", togglePreview),
@@ -300,10 +352,14 @@
         {completion}
         autofocus
         extensions={[cursor]}
+        {...reviewProps(session.handlers)}
         onchange={changed}
         bind:error
       />
     {/key}
+  {/if}
+  {#if session.mode === "suggest"}
+    <button class="mode" style:--user={colorOf(session.me?.slug ?? "")} title="Back to editing (⇧⌘E)" onclick={() => session.toggleMode()}>Suggesting</button>
   {/if}
   </div>
   {#if previewing && markdown}
@@ -347,7 +403,8 @@
     </div>
   {/if}
   <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
-  {#if error || problem}<p class="error">{problem || error}</p>{:else if note}<p class="note">{note}</p>{/if}
+  {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
+  {#if error || problem || session.problem}<p class="error">{problem || error || session.problem}</p>{:else if note}<p class="note">{note}</p>{/if}
 </main>
 
 <style>
@@ -364,6 +421,20 @@
     flex: 1;
     min-width: 0;
     height: 100%;
+  }
+  .mode {
+    position: absolute;
+    z-index: 5;
+    top: 8px;
+    right: 18px;
+    font: inherit;
+    font-size: 11.5px;
+    color: #fff;
+    background: var(--user);
+    border: none;
+    border-radius: 10px;
+    padding: 1px 9px;
+    opacity: 0.92;
   }
   .split {
     flex: none;

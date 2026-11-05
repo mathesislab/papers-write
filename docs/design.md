@@ -81,10 +81,20 @@ needs it, as papers-rs did.
 - A crate of papers-write's workspace (later): files written atomically and
   watched, the references (papers-core: the project's `.bib`, the papers
   library), and the review files (read, written, anchored, accepted).
-- The project bar and info card, once papers-write has projects: the
-  machinery shared, each app giving its tile and its card (below).
+- `src/lib/project/`, exported as `papers-write/project`: the project bar
+  (`ProjectBar.svelte`: a column of tiles, each in its colour with its label,
+  the current one marked, an optional detail line and level bar; `items`,
+  `onswitch(id)`, `onmenu(id, event)`, `onadd()`), the labels of the tiles
+  (`bar.ts`: the short name or the initials, on one line or two, the font
+  fitted) and the colours (`colour.ts`). What a tile says and does is each
+  app's: papers-review gives the due date as `detail` and how near it is as
+  `level`, papers-write the words and the open suggestions. The colours by
+  name are `write_core::colour` (papers-review's `colour.rs`). The info card
+  stays each app's: their project files say different things.
 
-The editor came out of papers-review with its history.
+The editor came out of papers-review with its history, and so did the
+project bar's labels and colours (`bar.ts`, `colour.ts`, their test, and
+`colour.rs`).
 
 ### One app or two
 
@@ -118,13 +128,17 @@ One app later is then a matter of windows, not code.
   bibliography and the journal, the papers library is found as papers-review
   finds it, the preview and the build work.
 - A project (File ▸ Open Project, a folder) adds the project bar, as in
-  papers-review and with its machinery and look: a tile per project in its
-  colour with its short name, the files of its folder, the build, the review
-  of its files. A file opened from inside a project's folder opens in it.
+  papers-review and with its component: a tile per project in its colour
+  with its short name, and a bar in its colour at the top of the window. A
+  file opened from inside a project's folder (or below) belongs to it. A tile
+  opens the project's main document as a tab: the app stays one window per
+  document, and the bar switches documents, not the window's content as in
+  papers-review.
 - What differs from papers-review is what a project says. No due date: the
-  tile shows the words, the suggestions waiting, and whether the last build
-  passed. The info card asks for the main file, the bib, the journal
-  template and the build folder, not a manuscript ID.
+  tile shows the main document's words and its open suggestions (whether the
+  last build passed, later). The info card asks for the name, short name,
+  colour, main file, build folder and library, not a manuscript ID; the
+  journal and the bib stay in the front matter. No files panel yet.
 
 ## The project
 
@@ -143,6 +157,20 @@ texmark's front matter stays the truth for what it reads (`journal`,
 `write.toml` holds the rest: name, short name and colour, the main file(s),
 the build folder, the library searched. A folder without it opens with a
 card asking for these, and offers to start from the paper-draft skeleton.
+
+```toml
+name = "Ice sheet paper"
+short = "ISP"
+colour = "teal"
+main = "paper.md"        # or an array
+build = "build"
+library = "refs.bib"     # optional
+```
+
+It is read as written and changed key by key (`toml_edit`), so comments and
+keys the app does not know stay. The bar and the recent projects are the
+app's (`state.json` in its data folder), not the project's. As built, `build`
+and `library` are kept but not yet used by the build and the references.
 
 ## The editor
 
@@ -444,5 +472,6 @@ shown as tracked changes between two commits. Nothing is rewritten.
 4. Comments: the review files, bases and anchoring, on the simpler case.
 5. Suggest mode: suggestions, accept and reject, the views, new versions.
 6. Sending: `.review` files, Word, HTML and PDF; Compare as Suggestions.
-7. Projects and git: the project bar, commits, history as changes.
+7. Projects and git: the project bar, commits, history as changes (built;
+   the build folder and library of `write.toml` not used yet).
 8. LaTeX files.

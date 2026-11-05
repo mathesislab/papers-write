@@ -16,7 +16,8 @@ library's search, previews and missing-reference checks at hand while
 writing.
 
 Status: early. The editor (CodeMirror, Markdown) is written here and shared
-with papers-review as `papers-write/editor`; the app is a plain-text editor.
+with papers-review as `papers-write/editor`, and so is the project bar
+(`papers-write/project`); the app is a plain-text editor with projects.
 
 ## Use
 
@@ -118,6 +119,37 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   around it.
 - The app stays in the menu bar when the last window closes (New, Open…,
   Quit); ⌘Q quits.
+- Projects: a project is a folder with a `write.toml` (below). File ▸ Open
+  Project… (⇧⌘O) chooses a folder: with `write.toml` it joins the project bar
+  and its main document opens (or comes forward); without, a card asks for
+  the name, the short name of its tile, the colour and the main document (a
+  Markdown or LaTeX file of the folder, or a new paper: the front matter of
+  the paper-draft skeleton, with title, authors, date, bibliography and the
+  journal to choose, and the headings of the sections), and Create writes
+  `write.toml` (Cancel leaves nothing). A document in the folder of a project,
+  or below it, belongs to it: its window shows the project bar at the left, a
+  tile per project in its colour with its short name (else its initials), the
+  main document's words and its open suggestions ("6.2k words", "3 open"),
+  the current one marked, and a thin bar in the project's colour at the top.
+  A click on a tile opens the project's main document in a tab (or brings it
+  forward); a right-click: Open Project Folder in Finder, Project Info…,
+  Remove from Bar; `+` is Open Project…. File ▸ Project Info… (⌘I) is a card
+  of the fields of `write.toml`, written on Done (Esc drops it). The bar and
+  the projects opened last are kept in the app's `state.json`.
+
+  ```toml
+  name = "Ice sheet paper"
+  short = "ISP"          # the tile: ten letters at most
+  colour = "teal"        # blue teal green yellow orange red pink purple graphite none
+  main = "paper.md"      # or ["paper.md", "supplement.md"]
+  build = "build"        # the build folder (the default)
+  library = "refs.bib"   # a .bib or papers library searched; else the papers library
+  ```
+
+  The file is changed key by key: comments and other keys stay. `build` and
+  `library` are kept but not yet used: a build still goes to `build/` beside
+  the document, and the references are those of the front matter and the
+  papers library.
 - Edit ▸ References… (⇧⌘R) lists the references over the editor: the `.bib`
   files named by `bibliography:` in the front matter, and the papers library.
   Type to search (words, author, year); ↵ puts in a citation, ⌘. `[@key]`,

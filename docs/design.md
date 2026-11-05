@@ -410,6 +410,10 @@ shown as tracked changes between two commits. Nothing is rewritten.
   decided.
 - Pull is `--ff-only` (never a merge commit, never a rebase: when it cannot go
   forward it stops and says so). Push needs an upstream and is never forced.
+- Compare with Commit…: a read-only tab with the text of the commit and the
+  changes since (the word-level diff of Compare as Suggestions, from that
+  commit to the file now) as tracked changes under "since <rev>", drawn by the
+  editor's review. Nothing is written to the review files.
 
 ## Code
 

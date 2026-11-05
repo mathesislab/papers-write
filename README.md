@@ -149,7 +149,10 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   All the review panel offers the commit with a message that says what was
   decided. Pull is `git pull --ff-only`: if the branch cannot go forward
   nothing is done and it is said (resolve it in a terminal). Push is `git
-  push`, never forced, and needs an upstream.
+  push`, never forced, and needs an upstream. Git ▸ Compare with Commit…
+  opens a tab "paper.md since v2": a tag or a commit that touched the file (or
+  any revision typed), its text read only, with the changes since drawn as
+  tracked changes.
 
 ## Develop
 

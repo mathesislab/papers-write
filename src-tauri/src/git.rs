@@ -7,10 +7,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use write_core::review::Item;
+use write_core::review::compare::{as_items, suggestions};
 
 use crate::build::{find_tool, search_path};
 use crate::documents;
@@ -19,6 +22,10 @@ use crate::documents;
 #[derive(Default)]
 pub struct Git {
     fetched: Mutex<HashMap<PathBuf, Instant>>,
+    /// the windows that show a document since a commit, by label: the document and the commit
+    views: Mutex<HashMap<String, (PathBuf, String)>>,
+    /// the number of the next such window
+    next: AtomicUsize,
 }
 
 /// How long after a fetch the next may come.
@@ -425,6 +432,97 @@ pub async fn git_push(window: WebviewWindow) -> Result<String, String> {
     blocking(move || push(&doc)).await?
 }
 
+// ---- Compare with Commit…
+
+/// A document as it was at a commit, with what changed since as tracked changes.
+#[derive(Serialize)]
+pub struct History {
+    /// "paper.md since v2"
+    pub title: String,
+    /// the file at the commit
+    pub text: String,
+    /// the changes from `text` to the file now: open suggestions of "since v2", ids `history-<n>`
+    pub items: Vec<Item>,
+    /// whether the document is Markdown (else plain monospace text)
+    pub markdown: bool,
+}
+
+/// What a commit is called in a title: a hash shortened.
+fn short(rev: &str) -> &str {
+    if rev.len() == 40 && rev.bytes().all(|b| b.is_ascii_hexdigit()) { &rev[..7] } else { rev }
+}
+
+/// The text of `doc` at `rev`, and the changes from it to `current` as items, drawn by the editor's review over the
+/// text of `rev`. Applied all, they give `current`.
+pub(crate) fn history_of(doc: &Path, rev: &str, current: &str) -> Result<History, String> {
+    let name = doc.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let bytes = git_show(folder_of(doc), &name, rev)?;
+    let text = String::from_utf8(bytes).map_err(|_| format!("{name} at {rev}: not a UTF-8 text file"))?;
+    let label = short(rev);
+    let items = as_items(&text, &suggestions(&text, current), &format!("since {label}"));
+    let markdown = doc.extension().is_some_and(|e| ["md", "markdown", "txt"].iter().any(|m| e.eq_ignore_ascii_case(m)));
+    Ok(History { title: format!("{name} since {label}"), text, items, markdown })
+}
+
+fn read(doc: &Path) -> Result<String, String> {
+    let bytes = std::fs::read(doc).map_err(|e| format!("{}: {e}", doc.display()))?;
+    String::from_utf8(bytes).map_err(|_| format!("{}: not a UTF-8 text file", doc.display()))
+}
+
+/// The window's document at `rev` in a tab of its own, read only, with the changes since as tracked changes (the
+/// page has written the document: the file is what is compared). Nothing is saved from it.
+#[tauri::command]
+pub async fn compare_with_commit(app: AppHandle, window: WebviewWindow, rev: String) -> Result<(), String> {
+    let doc = doc_of(&window)?;
+    let (path, at) = (doc.clone(), rev.clone());
+    // the commit is read first: a revision that does not have the file is told here, not in an empty tab
+    let made = blocking(move || history_of(&path, &at, &read(&path)?)).await??;
+    let state = app.state::<Git>();
+    let label = format!("history-{}", state.next.fetch_add(1, Ordering::Relaxed) + 1);
+    state.views.lock().unwrap().insert(label.clone(), (doc, rev));
+    let joined = documents::front(&app);
+    let built = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("/history".into()))
+        .title(made.title)
+        .inner_size(900.0, 700.0)
+        .tabbing_identifier(documents::TABBING)
+        .build();
+    match built {
+        Ok(new) => {
+            match joined {
+                Some(to) => crate::tabs::join(&new, &to),
+                None => {
+                    let _ = new.set_focus();
+                }
+            }
+            Ok(())
+        }
+        Err(e) => {
+            closed(&app, &label);
+            Err(e.to_string())
+        }
+    }
+}
+
+/// What a window of history shows: the document at the commit it was made for, and the changes since (the file as it
+/// is now, so the tab asked again shows what has changed since it opened).
+#[tauri::command]
+pub async fn history(app: AppHandle, window: WebviewWindow) -> Result<History, String> {
+    let (doc, rev) = app
+        .state::<Git>()
+        .views
+        .lock()
+        .unwrap()
+        .get(window.label())
+        .cloned()
+        .ok_or("This window has no document to compare")?;
+    blocking(move || history_of(&doc, &rev, &read(&doc)?)).await?
+}
+
+/// A window gone: what was kept of it goes.
+pub fn closed(app: &AppHandle, label: &str) {
+    app.state::<Git>().views.lock().unwrap().remove(label);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -681,5 +779,34 @@ mod tests {
         let e = push(&dir.join("paper.md")).unwrap_err();
         assert!(e.contains("no upstream"), "{e}");
         assert!(pull(&dir.join("paper.md")).unwrap_err().contains("no upstream"));
+    }
+
+    #[test]
+    fn the_history_of_a_small_change_is_tracked_changes() {
+        let dir = repo("history");
+        let doc = dir.join("paper.md");
+        sh(&dir, &["tag", "v2"]);
+        let now = "The line retreats slowly now.\nA new line.\n";
+        std::fs::write(&doc, now).unwrap();
+        let h = history_of(&doc, "v2", now).unwrap();
+        assert_eq!(h.title, "paper.md since v2");
+        assert_eq!(h.text, "The line retreats rapidly now.\n");
+        assert!(h.markdown);
+        let got: Vec<(&str, &str, &str, Option<&str>)> =
+            h.items.iter().map(|i| (i.id.as_str(), i.author.as_str(), i.record.exact.as_deref().unwrap_or(""), i.replacement.as_deref())).collect();
+        assert_eq!(got[0].0, "history-1");
+        assert_eq!(got[0].1, "since v2");
+        assert_eq!(got[0].2, "rapidly");
+        assert_eq!(got[0].3, Some("slowly"));
+        // all applied to the text at the commit give the text now
+        let mut out = h.text.clone();
+        for i in h.items.iter().rev() {
+            out.replace_range(i.range.clone(), i.replacement.as_deref().unwrap());
+        }
+        assert_eq!(out, now);
+        // a commit is named by a short hash; a revision without the file says so
+        let hash = sh(&dir, &["rev-parse", "HEAD"]);
+        assert_eq!(history_of(&doc, hash.trim(), now).unwrap().title, format!("paper.md since {}", &hash.trim()[..7]));
+        assert!(history_of(&doc, "nonsense", now).is_err());
     }
 }

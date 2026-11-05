@@ -137,6 +137,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("git-commit", "Commit…", Some("Alt+CmdOrCtrl+K"))?,
             &item("git-pull", "Pull", None)?,
             &item("git-push", "Push", None)?,
+            &separator()?,
+            &item("git-compare", "Compare with Commit…", None)?,
         ],
     )?;
     let window = Submenu::with_items(
@@ -202,7 +204,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         // the page writes the document first, asks what is needed, and the backend runs git
-        "git-commit" | "git-pull" | "git-push" => {
+        "git-commit" | "git-pull" | "git-push" | "git-compare" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "git-menu", id);
             }

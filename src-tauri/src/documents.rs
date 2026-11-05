@@ -17,7 +17,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use crate::files;
 
 /// The windows' tabbing identifier: the windows of the app merge into tabs of one window.
-const TABBING: &str = "papers-write";
+pub(crate) const TABBING: &str = "papers-write";
 
 /// What the windows show, by label: the file, or none for an untitled one.
 #[derive(Default)]
@@ -172,6 +172,7 @@ pub fn closed(app: &AppHandle, label: &str) {
     files::unwatch(app, label);
     crate::refs::unload(app, label);
     crate::review::unload(app, label);
+    crate::git::closed(app, label);
     // the window may still be among the windows as this is told
     if app.webview_windows().keys().all(|l| l == label) {
         regular(app, false);

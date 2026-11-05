@@ -1,8 +1,12 @@
 //! An edited copy, a commit or a branch as suggestions: the word-level difference from the current text to the
 //! edited one, a suggestion per changed stretch. Whoever made the edited text is not asked to use the app.
 
+use super::anchor::{Anchor, Status};
+use super::byte_of;
 use super::diff::hunks;
+use super::fold::{Item, State};
 use super::ops::NewRecord;
+use super::record::{Kind, Record};
 use super::text::utf16_of;
 
 /// The suggestions that turn `current` into `edited`, in order, with positions in UTF-16 code units of `current`. A
@@ -12,6 +16,37 @@ pub fn suggestions(current: &str, edited: &str) -> Vec<NewRecord> {
     hunks(current, edited)
         .into_iter()
         .map(|h| NewRecord::suggestion(utf16_of(current, h.old.start), utf16_of(current, h.old.end), &edited[h.new]))
+        .collect()
+}
+
+/// `list` (the suggestions that turn `text` into another text, as `suggestions` gives them) as open items on `text`,
+/// to draw as tracked changes without a review on disk: ids `history-1`, `history-2`, ..., all by `author`.
+pub fn as_items(text: &str, list: &[NewRecord], author: &str) -> Vec<Item> {
+    list.iter()
+        .enumerate()
+        .map(|(n, s)| {
+            let range = byte_of(text, s.from)..byte_of(text, s.to);
+            let id = format!("history-{}", n + 1);
+            let insert = s.insert.clone().unwrap_or_default();
+            let mut record = Record::blank(id.clone(), Kind::Suggestion);
+            record.start = Some(range.start);
+            record.end = Some(range.end);
+            record.exact = Some(text[range.clone()].to_string());
+            record.insert = Some(insert.clone());
+            Item {
+                id,
+                kind: Kind::Suggestion,
+                author: author.to_string(),
+                on: None,
+                record,
+                thread: Vec::new(),
+                state: State::Open,
+                at: Anchor { from: s.from, to: s.to },
+                status: Status::Exact,
+                replacement: Some(insert),
+                range,
+            }
+        })
         .collect()
 }
 
@@ -78,5 +113,18 @@ mod tests {
         // 𝒳 is two units
         assert_eq!((s[0].from, s[0].to), (9, 14));
         assert_eq!(apply(a, &s), b);
+    }
+
+    #[test]
+    fn items_of_the_suggestions() {
+        let (a, b) = ("The line retreats rapidly now.", "The line retreats slowly now.");
+        let items = as_items(a, &suggestions(a, b), "since v2");
+        assert_eq!(items.len(), 1);
+        let i = &items[0];
+        assert_eq!((i.id.as_str(), i.author.as_str(), i.state), ("history-1", "since v2", State::Open));
+        assert_eq!((i.at.from, i.at.to), (18, 25));
+        assert_eq!(i.record.exact.as_deref(), Some("rapidly"));
+        assert_eq!(i.replacement.as_deref(), Some("slowly"));
+        assert_eq!(&a[i.range.clone()], "rapidly");
     }
 }

@@ -7,12 +7,16 @@
   // accepting suggestions); else, when only the review changed, as a review of the document. Commit runs `git add` of
   // the ticked files and `git commit` of them (never `-a`, never an amend); a failure is shown as git says it.
   //
+  // Compare with Commit…: a tag or a commit that touched the document (or any revision typed), and a tab of its own
+  // opens, read only: the text of that commit with the changes since drawn as tracked changes (the route `history`).
+  //
   // Pull is `git pull --ff-only`: if the branch cannot go forward, nothing is done and a sheet says so; the rest is for
   // a terminal. Push is `git push`, never forced, and needs an upstream.
 
   import { invoke } from "@tauri-apps/api/core";
   import type { Changed } from "$lib/git";
 
+  type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
   type Candidate = Changed & { kind: "document" | "bibliography" | "review" | "other"; ticked: boolean };
 
   let {
@@ -42,15 +46,18 @@
 
   type Sheet = { files: Candidate[]; ticks: boolean[]; message: string; busy: boolean; error: string };
   let committing = $state<Sheet | null>(null);
+  /** the sheet of Compare with Commit…: the revisions to choose from, the one chosen or typed */
+  let comparing = $state<{ revisions: Revision[]; chosen: string; typed: string; busy: boolean; error: string } | null>(null);
   /** what a pull or a push could not do, as git says it */
   let failure = $state<{ what: string; error: string } | null>(null);
 
   /** The menu's items: "git-commit", "git-pull", "git-push"; `message` prefills the commit's. */
   export async function run(what: string, message = "") {
     failure = null;
-    if (what !== "git-commit" && what !== "git-pull" && what !== "git-push") return;
+    if (!["git-commit", "git-pull", "git-push", "git-compare"].includes(what)) return;
     await flush();
     if (what === "git-commit") return open(message);
+    if (what === "git-compare") return compareSheet();
     const [name, go, done] =
       what === "git-pull" ? (["Pull", "git_pull", "Pulled"] as const) : (["Push", "git_push", "Pushed"] as const);
     say(`${name}ing…`);
@@ -71,6 +78,29 @@
       committing = { files, ticks: files.map((f) => f.ticked), message: given, busy: false, error: "" };
     } catch (e) {
       failure = { what: "Commit", error: String(e) };
+    }
+  }
+
+  async function compareSheet() {
+    try {
+      comparing = { revisions: await invoke<Revision[]>("revisions"), chosen: "", typed: "", busy: false, error: "" };
+    } catch (e) {
+      failure = { what: "Compare with Commit", error: String(e) };
+    }
+  }
+
+  const revision = $derived(comparing ? comparing.typed.trim() || comparing.chosen : "");
+
+  async function compare() {
+    const c = comparing;
+    if (!c || !revision || c.busy) return;
+    [c.busy, c.error] = [true, ""];
+    try {
+      await invoke("compare_with_commit", { rev: revision });
+      comparing = null;
+    } catch (e) {
+      c.error = String(e);
+      c.busy = false;
     }
   }
 
@@ -96,6 +126,7 @@
 
   function close() {
     committing = null;
+    comparing = null;
     failure = null;
     onfocus?.();
   }
@@ -133,6 +164,33 @@
     {#if committing.error}<p class="error">{committing.error}</p>{/if}
     <div class="buttons">
       <button class="primary" disabled={!ready} onclick={commit}>Commit {chosen.length} file{chosen.length === 1 ? "" : "s"}</button>
+    </div>
+  </div>
+{/if}
+{#if comparing}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="sheet" role="dialog" aria-label="Compare with Commit" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+    <header>
+      <b>Compare with Commit</b>
+      <button onclick={close}>Cancel</button>
+    </header>
+    <p class="hint">Opens the document as it was then, with the changes since as tracked changes, read only.</p>
+    <label>
+      Tag or commit
+      <select bind:value={comparing.chosen} onchange={() => comparing && (comparing.typed = "")}>
+        <option value="">{comparing.revisions.length ? "Choose…" : "none (not in a repository)"}</option>
+        {#each comparing.revisions as v (v.kind + v.rev)}
+          <option value={v.rev}>{v.label}: {v.detail}</option>
+        {/each}
+      </select>
+    </label>
+    <label>
+      or any revision (a branch, v1.2, HEAD~3)
+      <input bind:value={comparing.typed} onkeydown={(e) => e.key === "Enter" && compare()} />
+    </label>
+    {#if comparing.error}<p class="error">{comparing.error}</p>{/if}
+    <div class="buttons">
+      <button class="primary" disabled={!revision || comparing.busy} onclick={compare}>Compare</button>
     </div>
   </div>
 {/if}
@@ -227,6 +285,27 @@
     color: var(--error);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  .hint {
+    margin: 6px 0 0;
+    color: var(--muted);
+  }
+  label:not(li label) {
+    display: block;
+    margin-top: 8px;
+  }
+  select,
+  input:not([type="checkbox"]) {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 2px;
+    font: inherit;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 2px 6px;
   }
   .buttons {
     display: flex;

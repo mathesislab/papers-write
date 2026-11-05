@@ -62,6 +62,8 @@ pub fn run() {
             git::git_commit,
             git::git_pull,
             git::git_push,
+            git::compare_with_commit,
+            git::history,
             exchange::compare_as_suggestions,
             exchange::revision_author,
             exchange::choose_edited_copy,

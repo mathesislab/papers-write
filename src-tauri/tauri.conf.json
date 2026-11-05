@@ -42,6 +42,14 @@
         "name": "Text document",
         "description": "A plain-text file",
         "role": "Editor"
+      },
+      {
+        "ext": [
+          "pdf"
+        ],
+        "name": "PDF document",
+        "description": "A PDF",
+        "role": "Viewer"
       }
     ]
   }

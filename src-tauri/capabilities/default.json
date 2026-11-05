@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "pdfkit:default",
     {
       "identifier": "opener:allow-open-path",
       "allow": [{ "path": "**" }]

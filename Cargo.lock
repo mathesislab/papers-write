@@ -2663,6 +2663,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-pdf-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c14ed801ae810c6ba487cedd7616bb48f9a8e37940042f57e862538e2c7db117"
+dependencies = [
+ "bitflags 2.13.2",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+]
+
+[[package]]
 name = "objc2-quartz-core"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2837,6 +2849,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
+ "tauri-plugin-pdfkit",
 ]
 
 [[package]]
@@ -4320,6 +4333,21 @@ dependencies = [
  "url",
  "windows",
  "zbus",
+]
+
+[[package]]
+name = "tauri-plugin-pdfkit"
+version = "0.4.0"
+source = "git+https://github.com/mathesislab/tauri-plugin-pdfkit?tag=v0.4.0#34cbfddbb8701268b94e77abc7d06bc41823a394"
+dependencies = [
+ "block2",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "objc2-pdf-kit",
+ "serde",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

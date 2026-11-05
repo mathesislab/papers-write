@@ -14,6 +14,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_pdfkit::init())
         // managed before the app launches: macOS may hand over files to open before `setup` has run
         .manage(documents::Documents::default())
         .manage(files::Watched::default())

@@ -21,7 +21,7 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
 ## Use
 
 - Any file opens at once: File ▸ Open… (⌘O), Open With or a double click
-  (md, markdown, txt, tex, bib, yaml, toml), a drop on the Dock icon or on a
+  (md, markdown, txt, tex, bib, yaml, toml, pdf), a drop on the Dock icon or on a
   window. A file already open comes forward.
 - Each file is a macOS window tab (System Settings ▸ Desktop & Dock ▸ Prefer
   tabs when opening documents); a tab dragged out is a window. ⌘N is a new
@@ -30,6 +30,10 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
 - A file is saved as typed, half a second after the typing stops. If it
   changes on disk (another editor, a sync client), it is read again, or the
   bar asks which to keep.
+- A PDF opens in a tab like the text files (PDFKit, as Preview shows it): the
+  page in view (click it to go to a page), zoom in, out and to fit the width
+  (⌘= ⌘- ⌘0, PDF menu), Find (⌘F, next ⌘G, previous ⇧⌘G). A PDF that changes on
+  disk, a build rewriting it, is read again at the same page.
 - The app stays in the menu bar when the last window closes (New, Open…,
   Quit); ⌘Q quits.
 - Edit ▸ References… (⇧⌘R) lists the references over the editor: the `.bib`

@@ -59,7 +59,13 @@ pub fn document(window: WebviewWindow) -> Document {
 
 /// The file a window shows, or none when it is untitled.
 pub fn path_of(app: &AppHandle, label: &str) -> Option<PathBuf> {
-    app.state::<Documents>().paths.lock().unwrap().get(label).cloned().flatten()
+    app.state::<Documents>()
+        .paths
+        .lock()
+        .unwrap()
+        .get(label)
+        .cloned()
+        .flatten()
 }
 
 /// The name of a window: its file's, else "Untitled".
@@ -80,6 +86,12 @@ fn regular(app: &AppHandle, regular: bool) {
     let _ = (app, regular);
 }
 
+/// Whether the file is a PDF (by its extension): its window is the page of PDFs, not the editor's.
+pub fn is_pdf(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+}
+
 /// A window made: for the file, else untitled.
 pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<()> {
     let state = app.state::<Documents>();
@@ -94,11 +106,22 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<()> {
     }
     regular(app, true);
     let joined = front(app);
-    let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("/".into()))
-        .title(title(path.as_deref()))
-        .inner_size(900.0, 700.0)
-        .tabbing_identifier(TABBING)
-        .build();
+    let built = WebviewWindowBuilder::new(
+        app,
+        &label,
+        WebviewUrl::App(
+            if path.as_deref().is_some_and(is_pdf) {
+                "/pdf"
+            } else {
+                "/"
+            }
+            .into(),
+        ),
+    )
+    .title(title(path.as_deref()))
+    .inner_size(900.0, 700.0)
+    .tabbing_identifier(TABBING)
+    .build();
     let window = match built {
         Ok(window) => window,
         Err(e) => {
@@ -205,7 +228,12 @@ pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {
         let _ = window.set_focus();
         return Ok(());
     }
-    let blank = state.blank.lock().unwrap().clone();
+    // a PDF has a page of its own, so no window of text shows it
+    let blank = if is_pdf(&path) {
+        HashSet::new()
+    } else {
+        state.blank.lock().unwrap().clone()
+    };
     let reuse = front(app)
         .filter(|w| blank.contains(w.label()))
         .or_else(|| blank.iter().find_map(|label| app.get_webview_window(label)));

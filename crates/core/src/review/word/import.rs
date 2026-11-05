@@ -14,7 +14,7 @@
 //! What cannot be placed (the words are not found, or are in two places that the words around do not tell apart) is
 //! listed, not guessed.
 
-use super::json::{Value, parse};
+use serde_json::Value;
 use super::places::{CONTEXT, Index, words};
 use crate::review::diff::{Hunk, hunks};
 use crate::review::ops::NewRecord;
@@ -68,13 +68,13 @@ enum Mode {
 }
 
 fn attr<'a>(attrs: &'a Value, key: &str) -> Option<&'a str> {
-    attrs.as_array().iter().find(|kv| kv.at(0).and_then(Value::as_str) == Some(key)).and_then(|kv| kv.at(1)?.as_str())
+    attrs.as_array().into_iter().flatten().find(|kv| kv.get(0).and_then(Value::as_str) == Some(key)).and_then(|kv| kv.get(1)?.as_str())
 }
 
 fn plain(v: &Value, out: &mut String) {
     match v {
-        Value::Arr(a) => a.iter().for_each(|x| plain(x, out)),
-        Value::Obj(_) => match v.get("t").and_then(Value::as_str) {
+        Value::Array(a) => a.iter().for_each(|x| plain(x, out)),
+        Value::Object(_) => match v.get("t").and_then(Value::as_str) {
             Some("Str") => out.push_str(v.get("c").and_then(Value::as_str).unwrap_or("")),
             Some("Space" | "SoftBreak") => out.push(' '),
             Some("LineBreak") => out.push('\n'),
@@ -86,7 +86,7 @@ fn plain(v: &Value, out: &mut String) {
                     plain(c, out);
                 }
             }
-            Some("Math" | "Code" | "CodeBlock") => out.push_str(v.get("c").and_then(|c| c.at(1)).and_then(Value::as_str).unwrap_or("")),
+            Some("Math" | "Code" | "CodeBlock") => out.push_str(v.get("c").and_then(|c| c.get(1)).and_then(Value::as_str).unwrap_or("")),
             _ => {
                 if let Some(c) = v.get("c") {
                     plain(c, out);
@@ -114,11 +114,11 @@ impl Stream {
 
     fn walk(&mut self, v: &Value, mode: Mode) {
         match v {
-            Value::Arr(a) => a.iter().for_each(|x| self.walk(x, mode)),
-            Value::Obj(o) => {
+            Value::Array(a) => a.iter().for_each(|x| self.walk(x, mode)),
+            Value::Object(o) => {
                 let Some(t) = v.get("t").and_then(Value::as_str) else {
                     // the document: its blocks
-                    if let Some((_, blocks)) = o.iter().find(|(k, _)| k == "blocks") {
+                    if let Some(blocks) = o.get("blocks") {
                         self.walk(blocks, mode);
                     }
                     return;
@@ -126,11 +126,11 @@ impl Stream {
                 let c = v.get("c");
                 match t {
                     "Str" => self.say(c.and_then(Value::as_str).unwrap_or(""), mode),
-                    "Math" | "Code" | "CodeBlock" => self.say(c.and_then(|c| c.at(1)).and_then(Value::as_str).unwrap_or(""), mode),
+                    "Math" | "Code" | "CodeBlock" => self.say(c.and_then(|c| c.get(1)).and_then(Value::as_str).unwrap_or(""), mode),
                     "Span" | "Div" => {
-                        let (Some(attrs), Some(content)) = (c.and_then(|c| c.at(0)), c.and_then(|c| c.at(1))) else { return };
-                        let class = |name: &str| attrs.at(1).is_some_and(|cl| cl.as_array().iter().any(|x| x.as_str() == Some(name)));
-                        let kvs = attrs.at(2).unwrap_or(&Value::Null);
+                        let (Some(attrs), Some(content)) = (c.and_then(|c| c.get(0)), c.and_then(|c| c.get(1))) else { return };
+                        let class = |name: &str| attrs.get(1).is_some_and(|cl| cl.as_array().into_iter().flatten().any(|x| x.as_str() == Some(name)));
+                        let kvs = attrs.get(2).unwrap_or(&Value::Null);
                         let author = attr(kvs, "author").filter(|a| !a.trim().is_empty()).unwrap_or(WORD).to_string();
                         if class("comment-start") {
                             let mut text = String::new();
@@ -266,7 +266,7 @@ fn author_of(spans: &mut [(Tracked, bool)], old: &[&str], new: &[&str]) -> Strin
 pub fn import(current: &str, docx_all_json: &str, docx_reject_text: &str, docx_accept_text: &str, current_plain: &str, importer: &str) -> Imported {
     let mut out = Imported::default();
     let mut stream = Stream::default();
-    match parse(docx_all_json) {
+    match serde_json::from_str::<Value>(docx_all_json) {
         Ok(json) => stream.walk(&json, Mode::Normal),
         Err(e) => out.unplaced.push(format!("the document's own record of the changes could not be read ({e}): authors are \"{WORD}\"")),
     }

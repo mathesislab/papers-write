@@ -2859,6 +2859,7 @@ dependencies = [
  "papers-core",
  "papers-rs",
  "serde",
+ "serde_json",
  "sha1_smol",
  "similar",
  "toml 0.8.2",

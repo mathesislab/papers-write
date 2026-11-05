@@ -9,7 +9,6 @@
 
 pub mod export;
 pub mod import;
-mod json;
 mod places;
 pub mod protect;
 #[cfg(test)]

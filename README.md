@@ -120,7 +120,9 @@ with papers-review as `papers-write/editor`, and so is the project bar
 - The app stays in the menu bar when the last window closes (New, Open…,
   Quit); ⌘Q quits.
 - Projects: a project is a folder with a `write.toml` (below). File ▸ Open
-  Project… (⇧⌘O) chooses a folder: with `write.toml` it joins the project bar
+  Project… (⇧⌘O) chooses a folder (File ▸ Open Recent lists the last ten
+  projects opened, most recent first, a missing one disabled; Clear Menu
+  forgets them; a choice opens the project as Open Project… does): with `write.toml` it joins the project bar
   and its main document opens (or comes forward); without, a card asks for
   the name, the short name of its tile, the colour and the main document (a
   Markdown or LaTeX file of the folder, or a new paper: the front matter of
@@ -143,13 +145,17 @@ with papers-review as `papers-write/editor`, and so is the project bar
   colour = "teal"        # blue teal green yellow orange red pink purple graphite none
   main = "paper.md"      # or ["paper.md", "supplement.md"]
   build = "build"        # the build folder (the default)
-  library = "refs.bib"   # a .bib or papers library searched; else the papers library
+  library = "refs.bib"   # a .bib, or a papers library folder (.papers/config.json), or an absolute path
   ```
 
-  The file is changed key by key: comments and other keys stay. `build` and
-  `library` are kept but not yet used: a build still goes to `build/` beside
-  the document, and the references are those of the front matter and the
-  papers library.
+  The file is changed key by key: comments and other keys stay. A document
+  of the project builds into its `build` folder (relative to the project's
+  folder, `build` without; for texmark, latexmk, the marked-up PDF's `diff/`
+  and Build and Show PDF); outside a project, into `build/` beside the
+  document. A document of a project with `library` searches that (a `.bib`
+  path, or a folder that has a papers `.papers/config.json`, relative to the
+  project's folder or absolute) instead of the papers library found from its
+  folder; the document's own bibliography is unchanged.
 - Edit ▸ References… (⇧⌘R) lists the references over the editor: the `.bib`
   files named by `bibliography:` in the front matter, and the papers library.
   Type to search (words, author, year); ↵ puts in a citation, ⌘. `[@key]`,

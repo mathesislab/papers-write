@@ -203,9 +203,12 @@ pub fn focused(app: &AppHandle, label: &str) {
     crate::review::focused(app, label);
 }
 
-/// The window in front: the last that got the keys, as the windows say whether they have them wrongly once they
-/// are tabs of one another.
+/// The window in front: AppKit's key window (on the main thread, where the menu's events come); else the last that
+/// got the keys (tabs say wrongly whether they have them, and a window made from another thread may never say).
 pub fn front(app: &AppHandle) -> Option<WebviewWindow> {
+    if let Some(window) = crate::tabs::key_window(app).and_then(|label| app.get_webview_window(&label)) {
+        return Some(window);
+    }
     let last = app.state::<Documents>().focused.lock().unwrap().clone();
     last.and_then(|label| app.get_webview_window(&label)).or_else(|| {
         app.webview_windows()

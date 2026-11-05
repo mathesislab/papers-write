@@ -2841,6 +2841,7 @@ name = "papers-write"
 version = "0.1.0"
 dependencies = [
  "notify",
+ "objc2",
  "objc2-app-kit",
  "papers-core",
  "papers-write-core",

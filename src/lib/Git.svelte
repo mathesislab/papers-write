@@ -417,8 +417,15 @@
   ul.branches li {
     align-items: baseline;
   }
+  /* the branch's name keeps its room (up to most of the row); the authors, count and date give theirs */
+  ul.branches li label {
+    flex: 0 0 auto;
+    max-width: 65%;
+  }
   ul.branches small {
-    flex: 0 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: right;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

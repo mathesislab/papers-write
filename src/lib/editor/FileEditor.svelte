@@ -24,6 +24,7 @@
     mono = false,
     extensions = [],
     completion,
+    placeholder,
     symbols = [],
     prefs = PREFS,
     onchange,
@@ -42,6 +43,8 @@
     extensions?: Extension[];
     /** what the completion of citations, references and LaTeX takes from the app (none without it) */
     completion?: Completion;
+    /** what the editor shows while empty (none without it) */
+    placeholder?: string;
     /** the user's own sequences typed that become symbols, and the defaults they turn off (Markdown only) */
     symbols?: [string, string][];
     /** what the editor takes from the settings */
@@ -98,6 +101,7 @@
         rules,
         prefs,
         completion,
+        placeholder,
         extensions: [...extensions, selection, ...(mono ? [] : [listKey])],
       });
     onchange?.(file.text);

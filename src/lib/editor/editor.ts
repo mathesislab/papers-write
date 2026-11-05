@@ -319,7 +319,15 @@ const historyKeys = historyKeymap.filter((k) => k.run !== undoSelection && k.run
  *  that become symbols as they are typed (Markdown only); `prefs` those of the settings; `completion` what the app
  *  gives for the completion of citations, references and LaTeX (Markdown only; without it there is none); `extensions`
  *  are more. */
-export type Options = { mono?: boolean; rules?: readonly Rule[]; prefs?: EditorPrefs; completion?: Completion; extensions?: Extension[] };
+export type Options = {
+  mono?: boolean;
+  rules?: readonly Rule[];
+  prefs?: EditorPrefs;
+  completion?: Completion;
+  /** what an empty editor shows, the app's (Papers Review: how to write a review); none by default */
+  placeholder?: string;
+  extensions?: Extension[];
+};
 
 /** An editor of `text` in `parent`; `changed` with the text after each change typed. */
 export function makeEditor(parent: HTMLElement, text: string, changed: (text: string) => void, options: Options = {}) {
@@ -349,9 +357,9 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
               symbolRules.init(() => options.rules ?? DEFAULTS),
               typedSymbols,
               syntaxHighlighting(style),
-              placeholder("Your review, in Markdown: ## for its sections, a section a round, say."),
               shown,
             ]),
+        ...(options.placeholder ? [placeholder(options.placeholder)] : []),
         ...(complete ? [completion(complete)] : []),
         theme(mono),
         EditorView.lineWrapping,

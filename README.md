@@ -34,6 +34,16 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   page in view (click it to go to a page), zoom in, out and to fit the width
   (⌘= ⌘- ⌘0, PDF menu), Find (⌘F, next ⌘G, previous ⇧⌘G). A PDF that changes on
   disk, a build rewriting it, is read again at the same page.
+- Build ▸ Build (⌘B) writes the document and runs `texmark <file> --pdf` in its
+  folder, into `build/` beside it (`build/name.tex`, `name.pdf`, `name.log`;
+  Markdown documents only, saved). Build and Show PDF (⇧⌘B) then opens the PDF
+  in a tab, which reloads by itself on each rebuild. A mark in the corner
+  says building, done (the time) or failed; a failure lists the first errors
+  of the LaTeX log (`!` lines with the line of the `.tex`) in a sheet, with
+  the log to reveal in Finder or open as text. One build per document at a
+  time; one asked meanwhile runs after it. texmark is found on PATH, in
+  `/opt/homebrew/Caskroom/miniforge/base/bin` or `~/.local/bin` (`pip install
+  texmark`); the LaTeX engine in `/Library/TeX/texbin`.
 - The app stays in the menu bar when the last window closes (New, Open…,
   Quit); ⌘Q quits.
 - Edit ▸ References… (⇧⌘R) lists the references over the editor: the `.bib`

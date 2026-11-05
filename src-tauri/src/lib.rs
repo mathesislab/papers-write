@@ -1,5 +1,6 @@
 //! papers-write: a text editor first. A window per document, as macOS tabs; any file opens at once.
 
+mod build;
 mod documents;
 mod files;
 mod menu;
@@ -18,6 +19,7 @@ pub fn run() {
         // managed before the app launches: macOS may hand over files to open before `setup` has run
         .manage(documents::Documents::default())
         .manage(files::Watched::default())
+        .manage(build::Builds::default())
         .manage(refs::Loaded::default())
         .manage(preview::Runs::default())
         .setup(|app| {
@@ -43,6 +45,9 @@ pub fn run() {
             files::read_text,
             files::write_text,
             preview::preview,
+            build::build,
+            build::reveal,
+            build::open_document,
             refs::references,
             refs::closest_references,
             refs::reference_sources,

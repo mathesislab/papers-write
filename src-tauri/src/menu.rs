@@ -1,4 +1,4 @@
-//! The menu bar. New, Open…, Save, Close and PDF are the app's (PDF to the page of a PDF in front, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
+//! The menu bar. New, Open…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
 //! front (event `edit`, the id of the item), Cite as [@key] to the list of references (event `cite-key`), and Save to its page (event `menu`).
 
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
@@ -66,6 +66,19 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[&item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?],
     )?;
+    let build = Submenu::with_items(
+        app,
+        "Build",
+        true,
+        &[
+            &item("build", "Build", Some("CmdOrCtrl+B"))?,
+            &item(
+                "build-show",
+                "Build and Show PDF",
+                Some("Shift+CmdOrCtrl+B"),
+            )?,
+        ],
+    )?;
     // the PDF of the window in front (a window of a PDF; the other pages ignore these)
     let pdf = Submenu::with_items(
         app,
@@ -93,7 +106,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
-    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &pdf, &window])
+    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &build, &pdf, &window])
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
@@ -111,7 +124,8 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = window.close();
             }
         }
-        "save" => {
+        // the page writes the document, then asks for the build
+        "save" | "build" | "build-show" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "menu", id);
             }

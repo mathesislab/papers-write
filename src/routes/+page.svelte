@@ -6,6 +6,8 @@
   // typed, or for untitled text asks where to; Undo, Redo and Symbols… as `edit`. Whether untitled text is blank is
   // told to the backend, which asks before closing a window that has some.
   //
+  // Build, Build and Show PDF and Marked-up PDF… of the Build menu come as `menu` too, to Build (the text is written first).
+  //
   // References… (⇧⌘R) lists the references over the editor (RefList): the document's bibliography and the papers
   // library. What is put in at the cursor as `[@key]` or `\cite{key}` (⌘. comes as `cite-key`, ⌘L) is added to the
   // document's .bib (`cite_key`), and the front matter named in the text if there was none. The backend reads the
@@ -34,12 +36,14 @@
     type Completion,
     type Found,
   } from "papers-write/editor";
+  import Build from "$lib/Build.svelte";
   import { listen } from "$lib/events";
   import "$lib/theme.css";
 
   /** the file of the window; none while untitled; undefined until the backend says */
   let path = $state<string | null | undefined>();
   let editor = $state<FileEditor>();
+  let builds = $state<Build>();
   let error = $state("");
   /** a save that failed, where the editor's own errors do not say */
   let problem = $state("");
@@ -268,7 +272,7 @@
     const unlisten = [
       listen("opened", ask),
       listen("file-changed", () => editor?.changedOnDisk()),
-      listen<string>("menu", (e) => e.payload === "save" && save()),
+      listen<string>("menu", (e) => (e.payload === "save" ? save() : builds?.run(e.payload))),
       listen<string>("edit", (e) => edit(e.payload)),
       listen("preview", togglePreview),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -342,6 +346,7 @@
       {/if}
     </div>
   {/if}
+  <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
   {#if error || problem}<p class="error">{problem || error}</p>{:else if note}<p class="note">{note}</p>{/if}
 </main>
 

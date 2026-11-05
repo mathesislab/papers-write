@@ -143,7 +143,7 @@
 
 {#if committing}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Commit" tabindex="-1" onkeydown={key} use:grab>
+  <div class="sheet" role="dialog" aria-label="Commit" tabindex="-1" onkeydown={key}>
     <header>
       <b>Commit</b>
       <button onclick={close}>Cancel</button>
@@ -160,7 +160,8 @@
         </li>
       {/each}
     </ul>
-    <textarea rows="3" placeholder="Message" bind:value={committing.message}></textarea>
+    <!-- the keys to the message as the sheet opens: typing writes it, ⌘↵ commits, Esc cancels -->
+    <textarea rows="3" placeholder="Message (⌘↵ commits)" bind:value={committing.message} use:grab></textarea>
     {#if committing.error}<p class="error">{committing.error}</p>{/if}
     <div class="buttons">
       <button class="primary" disabled={!ready} onclick={commit}>Commit {chosen.length} file{chosen.length === 1 ? "" : "s"}</button>

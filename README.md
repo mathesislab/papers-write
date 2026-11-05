@@ -187,10 +187,22 @@ with papers-review as `papers-write/editor`, and so is the project bar
   comments on the selection (⌘↵ posts). Show Review Panel (⌥⌘R) lists the
   open ones in text order at the right, in place of the preview: who and when,
   what changes, the thread, and Accept, Reject, Reply, Resolve, Suggest
-  Instead (a counter-suggestion), Withdraw (your own); filter by person, show
-  the resolved. Accept All and Reject All (everyone's open suggestions, after
-  asking; Accept All leaves the outdated ones and those a counter-suggestion
-  answers); Next and Previous Change (⌥⌘↓, ⌥⌘↑). You are the `user.name` of the
+  Instead (a counter-suggestion), Withdraw (your own); filter by person and by
+  round, show the resolved. With a person or a round chosen, the foot of the
+  panel says "Accept all of Jane Doe" or "Accept all of round 'Draft of 5
+  Nov'" (and Reject all) and takes just those. Accept All and Reject All of
+  the menu take everyone's open suggestions, after asking; Accept All leaves
+  the outdated ones and those a counter-suggestion answers. Next and Previous
+  Change (⌥⌘↓, ⌥⌘↑). All Markup (⌥⌘1), Accepted (⌥⌘2) and Original (⌥⌘3),
+  per window, change only what is drawn: the suggestions as marked, as if all
+  were accepted (what they replace hidden, what they put in as plain text in
+  their author's colour), or as if none were (comments still marked). The text
+  is the file's in all three and edits as usual; suggesting is All Markup
+  only, and choosing another view leaves it. Clean Up Review… removes from
+  your own file the records of what is resolved (accepted, rejected, resolved,
+  withdrawn) and the bases nothing needs, after a sheet says what goes; other
+  people's files are not touched (they clean up their own) and git keeps
+  everything. You are the `user.name` of the
   git configuration of the document's folder, else your macOS full name. Needs
   a saved document. Changes others make to the review files (a pull, a sync)
   show at once.

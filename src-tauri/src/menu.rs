@@ -1,4 +1,4 @@
-//! The menu bar. New, Open…, Save and Close are the app's; Undo, Redo, Symbols… and References… go to the editor of the window in
+//! The menu bar. New, Open…, Save and Close are the app's; Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
 //! front (event `edit`, the id of the item), Cite as [@key] to the list of references (event `cite-key`), and Save to its page (event `menu`).
 
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
@@ -57,6 +57,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("references", "References…", Some("Shift+CmdOrCtrl+R"))?,
             // a menu item, not a key of the page: macOS takes ⌘. for Cancel before the page sees it
             &item("cite-key", "Cite as [@key]", Some("CmdOrCtrl+."))?,
+            &item("check", "Check Citations…", None)?,
         ],
     )?;
     let window = Submenu::with_items(
@@ -99,7 +100,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
-        "undo" | "redo" | "symbols" | "references" => {
+        "undo" | "redo" | "symbols" | "references" | "check" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "edit", id);
             }

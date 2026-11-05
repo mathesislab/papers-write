@@ -9,7 +9,8 @@
   // References… (⇧⌘R) lists the references over the editor (RefList): the document's bibliography and the papers
   // library. What is put in at the cursor as `[@key]` or `\cite{key}` (⌘. comes as `cite-key`, ⌘L) is added to the
   // document's .bib (`cite_key`), and the front matter named in the text if there was none. The backend reads the
-  // references from the text typed, which each call sends.
+  // references from the text typed, which each call sends. Check Citations… lists in a sheet the keys cited that the
+  // document's own bibliography lacks (each to add from the library) and the entries it never cites.
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
@@ -111,12 +112,34 @@
     editor?.focus();
   }
 
+  /** The sheet of Check Citations…, made or made again. */
+  async function check() {
+    try {
+      checking = { check: await invoke<Check>("bib_check", { text: current() }) };
+    } catch (e) {
+      checking = { error: String(e) };
+    }
+  }
+
+  async function addMissing(key: string) {
+    if (await add(key)) await check();
+  }
+
+  function closeCheck() {
+    checking = null;
+    editor?.focus();
+  }
+
   function edit(what: string) {
     if (!editor) return;
-    if (what === "references") listing = true;
+    if (what === "check") check();
+    else if (what === "references") listing = true;
     else if (what === "symbols") editor.list();
     else (what === "redo" ? editor.redo : editor.undo)();
   }
+
+  /** The keys to the sheet as it opens, so Esc reaches it. */
+  const grab = (node: HTMLElement) => node.focus();
 
   onMount(() => {
     setEditorFont("system", 13.5);
@@ -156,6 +179,35 @@
       <RefList bind:this={refs} {search} {closest} {sources} oninsert={inserted} onopen={openPdf} onclose={closeList} />
     {/key}
   {/if}
+  {#if checking}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div class="sheet" role="dialog" aria-label="Check Citations" tabindex="-1" onkeydown={(e) => e.key === "Escape" && closeCheck()} use:grab>
+      <header>
+        <b>Check Citations</b>
+        <button onclick={closeCheck}>Close</button>
+      </header>
+      {#if checking.error}
+        <p class="error">{checking.error}</p>
+      {:else if checking.check}
+        {@const { missing, unused } = checking.check}
+        {#if !missing.length && !unused.length}<p>Every key cited is in the bibliography, and every entry is cited.</p>{/if}
+        {#if missing.length}
+          <h3>Not in the bibliography ({missing.length})</h3>
+          <ul>
+            {#each missing as key (key)}
+              <li><code>{key}</code><button onclick={() => addMissing(key)}>Add from library</button></li>
+            {/each}
+          </ul>
+        {/if}
+        {#if unused.length}
+          <h3>Never cited ({unused.length})</h3>
+          <ul>
+            {#each unused as key (key)}<li><code>{key}</code></li>{/each}
+          </ul>
+        {/if}
+      {/if}
+    </div>
+  {/if}
   {#if error || problem}<p class="error">{problem || error}</p>{:else if note}<p class="note">{note}</p>{/if}
 </main>
 
@@ -178,5 +230,59 @@
   }
   .error {
     color: var(--error);
+  }
+  .sheet {
+    position: absolute;
+    z-index: 6;
+    top: 12px;
+    right: 14px;
+    width: min(420px, calc(100% - 28px));
+    max-height: calc(100% - 60px);
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 10px 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+    font-size: 12.5px;
+    outline: none;
+  }
+  .sheet header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .sheet h3 {
+    margin: 12px 0 4px;
+    font-size: 12px;
+    color: var(--muted, inherit);
+  }
+  .sheet ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sheet li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+  }
+  .sheet button {
+    font: inherit;
+    color: var(--fg);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 6px;
+  }
+  .sheet button:hover {
+    background: var(--chip);
+  }
+  .sheet p.error {
+    position: static;
+    padding: 4px 0;
+    border: none;
   }
 </style>

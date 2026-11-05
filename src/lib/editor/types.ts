@@ -89,6 +89,9 @@ export type Diagnostics = {
   /** of these citation keys (each once), those found neither in the document's bibliography nor in the library; asked
    *  800 ms after the typing stops and again on `recheck` */
   missingKeys?: (keys: string[]) => Promise<Set<string>>;
+  /** the labels defined in the files the text includes (`\input`, `\include`); counted with those of the text, so a
+   *  reference to one is not flagged; asked 800 ms after the typing stops */
+  labels?: (text: string) => Promise<string[]>;
 };
 
 /** What the app supplies for the spelling of the editor (see `Options.spelling`): the system's spell checker. Languages are

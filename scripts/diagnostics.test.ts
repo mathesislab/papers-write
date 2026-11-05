@@ -29,8 +29,15 @@ test("labels in math environments and in LaTeX", () => {
   assert.deepEqual(texts("\\label{a}\n\\ref{a} \\ref{b,a} % \\ref{c}\n", true), [["b", "no label b in the document"]]);
 });
 
-test("a LaTeX file that takes files in cannot say a label is missing", () => {
-  assert.deepEqual(texts("\\input{part}\n\\ref{b}\n", true), []);
+test("a LaTeX file that takes files in: the labels of those files count as defined", () => {
+  const doc = "\\input{part}\n\\label{a}\n\\ref{a} \\ref{b} \\ref{c}\n";
+  const problems = (included: string[]) => labelProblems(make(doc, true), included).map((p) => doc.slice(p.from, p.to));
+  assert.deepEqual(problems([]), ["b", "c"]);
+  assert.deepEqual(problems(["b"]), ["c"]);
+  assert.deepEqual(problems(["b", "c", "x"]), []);
+  // a label of an included file does not make the text's own a duplicate, nor hide a real one
+  assert.deepEqual(labelProblems(make("\\label{a}\n\\label{a}\n", true), ["a"]).length, 2);
+  assert.deepEqual(labelProblems(make("\\label{a}\n", true), ["a"]), []);
 });
 
 test("a label defined twice is underlined at both", () => {

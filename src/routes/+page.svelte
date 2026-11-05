@@ -366,6 +366,7 @@
   /** The keys underlined: the citations neither the document's bibliography nor the library has (labels the editor sees itself). */
   const diagnostics: Diagnostics = {
     missingKeys: async (keys) => new Set(await invoke<string[]>("missing_keys", { keys, text: current() })),
+    labels: (text) => invoke<string[]>("document_labels", { text }),
   };
   // the references changed (a .bib was edited, a key added): the keys are asked again
   $effect(() => {

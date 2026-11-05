@@ -1,12 +1,11 @@
 // Diagnostics: wavy underlines, with their reason on hover, under the keys the text cannot resolve. Cross-references to
 // a label the document does not define, and labels it defines twice, are found from the syntax tree (`labelProblems`);
-// citation keys the document's bibliography lacks are asked of the app (`Diagnostics.missingKeys`), 800 ms after
-// the typing stops. Plain decorations, not @codemirror/lint. Opt-in: an editor without `diagnostics` draws none.
+// citation keys the document's bibliography lacks (`Diagnostics.missingKeys`) and the labels of the files a LaTeX file
+// includes (`Diagnostics.labels`) are asked of the app, 800 ms after the typing stops. Plain decorations, not @codemirror/lint. Opt-in: an editor without `diagnostics` draws none.
 
 import { syntaxTree } from "@codemirror/language";
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, hoverTooltip, type DecorationSet, type PluginValue, type Tooltip, type ViewUpdate } from "@codemirror/view";
-import { isTex } from "./hover.ts";
 import type { Diagnostics } from "./types.ts";
 
 /** A key underlined: where, why, and how bad (an `error` is a reference that goes nowhere, a `warning` a citation not found). */
@@ -23,12 +22,10 @@ function keysOf(state: EditorState, name: string): { key: string; from: number; 
   return found;
 }
 
-/** Whether a LaTeX file takes files in: its labels may be defined in them, so no reference can be said to be undefined. */
-const takesFiles = (state: EditorState) => isTex(state) && /(^|[^\\])\\(?:input|include|subfile|import)\b/m.test(state.doc.toString());
-
 /** The cross-references to a label the document does not define (`@fig:x`, `\ref{x}`), and the labels it defines more
- *  than once (`{#fig:x}`, `\label{x}`), each occurrence. In order of position. */
-export function labelProblems(state: EditorState): Problem[] {
+ *  than once (`{#fig:x}`, `\label{x}`), each occurrence. In order of position. `included` are the labels the app found
+ *  in the files the text includes (`\input`): they count as defined, with those found in the text. */
+export function labelProblems(state: EditorState, included: Iterable<string> = []): Problem[] {
   const labels = keysOf(state, "LabelName");
   const count = new Map<string, number>();
   for (const l of labels) count.set(l.key, (count.get(l.key) ?? 0) + 1);
@@ -38,10 +35,9 @@ export function labelProblems(state: EditorState): Problem[] {
       problems.push({ ...l, message: `label ${l.key} is defined more than once`, severity: "error", kind: "duplicate" });
     }
   }
-  if (!takesFiles(state)) {
-    for (const r of keysOf(state, "CrossRefKey")) {
-      if (!count.has(r.key)) problems.push({ ...r, message: `no label ${r.key} in the document`, severity: "error", kind: "label" });
-    }
+  const known = new Set([...count.keys(), ...included]);
+  for (const r of keysOf(state, "CrossRefKey")) {
+    if (!known.has(r.key)) problems.push({ ...r, message: `no label ${r.key} in the document`, severity: "error", kind: "label" });
   }
   return problems.sort((a, b) => a.from - b.from);
 }
@@ -49,16 +45,17 @@ export function labelProblems(state: EditorState): Problem[] {
 /** The citation keys of the text with where they are (a key cited twice is there twice). */
 export const citationKeys = (state: EditorState) => keysOf(state, "CitationKey");
 
-/** The keys the app said are missing: replaced with each answer. */
+/** What the app said: the citation keys missing, and the labels of the included files; replaced with each answer. */
 const missingEffect = StateEffect.define<ReadonlySet<string>>();
+const includedEffect = StateEffect.define<ReadonlySet<string>>();
 
-type Held = { missing: ReadonlySet<string>; problems: Problem[] };
+type Held = { missing: ReadonlySet<string>; included: ReadonlySet<string>; problems: Problem[] };
 
 const NONE: ReadonlySet<string> = new Set();
 
 /** The problems of the text as it is: those of the labels, and the citations the app said are missing. */
-function problemsOf(state: EditorState, missing: ReadonlySet<string>): Problem[] {
-  const problems = labelProblems(state);
+function problemsOf(state: EditorState, missing: ReadonlySet<string>, included: ReadonlySet<string>): Problem[] {
+  const problems = labelProblems(state, included);
   if (missing.size) {
     for (const c of citationKeys(state)) {
       if (missing.has(c.key)) {
@@ -70,12 +67,15 @@ function problemsOf(state: EditorState, missing: ReadonlySet<string>): Problem[]
 }
 
 const held = StateField.define<Held>({
-  create: (state) => ({ missing: NONE, problems: problemsOf(state, NONE) }),
+  create: (state) => ({ missing: NONE, included: NONE, problems: problemsOf(state, NONE, NONE) }),
   update(value, tr) {
-    let missing = value.missing;
-    for (const e of tr.effects) if (e.is(missingEffect)) missing = e.value;
-    if (missing === value.missing && !tr.docChanged) return value;
-    return { missing, problems: problemsOf(tr.state, missing) };
+    let { missing, included } = value;
+    for (const e of tr.effects) {
+      if (e.is(missingEffect)) missing = e.value;
+      else if (e.is(includedEffect)) included = e.value;
+    }
+    if (missing === value.missing && included === value.included && !tr.docChanged) return value;
+    return { missing, included, problems: problemsOf(tr.state, missing, included) };
   },
 });
 
@@ -124,6 +124,7 @@ const asking = (app: Diagnostics) =>
         this.timer = setTimeout(() => void this.ask(), ms);
       }
       async ask() {
+        void this.askLabels();
         const ask = app.missingKeys;
         if (!ask) return;
         const keys = [...new Set(citationKeys(this.view.state).map((c) => c.key))];
@@ -134,6 +135,18 @@ const asking = (app: Diagnostics) =>
         // nothing new: the state is left alone
         if (old.size === missing.size && [...missing].every((k) => old.has(k))) return;
         this.view.dispatch({ effects: missingEffect.of(missing) });
+      }
+      /** the labels of the included files, asked of the app: only a change of them is dispatched */
+      latestLabels = 0;
+      async askLabels() {
+        const ask = app.labels;
+        if (!ask) return;
+        const mine = ++this.latestLabels;
+        const found = await ask(this.view.state.doc.toString()).catch(() => null);
+        if (!found || this.gone || mine !== this.latestLabels) return;
+        const old = this.view.state.field(held).included;
+        if (old.size === found.length && found.every((k) => old.has(k))) return;
+        this.view.dispatch({ effects: includedEffect.of(new Set(found)) });
       }
       destroy() {
         this.gone = true;

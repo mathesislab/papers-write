@@ -213,8 +213,8 @@ card asking for these, and offers to start from the paper-draft skeleton.
 ├── bases/
 │   ├── 3f2a91c….md       each version of paper.md that was reviewed,
 │   └── 8b04e7d….md       named by its git blob hash
-├── jane-doe.yaml         Jane's suggestions, comments, replies, decisions
-└── alex-robinson.yaml
+├── jane-doe.toml         Jane's suggestions, comments, replies, decisions
+└── alex-robinson.toml
 ```
 
 - A base is written when the first suggestion or comment is made on that
@@ -232,31 +232,55 @@ card asking for these, and offers to start from the paper-draft skeleton.
 - Resolved records and the bases no record needs any more can be cleared
   (Clean Up Review); git history keeps them.
 
-```yaml
-author: Jane Doe
-records:
-  - id: jd-0007
-    kind: suggestion            # suggestion | comment | reply | decision
-    time: 2026-11-05T14:02:11Z
-    round: second draft
-    base: 3f2a91c…
-    at: {start: 10412, end: 10431, prefix: "the grounding line ",
-         exact: "retreats rapidly", suffix: " when the bed slopes"}
-    insert: "retreats irreversibly"
-    note: Stronger, and what Fig. 3 shows.
-  - id: jd-0008
-    kind: comment
-    time: 2026-11-05T14:05:40Z
-    base: 3f2a91c…
-    at: {start: 11020, end: 11076, prefix: "…", exact: "…", suffix: "…"}
-    text: Cite Schoof (2007) here?
-# in alex-robinson.yaml
-  - id: ar-0012
-    kind: decision
-    of: jd-0007
-    decision: accepted          # accepted | rejected | resolved | reopened
-    time: 2026-11-06T09:00:00Z
+```toml
+[person]
+name = "Jane Doe"
+email = "jane@example.org"
+
+[[record]]
+id = "jane-doe-7"
+kind = "suggestion"        # suggestion | comment | reply | decision
+time = "2026-11-05T14:02:11Z"
+round = "second draft"
+base = "3f2a91c…"
+start = 10412              # UTF-8 byte offsets into the base
+end = 10431
+prefix = "the grounding line "
+exact = "retreats rapidly"
+suffix = " when the bed slopes"
+insert = "retreats irreversibly"
+text = "Stronger, and what Fig. 3 shows."
+
+[[record]]
+id = "jane-doe-8"
+kind = "comment"
+time = "2026-11-05T14:05:40Z"
+base = "3f2a91c…"
+start = 11020
+end = 11076
+prefix = "…"
+exact = "…"
+suffix = "…"
+text = "Cite Schoof (2007) here?"
+
+# in alex-robinson.toml
+[[record]]
+id = "alex-robinson-12"
+kind = "decision"
+time = "2026-11-06T09:00:00Z"
+on = "jane-doe-7"
+decision = "accepted"      # accepted | rejected | resolved | reopened | withdrawn
 ```
+
+A reply has `on` (the record answered) and `text`. A counter-suggestion is a
+suggestion with `on` (the suggestion it answers) and its own base. A
+suggestion edited by its author is a new record with `supersedes`; the latest
+one counts. TOML, because a record is appended as one `[[record]]` table at
+the end of the file, which needs no rewriting of what is there. The hash is
+git's blob hash of the text (`git hash-object`). The quote (`prefix`,
+`exact`, `suffix`, up to 32 characters of context) is kept with the offsets.
+The app talks in UTF-16 code units of the current text (what CodeMirror
+counts); the core converts.
 
 The format is the app's own, documented, with MRSF's field names where they
 fit and an MRSF export. MRSF itself does not fit: one file per document,
@@ -313,7 +337,7 @@ text both show; accepting one leaves the other outdated, to be dealt with.
 
 - To someone with the app: Send for Review… makes one file,
   `paper — second draft.review` (a zip: the base, the figures it shows, the
-  bib, the review files of the round, as YAML). It opens in the app as the document with its
+  bib, the review files of the round). It opens in the app as the document with its
   changes; they suggest and comment, and Send Back makes their own
   `.review` holding only their file. Dropped on the author's window, it
   joins the review folder.

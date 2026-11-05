@@ -43,3 +43,19 @@ test("the heading the cursor is under", () => {
   assert.equal(currentHeading(h, 18), 1);
   assert.equal(currentHeading(h, 100), 1);
 });
+
+const numbers = (doc: string, latex = false) => outline(make(doc, latex)).map((h) => h.number);
+
+test("Markdown sections are numbered once any heading has a sec label, unnumbered ones skipped", () => {
+  const doc = "# A {#sec:a}\n\n## A1\n\n## A2 {.unnumbered}\n\n## A3\n\n# B {-}\n\n# C\n\n## C1\n";
+  assert.deepEqual(numbers(doc), ["1", "1.1", undefined, "1.2", undefined, "2", "2.1"]);
+  assert.deepEqual(numbers("# A\n\n## B\n"), [undefined, undefined]);
+  // counted from the shallowest level that has counted, as the preview does
+  assert.deepEqual(numbers("## A {#sec:a}\n\n### B\n\n## C\n"), ["1", "1.1", "2"]);
+});
+
+test("LaTeX sections are numbered unless starred", () => {
+  const doc = "\\section{A}\n\\subsection{A1}\n\\subsection*{No}\n\\subsection{A2}\n\\section*{Free}\n\\section{B}\n\\subsubsection{Deep}\n\\paragraph{p}\n";
+  assert.deepEqual(numbers(doc, true), ["1", "1.1", undefined, "1.2", undefined, "2", "2.0.1", undefined]);
+  assert.deepEqual(numbers("\\chapter{C}\n\\section{S}\n\\subsection{T}\n\\subsubsection{U}\n", true), ["1", "1.1", "1.1.1", undefined]);
+});

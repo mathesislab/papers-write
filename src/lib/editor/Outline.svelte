@@ -22,8 +22,8 @@
       class:current={i === current}
       data-index={i}
       style:padding-left="{10 + (heading.level - top) * 12}px"
-      title={heading.title}
-      onclick={() => onselect(heading)}>{heading.title}</button
+      title={heading.number ? `${heading.number} ${heading.title}` : heading.title}
+      onclick={() => onselect(heading)}>{#if heading.number}<span class="number">{heading.number}</span>{/if}{heading.title}</button
     >
   {:else}
     <p>No headings</p>
@@ -54,6 +54,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .number {
+    opacity: 0.65;
+    margin-right: 0.5em;
+    font-variant-numeric: tabular-nums;
   }
   button:hover {
     background: var(--chip);

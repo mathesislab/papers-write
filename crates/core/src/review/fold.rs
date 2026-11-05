@@ -124,7 +124,7 @@ impl Review {
                     id: r.id.clone(),
                     kind: r.kind,
                     author: author_of.get(r.id.as_str()).cloned().unwrap_or_default(),
-                    on: r.on.as_deref().map(&canon),
+                    on: r.on.as_deref().map(canon),
                     record: r.clone(),
                     thread: thread_of(&r.id),
                     state,
@@ -135,7 +135,7 @@ impl Review {
                 }
             })
             .collect();
-        items.sort_by(|a, b| (a.at.from, a.at.to, a.record.order_key()).cmp(&(b.at.from, b.at.to, b.record.order_key())));
+        items.sort_by_key(|a| (a.at.from, a.at.to, a.record.order_key()));
         items
     }
 }

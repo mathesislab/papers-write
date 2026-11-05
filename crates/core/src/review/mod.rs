@@ -4,18 +4,21 @@
 //! - [`diff`]: the word-level difference between two versions, and positions carried through it.
 //! - [`anchor`]: a record carried onto the current text (three-way merge, the quote when the base is lost).
 //! - [`fold`]: all the records folded into items.
+//! - [`ops`]: add, reply, decide, supersede and counter-suggest (appending); apply a suggestion.
 //! - [`record`]: the records of a review file, and who writes it.
 //! - [`store`]: the files on disk, appended to and never rewritten.
 
 pub mod anchor;
 pub mod diff;
 pub mod fold;
+pub mod ops;
 pub mod record;
 pub mod store;
 pub mod text;
 
 pub use anchor::{Anchor, Status};
 pub use fold::{Item, State};
+pub use ops::{NewRecord, apply, apply_all};
 pub use record::{Decision, Kind, Person, Record};
 pub use store::{Error, Result};
 pub use text::{blob_hash, byte_of, utf16_of};

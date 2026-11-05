@@ -43,6 +43,16 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   a saved document.
 - Edit ▸ Check Citations… lists the keys cited that the document's `.bib` lacks
   (Add from library) and the entries it never cites.
+- View ▸ Show Preview (⇧⌘P) shows the Markdown rendered beside the text (a
+  Markdown document only; again hides it). It is pandoc's HTML (`brew install
+  pandoc`): math as MathML, citations by citeproc from the `bibliography:` of
+  the front matter, images beside the file shown. It is made 300 ms after the
+  typing stops, and again when the file changes on disk; the pane scrolls to
+  the block the cursor is in (matched by order, as pandoc gives no source
+  positions). What pandoc says that went wrong is in a bar at its foot; a
+  bibliography it cannot read leaves the citations as typed. Cross-references
+  (`@fig:x`) stay as pandoc leaves them: pandoc-crossref is not run here.
+  Drag the split to resize; its width is kept for the window.
 
 ## Develop
 

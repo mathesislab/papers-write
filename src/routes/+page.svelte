@@ -11,9 +11,16 @@
   // document's .bib (`cite_key`), and the front matter named in the text if there was none. The backend reads the
   // references from the text typed, which each call sends. Check Citations… lists in a sheet the keys cited that the
   // document's own bibliography lacks (each to add from the library) and the entries it never cites.
+  //
+  // View ▸ Show Preview (⇧⌘P, `preview`) toggles the pane at the right of a Markdown document: pandoc's HTML of the text
+  // as typed (`preview`), asked 300 ms after the typing stops, and scrolled to the block the cursor is in.
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { EditorView } from "@codemirror/view";
+  import { ensureSyntaxTree } from "@codemirror/language";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import Preview from "$lib/Preview.svelte";
   import { openPath } from "@tauri-apps/plugin-opener";
   import {
     FileEditor,
@@ -49,6 +56,21 @@
   type Check = { missing: string[]; unused: string[] };
   /** the sheet of Check Citations…: the keys, or what went wrong */
   let checking = $state<{ check?: Check; error?: string } | null>(null);
+  /** the pane of the preview: shown, what pandoc made of the text, the block of the cursor, its width */
+  let previewing = $state(false);
+  let html = $state("");
+  let said = $state("");
+  let block = $state(0);
+  const widthKey = `preview-width:${getCurrentWebview().label}`;
+  const stored = (() => {
+    try {
+      return Number(localStorage.getItem(widthKey));
+    } catch {
+      return 0;
+    }
+  })();
+  let width = $state(stored >= 240 ? stored : 0);
+  let panes = $state<HTMLElement>();
   const markdown = $derived(!path || /\.(md|markdown|txt)$/i.test(path));
 
   async function ask() {
@@ -57,7 +79,78 @@
 
   function changed(text: string) {
     typed = text;
+    if (previewing) later();
     if (!path && blank !== !text.trim()) invoke("set_blank", { blank: (blank = !text.trim()) });
+  }
+
+  let waiting: ReturnType<typeof setTimeout> | undefined;
+  let following: ReturnType<typeof setTimeout> | undefined;
+
+  /** The preview asked for after the typing stops. */
+  function later() {
+    clearTimeout(waiting);
+    waiting = setTimeout(refresh, 300);
+  }
+
+  /** One run at a time per window: a request while another runs supersedes it (the backend kills the old one). */
+  async function refresh() {
+    if (!previewing) return;
+    try {
+      const made = await invoke<{ html: string; error: string | null }>("preview", { text: current() });
+      [html, said] = [made.html, made.error ?? ""];
+    } catch (e) {
+      if (String(e) !== "superseded") said = String(e);
+    }
+  }
+
+  /** The top-level blocks of the text that pandoc shows, before and including the cursor's: front matter, link
+   *  definitions, comments and raw LaTeX environments are not in its HTML. */
+  function follow() {
+    const view = editor?.view();
+    if (!previewing || !view) return;
+    const { state } = view;
+    const head = state.selection.main.head;
+    const tree = ensureSyntaxTree(state, state.doc.length, 50);
+    if (!tree) return;
+    const hidden = new Set(["FrontMatter", "LinkReference", "CommentBlock", "LatexEnvironment"]);
+    let index = -1;
+    for (let n = tree.topNode.firstChild; n && n.from <= head; n = n.nextSibling) if (!hidden.has(n.name)) index++;
+    block = Math.max(index, 0);
+  }
+
+  /** The cursor's moves, told a moment later. */
+  const cursor = EditorView.updateListener.of((u) => {
+    if (!u.selectionSet && !u.docChanged) return;
+    clearTimeout(following);
+    following = setTimeout(follow, 150);
+  });
+
+  function togglePreview() {
+    if (!markdown) return;
+    previewing = !previewing;
+    if (previewing) {
+      follow();
+      refresh();
+    }
+  }
+
+  /** The split dragged: the width of the preview, kept for the window. */
+  function drag(e: PointerEvent) {
+    const bar = e.currentTarget as HTMLElement;
+    bar.setPointerCapture(e.pointerId);
+    const move = (m: PointerEvent) => {
+      const total = panes?.clientWidth ?? 0;
+      width = Math.round(Math.min(Math.max(panes!.getBoundingClientRect().right - m.clientX, 240), total - 240));
+    };
+    const stop = () => {
+      bar.removeEventListener("pointermove", move);
+      bar.removeEventListener("pointerup", stop);
+      try {
+        localStorage.setItem(widthKey, String(width));
+      } catch {}
+    };
+    bar.addEventListener("pointermove", move);
+    bar.addEventListener("pointerup", stop);
   }
 
   async function save() {
@@ -177,6 +270,7 @@
       listen("file-changed", () => editor?.changedOnDisk()),
       listen<string>("menu", (e) => e.payload === "save" && save()),
       listen<string>("edit", (e) => edit(e.payload)),
+      listen("preview", togglePreview),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
       listen("references-changed", () => version++),
     ];
@@ -185,6 +279,8 @@
 </script>
 
 <main>
+  <div class="panes" bind:this={panes}>
+  <div class="text">
   {#if path !== undefined}
     {#key path}
       {@const file = path}
@@ -199,11 +295,19 @@
         prefs={PREFS}
         {completion}
         autofocus
+        extensions={[cursor]}
         onchange={changed}
         bind:error
       />
     {/key}
   {/if}
+  </div>
+  {#if previewing && markdown}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="split" onpointerdown={drag}></div>
+    <div class="pane" style:width={width ? `${width}px` : "45%"}><Preview {html} error={said} {block} /></div>
+  {/if}
+  </div>
   {#if listing}
     {#key version}
       <RefList bind:this={refs} enter="pandoc" {search} {closest} {sources} oninsert={inserted} onopen={openPdf} onclose={closeList} />
@@ -245,6 +349,27 @@
   main {
     height: 100vh;
     position: relative;
+  }
+  .panes {
+    display: flex;
+    height: 100%;
+  }
+  .text {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+  }
+  .split {
+    flex: none;
+    width: 5px;
+    cursor: col-resize;
+    background: var(--line);
+  }
+  .pane {
+    flex: none;
+    min-width: 240px;
+    max-width: 80%;
   }
   .error,
   .note {

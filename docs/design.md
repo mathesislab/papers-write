@@ -171,7 +171,11 @@ card asking for these, and offers to start from the paper-draft skeleton.
 ## Previews and builds
 
 - Quick preview, beside the text: pandoc to HTML with `--citeproc` and
-  MathJax, the parser texmark uses, so what shows is what the build reads.
+  MathML (WebKit renders it natively, so no MathJax and no network), the
+  parser texmark uses, so what shows is what the build reads. One pandoc run
+  per window at a time (a newer request kills the old), images embedded as
+  data URIs (under 5 MB; no asset protocol or CSP to scope), in a sandboxed
+  frame without scripts. Cross-references stay as pandoc leaves them.
   A 9,400-word paper with 60 display equations takes 0.22 s, fast enough to
   run a moment after the typing stops. It follows the cursor.
 - Build: texmark with `--pdf` into `build/`, the PDF in a tab (PDFKit),

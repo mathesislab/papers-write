@@ -15,9 +15,14 @@ converted to journal-formatted LaTeX/PDF (as with texmark), with the
 library's search, previews and missing-reference checks at hand while
 writing.
 
-Status: early. The editor (CodeMirror, Markdown) is written here and shared
-with papers-review as `papers-write/editor`, and so is the project bar
-(`papers-write/project`); the app is a plain-text editor with projects.
+Status: all of the design is built (docs/design.md), not yet released. The
+editor is written here and shared with papers-review as `papers-write/editor`,
+and so is the project bar (`papers-write/project`).
+
+Builds use texmark. The fixes it needs here (a `journal:` given as a name, the
+default template, several cross-references in one bracket and the words before
+them) are proposed upstream; until they are released,
+`pip install git+https://github.com/alex-robinson/texmark@all-fixes`.
 
 ## Use
 

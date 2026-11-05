@@ -9,7 +9,7 @@ git or as a file.
 First of all a text editor: it opens any file at once, in as many windows
 as wanted, with or without a project.
 
-Status: the plan; the editor is the first part built.
+Status: built, as written here (the README says how to use it).
 
 ## What exists
 

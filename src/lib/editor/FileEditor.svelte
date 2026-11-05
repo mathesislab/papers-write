@@ -25,6 +25,7 @@
     extensions = [],
     completion,
     placeholder,
+    autofocus = false,
     symbols = [],
     prefs = PREFS,
     onchange,
@@ -45,6 +46,8 @@
     completion?: Completion;
     /** what the editor shows while empty (none without it) */
     placeholder?: string;
+    /** the keys to the editor once the file is read (a window of its own) */
+    autofocus?: boolean;
     /** the user's own sequences typed that become symbols, and the defaults they turn off (Markdown only) */
     symbols?: [string, string][];
     /** what the editor takes from the settings */
@@ -106,6 +109,7 @@
       });
     onchange?.(file.text);
     [status, error] = ["saved", ""];
+    if (autofocus && !editor.hasFocus) editor.focus();
   }
 
   /** The file read again, what was typed in the editor given up. */

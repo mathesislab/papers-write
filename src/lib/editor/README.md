@@ -17,6 +17,7 @@ import { FileEditor, RefList, SymbolList, makeEditor, prefsFrom, setEditorFont }
 - `prefs: EditorPrefs`, made with `prefsFrom(settings)` from anything shaped as `EditorSettings` (`{ indent, readable_width, line_numbers }`); `symbols`, the user's own `[sequence, symbol]` pairs; `mono`; `onchange`; the bindable `status`, `error`, `path`, `selected`.
 - `extensions: Extension[]`: more CodeMirror extensions, for what is the app's own (Papers Review colours the page and line of a PDF quote this way).
 - `placeholder`: what an empty editor shows (none by default; Papers Review says how to write a review).
+- `autofocus`: the keys to the editor once the file is read (a window that is the editor).
 - `completion: Completion` (optional; without it the editor has no completion, as in Papers Review): what the app gives for the popup of citations, references and LaTeX names (`makeEditor` takes it as `options.completion`). The types are in `types.ts`:
   - `citations(prefix) => Promise<CitationOption[]>`: the papers for `@key`, `[@key`, `[-@key`, `; @key` and `\cite{`, `\citep{`, `\citet{`, `\citeauthor{` (after `{` or `,`). A `CitationOption` is `{ key, label, detail?, inBib }`: `label` is shown ("Schoof 2007"), `detail` beside it (the title); those not `inBib` are listed under "From the library" with a "＋" before the detail. The app does the matching of `prefix`; the list is asked again after each key typed.
   - `oncite(key)`: a citation key was accepted (the app adds it to the bibliography). Accepting inserts the key, nothing else.

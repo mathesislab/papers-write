@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 const FILE: &str = "state.json";
 /// The most projects kept among the recent ones.
 const RECENT: usize = 20;
+/// The most of them in File ▸ Open Recent.
+pub const MENU: usize = 10;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -49,6 +51,16 @@ impl Saved {
         }
     }
 
+    /// The projects of File ▸ Open Recent: the last opened first, at most [`MENU`].
+    pub fn for_menu(&self) -> &[PathBuf] {
+        &self.recent[..self.recent.len().min(MENU)]
+    }
+
+    /// Open Recent ▸ Clear Menu: the recent projects forgotten (the bar stays).
+    pub fn clear_recent(&mut self) {
+        self.recent.clear();
+    }
+
     /// A project out of the bar; it stays among the recent ones.
     pub fn removed(&mut self, root: &Path) {
         self.bar.retain(|b| b != root);
@@ -71,6 +83,22 @@ mod tests {
         saved.removed(a);
         assert_eq!(saved.bar, [b]);
         assert_eq!(saved.recent, [a, b]);
+    }
+
+    #[test]
+    fn the_menu_has_the_last_ten_most_recent_first_and_clearing_it_leaves_the_bar() {
+        let mut saved = Saved::default();
+        for i in 0..15 {
+            saved.opened(Path::new(&format!("/p{i}")));
+        }
+        let menu = saved.for_menu();
+        assert_eq!(menu.len(), MENU);
+        assert_eq!((menu[0].as_path(), menu[9].as_path()), (Path::new("/p14"), Path::new("/p5")));
+        saved.opened(Path::new("/p0"));
+        assert_eq!(saved.for_menu()[0], Path::new("/p0"));
+        saved.clear_recent();
+        assert!(saved.for_menu().is_empty());
+        assert_eq!(saved.bar.len(), 15);
     }
 
     #[test]

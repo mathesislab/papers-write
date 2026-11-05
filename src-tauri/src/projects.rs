@@ -79,11 +79,27 @@ fn with_saved<T>(app: &AppHandle, f: impl FnOnce(&mut Saved) -> T) -> T {
     let before = saved.clone();
     let out = f(saved);
     if *saved != before
-        && let Some(dir) = dir
+        && let Some(dir) = &dir
     {
-        saved.save(&dir);
+        saved.save(dir);
+    }
+    let recent = (saved.for_menu() != before.for_menu()).then(|| saved.for_menu().to_vec());
+    drop(slot);
+    // Open Recent follows the list (not with the lock held: the menu does not ask for it)
+    if let Some(recent) = recent {
+        crate::menu::refill_recent(app, &recent);
     }
     out
+}
+
+/// The projects of File ▸ Open Recent, as the app kept them.
+pub fn recent(app: &AppHandle) -> Vec<PathBuf> {
+    with_saved(app, |saved| saved.for_menu().to_vec())
+}
+
+/// Open Recent ▸ Clear Menu.
+pub fn clear_recent(app: &AppHandle) {
+    with_saved(app, Saved::clear_recent);
 }
 
 fn changed(app: &AppHandle) {
@@ -285,6 +301,13 @@ pub fn open(app: &AppHandle, root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// A project of Open Recent opened as Open Project… opens one; what went wrong is told in a dialog.
+pub fn open_reporting(app: &AppHandle, root: &Path) {
+    if let Err(e) = open(app, root) {
+        app.dialog().message(e).title("Open Project").kind(MessageDialogKind::Error).show(|_| {});
+    }
+}
+
 /// The + of the project bar: Open Project….
 #[tauri::command]
 pub fn choose_project(app: AppHandle) {
@@ -298,9 +321,7 @@ pub fn choose(app: &AppHandle) {
     let handle = app.clone();
     app.dialog().file().set_title("Open Project").pick_folder(move |folder| {
         let Some(root) = folder.and_then(|f| f.into_path().ok()) else { return };
-        if let Err(e) = open(&handle, &root) {
-            handle.dialog().message(e).title("Open Project").kind(MessageDialogKind::Error).show(|_| {});
-        }
+        open_reporting(&handle, &root);
     });
 }
 

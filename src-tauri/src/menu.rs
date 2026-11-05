@@ -1,11 +1,42 @@
-//! The menu bar. New, Open…, Open Project…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
+//! The menu bar. New, Open…, Open Recent (the projects opened before), Open Project…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
 //! front (event `edit`, the id of the item), File ▸ Exchange to its page (event `exchange`), Cite as [@key] to the list of references (event `cite-key`), Project Info… to its page (event `project-info`), and Save to its page (event `menu`).
 //! The Review menu goes to the page of the window in front as `review-menu` with the id of the item, the Git menu as `git-menu`.
 
 use tauri::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Emitter, EventTarget, Wry};
+use std::path::{Path, PathBuf};
+
+use tauri::{AppHandle, Emitter, EventTarget, Manager, Wry};
 
 use crate::documents;
+
+/// File ▸ Open Recent, kept to be filled again when the list of recent projects changes.
+pub struct RecentMenu(Submenu<Wry>);
+
+/// The id of the item of a recent project: the prefix and the folder's path.
+const RECENT: &str = "recent:";
+
+/// `submenu` made to list `recent` (a missing folder disabled), then a separator and Clear Menu.
+fn fill_recent(app: &AppHandle, submenu: &Submenu<Wry>, recent: &[PathBuf]) -> tauri::Result<()> {
+    for old in submenu.items()? {
+        submenu.remove(&old)?;
+    }
+    for root in recent {
+        let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| root.to_string_lossy().into_owned());
+        let id = format!("{RECENT}{}", root.display());
+        submenu.append(&MenuItem::with_id(app, id, name, root.exists(), None::<&str>)?)?;
+    }
+    submenu.append(&PredefinedMenuItem::separator(app)?)?;
+    submenu.append(&MenuItem::with_id(app, "recent-clear", "Clear Menu", !recent.is_empty(), None::<&str>)?)
+}
+
+/// Open Recent made to list `recent`.
+pub fn refill_recent(app: &AppHandle, recent: &[PathBuf]) {
+    if let Some(menu) = app.try_state::<RecentMenu>()
+        && let Err(e) = fill_recent(app, &menu.0, recent)
+    {
+        eprintln!("Open Recent: {e}");
+    }
+}
 
 pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let item =
@@ -43,6 +74,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("word-import", "Import Word Review…", None)?,
         ],
     )?;
+    let recent = Submenu::with_id(app, "open-recent", "Open Recent", true)?;
+    fill_recent(app, &recent, &crate::projects::recent(app))?;
+    app.manage(RecentMenu(recent.clone()));
     let file = Submenu::with_items(
         app,
         "File",
@@ -50,6 +84,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &item("new", "New", Some("CmdOrCtrl+N"))?,
             &item("open", "Open…", Some("CmdOrCtrl+O"))?,
+            &recent,
             &item("open-project", "Open Project…", Some("Shift+CmdOrCtrl+O"))?,
             &separator()?,
             &item("save", "Save", Some("CmdOrCtrl+S"))?,
@@ -178,6 +213,8 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "project-info", ());
             }
         }
+        "recent-clear" => crate::projects::clear_recent(app),
+        _ if id.starts_with(RECENT) => crate::projects::open_reporting(app, Path::new(&id[RECENT.len()..])),
         "quit" => app.exit(0),
         "close" => {
             if let Some(window) = documents::front(app) {

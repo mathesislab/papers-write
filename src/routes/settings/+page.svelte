@@ -255,7 +255,7 @@
         <div class="row">
           <span>
             <span class="label">Colour</span>
-            <span class="hint">Of your suggestions and comments, as you see them; automatic: from your name</span>
+            <span class="hint">Of your suggestions and comments, as everyone sees them (kept in your review files); automatic: from your name</span>
           </span>
           <span class="swatches" role="radiogroup" aria-label="Review colour">
             <button

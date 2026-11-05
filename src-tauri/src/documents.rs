@@ -55,6 +55,11 @@ pub fn document(window: WebviewWindow) -> Document {
     }
 }
 
+/// The file a window shows, or none when it is untitled.
+pub fn path_of(app: &AppHandle, label: &str) -> Option<PathBuf> {
+    app.state::<Documents>().paths.lock().unwrap().get(label).cloned().flatten()
+}
+
 /// The name of a window: its file's, else "Untitled".
 fn title(path: Option<&Path>) -> String {
     path.and_then(|p| p.file_name())
@@ -129,6 +134,7 @@ pub fn closed(app: &AppHandle, label: &str) {
     state.paths.lock().unwrap().remove(label);
     state.blank.lock().unwrap().remove(label);
     files::unwatch(app, label);
+    crate::refs::unload(app, label);
     // the window may still be among the windows as this is told
     if app.webview_windows().keys().all(|l| l == label) {
         regular(app, false);

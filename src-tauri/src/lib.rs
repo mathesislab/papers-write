@@ -3,16 +3,19 @@
 mod documents;
 mod files;
 mod menu;
+mod refs;
 mod tray;
 
 use tauri::{DragDropEvent, Manager, RunEvent, WindowEvent};
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         // managed before the app launches: macOS may hand over files to open before `setup` has run
         .manage(documents::Documents::default())
         .manage(files::Watched::default())
+        .manage(refs::Loaded::default())
         .setup(|app| {
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
@@ -33,7 +36,12 @@ pub fn run() {
             documents::set_blank,
             documents::save_untitled,
             files::read_text,
-            files::write_text
+            files::write_text,
+            refs::references,
+            refs::closest_references,
+            refs::reference_sources,
+            refs::cite_key,
+            refs::bib_check
         ])
         .build(tauri::generate_context!())
         .expect("error while building papers-write")

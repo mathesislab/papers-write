@@ -2,8 +2,9 @@
 
 mod documents;
 mod files;
+mod menu;
 
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{DragDropEvent, Manager, RunEvent, WindowEvent};
 
 pub fn run() {
     tauri::Builder::default()
@@ -11,24 +12,53 @@ pub fn run() {
         .setup(|app| {
             app.manage(documents::Documents::default());
             app.manage(files::Watched::default());
+            app.set_menu(menu::build(app.handle())?)?;
+            app.on_menu_event(menu::on_event);
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::Destroyed = event {
-                documents::closed(window.app_handle(), window.label());
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => documents::closing(window, api),
+            WindowEvent::Destroyed => documents::closed(window.app_handle(), window.label()),
+            // files dropped on a window open in tabs of their own
+            WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) => {
+                documents::open_files(window.app_handle(), paths);
             }
+            _ => {}
         })
-        .invoke_handler(tauri::generate_handler![documents::document, files::read_text, files::write_text])
+        .invoke_handler(tauri::generate_handler![
+            documents::document,
+            documents::set_blank,
+            documents::save_untitled,
+            files::read_text,
+            files::write_text
+        ])
         .build(tauri::generate_context!())
         .expect("error while building papers-write")
-        .run(|app, event| {
-            if let RunEvent::Ready = event {
-                // nothing else was opened: a window of untitled text
+        .run(|app, event| match event {
+            // a window of untitled text, unless files were opened: if they come after this, they take the blank window
+            RunEvent::Ready => {
                 if app.webview_windows().is_empty()
                     && let Err(e) = documents::make(app, None)
                 {
                     eprintln!("{e}");
                 }
             }
+            // the Dock icon clicked, no window open
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } => {
+                if let Err(e) = documents::make(app, None) {
+                    eprintln!("{e}");
+                }
+            }
+            // Open With, a file dropped on the Dock icon, a double click
+            #[cfg(target_os = "macos")]
+            RunEvent::Opened { urls } => {
+                let paths: Vec<_> = urls.iter().filter_map(|u| u.to_file_path().ok()).collect();
+                documents::open_files(app, &paths);
+            }
+            _ => {}
         });
 }

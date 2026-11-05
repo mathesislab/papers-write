@@ -55,7 +55,10 @@ pub fn watch(app: &AppHandle, label: &str, path: &Path) -> Result<(), String> {
     let (handle, target) = (app.clone(), label.to_string());
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         if let Ok(event) = event
-            && matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_))
+            && matches!(
+                event.kind,
+                EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+            )
             && event.paths.contains(&file)
         {
             let _ = handle.emit_to(EventTarget::webview(target.clone()), "file-changed", ());
@@ -65,7 +68,11 @@ pub fn watch(app: &AppHandle, label: &str, path: &Path) -> Result<(), String> {
     watcher
         .watch(&folder, RecursiveMode::NonRecursive)
         .map_err(|e| format!("{}: not watched ({e})", path.display()))?;
-    app.state::<Watched>().0.lock().unwrap().insert(label.to_string(), watcher);
+    app.state::<Watched>()
+        .0
+        .lock()
+        .unwrap()
+        .insert(label.to_string(), watcher);
     Ok(())
 }
 

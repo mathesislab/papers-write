@@ -218,8 +218,17 @@ them) are proposed upstream; until they are released,
   references change), a reference to a label the document does not define
   (`@fig:x`, `\ref{x}`), and a label
   defined twice (both). Hover says why.
-- The system's spell checker underlines misspelled words in Markdown text, not
-  in `.tex` and monospace files (the language is the system's).
+- Spelling: the system's spell checker (macOS) underlines misspelled words in
+  the prose of Markdown text with a red dotted line, not in `.tex` and
+  monospace files, and not in math, code, raw LaTeX, the front matter,
+  citation and cross-reference keys, labels, URLs, link targets, attributes
+  or HTML comments. It checks 500 ms after the typing stops and on scrolling;
+  hover on a word for the suggestions (click one to replace), Learn (your
+  dictionary) and Ignore (this document). The language is the system's, or
+  `lang:` (e.g. `en-GB`, `de`) in the front matter. Settings ▸ Editor ▸
+  Check spelling turns it off.
+- In a `.tex` file with `\input`, `\include` or `\subfile`, a `\ref` to a label
+  defined in an included file is not flagged.
 - Review menu: suggestions and comments kept in files beside the document
   (`.papers-write/review/<file>/`, one file per person, only appended to).
   Suggest Changes (⇧⌘E) makes typing a suggestion of yours instead of an edit
@@ -284,7 +293,7 @@ them) are proposed upstream; until they are released,
 - Settings (⌘, in the app menu and the menu bar icon; one window, every change
   saved at once in `settings.json` of the app's data folder, every window told).
   Editor: font (system, serif, monospace) and size, what Tab inserts, readable
-  line length, line numbers, spelling (stored; the editor does not use it yet),
+  line length, line numbers, spelling,
   the preview following the cursor, the symbols typed (the defaults each turned
   off, and your own). Review: your name and e-mail (empty: the git
   configuration's, else the system's; when set they win, each on its own) and

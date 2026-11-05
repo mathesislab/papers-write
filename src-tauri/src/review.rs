@@ -35,6 +35,21 @@ pub struct Reviews {
     suggesting: Mutex<HashMap<String, bool>>,
     /// the view of each window, when not All Markup
     views: Mutex<HashMap<String, String>>,
+    /// what the window's log is to say of the reviews sent back that were joined to its document, until its page
+    /// takes it (a window made for the document is not listening yet)
+    received: Mutex<HashMap<String, Vec<String>>>,
+}
+
+/// A review sent back, joined to the document of `label`: for its log of what the window did.
+pub fn received(app: &AppHandle, label: &str, entry: String) {
+    app.state::<Reviews>().received.lock().unwrap().entry(label.to_string()).or_default().push(entry);
+    let _ = app.emit_to(EventTarget::webview(label), "review-received", ());
+}
+
+/// What the log of the window has to say of the reviews received since it last asked.
+#[tauri::command]
+pub fn review_received(window: WebviewWindow) -> Vec<String> {
+    window.app_handle().state::<Reviews>().received.lock().unwrap().remove(window.label()).unwrap_or_default()
 }
 
 /// What a window's review was set up for: its document, who the user is for it, and the watch on its review folder.

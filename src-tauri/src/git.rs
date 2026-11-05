@@ -179,6 +179,8 @@ pub struct Changed {
 pub struct State {
     /// the top of the repository
     pub repo: String,
+    /// the commit HEAD is at (its id; "(initial)" before the first commit): a commit made elsewhere moves it
+    pub head: String,
     /// the branch; "(detached)" off any
     pub branch: String,
     /// the branch it follows, as "origin/main"
@@ -197,6 +199,7 @@ pub(crate) fn parse_status(output: &str) -> State {
         if let Some(header) = token.strip_prefix("# ") {
             let (key, value) = header.split_once(' ').unwrap_or((header, ""));
             match key {
+                "branch.oid" => state.head = value.to_string(),
                 "branch.head" => state.branch = value.to_string(),
                 "branch.upstream" => state.upstream = Some(value.to_string()),
                 "branch.ab" => {
@@ -751,6 +754,7 @@ mod tests {
             "# branch.ab +3 -1",
         ]));
         assert_eq!((s.branch.as_str(), s.upstream.as_deref(), s.ahead, s.behind), ("main", Some("origin/main"), 3, 1));
+        assert_eq!(s.head, "1234567890abcdef");
         assert!(s.changed.is_empty());
     }
 

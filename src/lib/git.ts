@@ -5,6 +5,8 @@ export type Changed = { path: string; status: string; from?: string };
 /** The repository of the document: the branch, how far it is from its upstream (as of the last fetch), the files changed. */
 export type GitState = {
   repo: string;
+  /** the commit HEAD is at */
+  head: string;
   branch: string;
   upstream: string | null;
   ahead: number;

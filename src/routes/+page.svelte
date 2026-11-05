@@ -89,6 +89,23 @@
   /** the repository of the document (git.rs); none when it is not in one */
   let repo = $state<GitState | null>(null);
   let git = $state<Git>();
+  // a commit made elsewhere (a terminal) moves HEAD: the log of what the window did is of the commit before it. What the
+  // app's own git steps do (a commit, a pull, a checkout) is not that, for the few seconds the state takes to follow.
+  let ownStep = false;
+  let ownTimer: ReturnType<typeof setTimeout> | undefined;
+  function ours() {
+    ownStep = true;
+    clearTimeout(ownTimer);
+    ownTimer = setTimeout(() => (ownStep = false), 6000);
+  }
+  let head: string | undefined;
+  $effect(() => {
+    const now = repo?.head;
+    untrack(() => {
+      if (head && now && now !== head && !ownStep) log = [];
+      head = now;
+    });
+  });
   /** what the window did since the last commit, for the message of the next one */
   let log = $state<Entry[]>([]);
   /** whose draft this window is a review of, when it was opened from a `.review` (a bar at the top; suggest mode to begin with) */
@@ -154,6 +171,14 @@
     log = [];
     path = (await invoke<{ path: string | null }>("document")).path;
     loadBar();
+    takeReceived();
+  }
+
+  /** the reviews sent back and joined to this document (the backend says them, a window made for it is not listening yet) */
+  async function takeReceived() {
+    try {
+      for (const did of await invoke<string[]>("review_received")) log.push({ did });
+    } catch {}
   }
 
   /** the project bar: the project of the document (none: no bar) and its tiles */
@@ -527,6 +552,7 @@
       listen("asking-project", askProject),
       listen("project-info", projectInfo),
       listen<string>("review-menu", (e) => reviewMenu(e.payload)),
+      listen("review-received", takeReceived),
       listen("review-changed", () => {
         session.reload(100);
         gitbar?.refresh(500);
@@ -641,7 +667,7 @@
     me={() => session.me?.name}
     say={(what) => say(what)}
     message={() => message(log)}
-    onchange={() => gitbar?.refresh(0)}
+    onchange={() => (ours(), gitbar?.refresh(0))}
     onfocus={() => editor?.focus()}
     oncommitted={() => (log = [])}
     onlog={(did) => log.push({ did })}

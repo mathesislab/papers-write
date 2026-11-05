@@ -67,6 +67,23 @@ fn said(merged: &Merged, from: &str) -> String {
     format!("{} from {from}", parts.join(" and "))
 }
 
+/// What the window's log says of a merge: "review of Jane Doe received: 12 suggestions, 3 comments"; none when
+/// nothing was new.
+fn logged(merged: &Merged, from: &str) -> Option<String> {
+    let (s, c, o) = (merged.suggestions, merged.comments, merged.others);
+    let mut parts = Vec::new();
+    if s > 0 {
+        parts.push(plural(s, "suggestion", "suggestions"));
+    }
+    if c > 0 {
+        parts.push(plural(c, "comment", "comments"));
+    }
+    if parts.is_empty() && o > 0 {
+        parts.push(plural(o, "reply or decision", "replies and decisions"));
+    }
+    (!parts.is_empty()).then(|| format!("review of {from} received: {}", parts.join(", ")))
+}
+
 fn unreadable(file: &Path, e: impl std::fmt::Display) -> String {
     format!("{}: {e}", file.display())
 }
@@ -242,7 +259,11 @@ fn join(app: &AppHandle, opened: &Opened) -> Result<(), String> {
         }
         None => documents::open_file(app, &doc)?,
     }
-    let window = documents::label_of(app, &doc).and_then(|l| app.get_webview_window(&l));
+    let label = documents::label_of(app, &doc);
+    if let (Some(label), Some(entry)) = (&label, logged(&merged, &opened.manifest.from.name)) {
+        review::received(app, label, entry);
+    }
+    let window = label.and_then(|l| app.get_webview_window(&l));
     sheet::tell(app, window.as_ref(), "Review received", said(&merged, &opened.manifest.from.name), Level::Info);
     Ok(())
 }
@@ -259,6 +280,15 @@ mod tests {
         assert_eq!(said(&m(0, 1, 5), "Jane"), "1 comment from Jane");
         assert_eq!(said(&m(0, 0, 2), "Jane"), "2 replies and decisions from Jane");
         assert!(said(&m(0, 0, 0), "Jane").starts_with("Nothing new from Jane"));
+    }
+
+    #[test]
+    fn what_the_log_says_of_a_merge() {
+        let m = |s, c, o| Merged { suggestions: s, comments: c, others: o, ..Default::default() };
+        assert_eq!(logged(&m(12, 3, 1), "Jane Doe").unwrap(), "review of Jane Doe received: 12 suggestions, 3 comments");
+        assert_eq!(logged(&m(1, 0, 0), "Jane").unwrap(), "review of Jane received: 1 suggestion");
+        assert_eq!(logged(&m(0, 0, 2), "Jane").unwrap(), "review of Jane received: 2 replies and decisions");
+        assert_eq!(logged(&m(0, 0, 0), "Jane"), None);
     }
 
     #[test]

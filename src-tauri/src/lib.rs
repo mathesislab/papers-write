@@ -113,6 +113,7 @@ pub fn run() {
             review::review_mode,
             review::review_view,
             review::review_confirm,
+            review::review_received,
             review::review_cleanup_plan,
             review::review_cleanup,
             projects::project_bar,

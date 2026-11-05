@@ -62,8 +62,9 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   saved where a dialog says, `<name>.docx` beside the document to begin with)
   in which the open suggestions are Word's tracked changes and the comments
   Word's comments, under their authors' names and dates. Math becomes Word
-  equations; citations are rendered by citeproc when the front matter names a
-  bibliography. A suggestion in math, code or raw LaTeX, which a tracked
+  equations; equations, figures, tables and sections are numbered and their
+  references resolved as in the preview (`@fig:x`, `\ref{eq:y}`); citations are
+  rendered by citeproc when the front matter names a bibliography. A suggestion in math, code or raw LaTeX, which a tracked
   change cannot be put in, is a comment that says what it suggests. A sheet
   lists what was left out (a suggestion that overlaps an earlier one, one in
   the front matter).

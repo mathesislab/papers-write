@@ -81,8 +81,8 @@ pub(crate) fn pandoc() -> Result<PathBuf, String> {
 const CROSSREF: &str = include_str!("../preview/crossref.lua");
 
 /// The cross-reference filter, written once to the temp folder (pandoc reads filters from files); None when it
-/// cannot be written: the preview is then without it.
-fn crossref_filter() -> Option<&'static Path> {
+/// cannot be written: the preview is then without it. The export to Word runs it too, so the numbers are the same.
+pub fn crossref_filter() -> Option<&'static Path> {
     static FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
     FILE.get_or_init(|| {
         use std::hash::{Hash, Hasher};

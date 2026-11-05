@@ -172,27 +172,41 @@ pub struct Exported {
     pub notes: Vec<String>,
 }
 
-/// pandoc makes the .docx `to` of `markdown` in `dir` (so `bibliography:` and the images resolve).
-fn docx_with(markdown: &str, dir: &Path, to: &Path, citeproc: bool) -> Result<(), String> {
+/// pandoc makes the .docx `to` of `markdown` in `dir` (so `bibliography:` and the images resolve), as the preview
+/// renders: the cross-reference filter (if `filter`), then citeproc (if `citeproc`).
+fn docx_with(markdown: &str, dir: &Path, to: &Path, citeproc: bool, filter: Option<&Path>) -> Result<(), String> {
     let resource = format!("--resource-path={}", dir.display());
-    let mut args = vec!["-f", "markdown", "-t", "docx", "-o", to.to_str().ok_or("not a text path")?, resource.as_str()];
-    if citeproc {
-        args.push("--citeproc");
+    let mut args = vec!["-f".to_string(), "markdown".into(), "-t".into(), "docx".into(), "-o".into(), to.to_string_lossy().into_owned(), resource];
+    if let Some(filter) = filter {
+        args.push(format!("--lua-filter={}", filter.display()));
     }
-    pandoc(&args, dir, markdown.as_bytes()).map(drop)
+    if citeproc {
+        args.push("--citeproc".into());
+    }
+    pandoc(&args.iter().map(String::as_str).collect::<Vec<_>>(), dir, markdown.as_bytes()).map(drop)
 }
 
-/// The .docx `to` of `markdown`: citations resolved when the text names a bibliography, left as typed (and a note
-/// of why) when that does not work.
+/// The .docx `to` of `markdown`: cross-references numbered as in the preview and citations resolved when the text
+/// names a bibliography. What fails is dropped in turn, the filter first (an error that speaks of Lua or a filter),
+/// then the citations (a bibliography that is missing or does not parse), with a note of it.
 fn docx_of(markdown: &str, text: &str, dir: &Path, to: &Path) -> Result<Option<String>, String> {
-    match docx_with(markdown, dir, to, cites(text)) {
-        Ok(()) => Ok(None),
-        Err(e) if cites(text) => {
-            // a bibliography that is missing or does not parse
-            docx_with(markdown, dir, to, false)?;
-            Ok(Some(format!("Citations left as typed: {}", e.lines().next().unwrap_or(""))))
+    let (mut filter, mut citeproc, mut note) = (preview::crossref_filter(), cites(text), None);
+    loop {
+        match docx_with(markdown, dir, to, citeproc, filter) {
+            Ok(()) => return Ok(note),
+            Err(e) => {
+                let lower = e.to_lowercase();
+                if filter.is_some() && (lower.contains("lua") || lower.contains("filter")) {
+                    filter = None;
+                    note = Some(format!("Cross-references left as typed: {}", e.lines().next().unwrap_or("")));
+                } else if citeproc {
+                    citeproc = false;
+                    note = Some(format!("Citations left as typed: {}", e.lines().next().unwrap_or("")));
+                } else {
+                    return Err(e);
+                }
+            }
         }
-        Err(e) => Err(e),
     }
 }
 
@@ -257,24 +271,33 @@ fn read_docx(docx: &Path, dir: &Path, mode: &str, to: &str) -> Result<String, St
 }
 
 /// `current` as plain text the way the .docx's own text is: made into a .docx by the export's pipeline and read back,
-/// with citations resolved and as typed (a .docx that was made elsewhere may have either).
+/// with citations resolved and cross-references numbered or as typed (a .docx that was made elsewhere may have
+/// either).
 fn renderings(current: &str, dir: &Path) -> Result<Vec<String>, String> {
     let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
     let to = std::env::temp_dir().join(format!("pw-compare-{}-{nonce}.docx", std::process::id()));
     let mut out = Vec::new();
-    let mut variants = vec![false];
+    // as typed first, then what the export makes (a variant that fails is left out: the bibliography does not work,
+    // or the filter)
+    let filter = preview::crossref_filter();
+    let mut variants = vec![(false, None)];
     if cites(current) {
-        variants.push(true);
+        variants.push((true, None));
     }
-    for citeproc in variants {
-        match docx_with(current, dir, &to, citeproc).and_then(|()| read_docx(&to, dir, "reject", "plain")) {
+    if filter.is_some() {
+        variants.push((false, filter));
+        if cites(current) {
+            variants.push((true, filter));
+        }
+    }
+    for (n, (citeproc, filter)) in variants.into_iter().enumerate() {
+        match docx_with(current, dir, &to, citeproc, filter).and_then(|()| read_docx(&to, dir, "reject", "plain")) {
             Ok(text) => out.push(text),
-            // a bibliography that does not work: the other rendering is there
-            Err(e) if citeproc => drop(e),
-            Err(e) => {
+            Err(e) if n == 0 => {
                 let _ = std::fs::remove_file(&to);
                 return Err(e);
             }
+            Err(_) => {}
         }
     }
     let _ = std::fs::remove_file(&to);
@@ -388,6 +411,24 @@ mod tests {
         };
         assert!(read("reject").contains("retreats rapidly when"));
         assert!(read("accept").contains("retreats slowly when"));
+    }
+
+    #[test]
+    fn cross_references_are_numbered_in_the_docx_as_in_the_preview() {
+        if preview::pandoc().is_err() {
+            return;
+        }
+        let dir = folder("xref");
+        let doc = dir.join("paper.md");
+        let current = "See @fig:x and \\ref{eq:y}.\n\n![The loop](loop.png){#fig:x}\n\n\\begin{equation}\na = b \\label{eq:y}\n\\end{equation}\n";
+        std::fs::write(&doc, current).unwrap();
+        let to = dir.join("paper.docx");
+        let made = export(&doc, current, &to).unwrap();
+        assert!(made.notes.is_empty(), "{:?}", made.notes);
+        let out = Command::new(preview::pandoc().unwrap()).arg(&to).args(["-t", "plain", "--wrap=none"]).output().unwrap();
+        let text = String::from_utf8(out.stdout).unwrap();
+        assert!(text.contains("Fig.\u{a0}1") || text.contains("Fig. 1"), "{text}");
+        assert!(!text.contains("fig:x?") && !text.contains("eq:y?") && !text.contains("@fig:x"), "{text}");
     }
 
     #[test]

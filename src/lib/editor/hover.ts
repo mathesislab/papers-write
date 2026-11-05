@@ -206,18 +206,8 @@ async function contentOf(view: EditorView, target: Target, sources: HoverSources
 }
 
 const theme = EditorView.theme({
-  ".cm-tooltip.cm-hover": {
-    background: "var(--bg)",
-    color: "var(--fg)",
-    border: "1px solid var(--border)",
-    borderRadius: "8px",
-    boxShadow: "0 6px 20px rgba(0,0,0,.18)",
-    padding: "6px 10px",
-    maxWidth: "min(32em, 90vw)",
-    fontFamily: "var(--editor-font, -apple-system, system-ui, sans-serif)",
-    fontSize: "0.92em",
-    lineHeight: "1.4",
-  },
+  // the box is the editor's (editor.ts: every tooltip of the editor); this is what is in it
+  ".cm-hover": { padding: "6px 10px", maxWidth: "min(32em, 90vw)", lineHeight: "1.4" },
   ".cm-hover-head": { fontWeight: "650" },
   ".cm-hover-math": { fontSize: "1.15em", overflowX: "auto" },
   ".cm-hover-image img": { display: "block", height: "auto", maxHeight: "240px" },

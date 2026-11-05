@@ -96,16 +96,8 @@ const theme = EditorView.theme({
   ".cm-problem": { textDecorationLine: "underline", textDecorationStyle: "wavy", textDecorationSkipInk: "none", textUnderlineOffset: "2px" },
   ".cm-problem-warning": { textDecorationColor: "var(--warning, #d98e04)" },
   ".cm-problem-error": { textDecorationColor: "var(--error, #c4321f)" },
-  ".cm-tooltip.cm-problem-tip": {
-    background: "var(--bg)",
-    color: "var(--fg)",
-    border: "1px solid var(--border)",
-    borderRadius: "8px",
-    boxShadow: "0 6px 20px rgba(0,0,0,.18)",
-    padding: "4px 10px",
-    fontFamily: "var(--editor-font, -apple-system, system-ui, sans-serif)",
-    fontSize: "0.92em",
-  },
+  // the box is the editor's (editor.ts: every tooltip of the editor); this is what is in it
+  ".cm-problem-tip": { padding: "4px 10px" },
 });
 
 /** The citation keys asked of the app, 800 ms after the last change (and at once for `recheck`). */

@@ -85,6 +85,18 @@ const theme = (mono: boolean) =>
     ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "1.5px" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { background: "var(--selection)" },
     ".cm-placeholder": { color: "var(--muted)" },
+    // every tooltip of the editor (hover, problems, completion) in the page's colours, light or dark: CodeMirror's
+    // own box is light whatever the page
+    ".cm-tooltip": {
+      background: "var(--bg)",
+      color: "var(--fg)",
+      border: "1px solid var(--border)",
+      borderRadius: "8px",
+      boxShadow: "0 6px 20px rgba(0,0,0,.18)",
+      fontFamily: `var(--editor-font, ${FONTS.system})`,
+      fontSize: "0.92em",
+      overflow: "hidden",
+    },
   });
 
 /** The band at the top and foot of the editor where a selection being made with the mouse scrolls, in px. */

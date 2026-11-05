@@ -72,15 +72,7 @@ export const completionSource = (app: Completion, tex = false) => async (cx: Com
 };
 
 const popup = EditorView.theme({
-  ".cm-tooltip.cm-tooltip-autocomplete": {
-    background: "var(--bg)",
-    color: "var(--fg)",
-    border: "1px solid var(--border)",
-    borderRadius: "8px",
-    boxShadow: "0 6px 20px rgba(0,0,0,.18)",
-    overflow: "hidden",
-    fontFamily: "var(--editor-font, -apple-system, system-ui, sans-serif)",
-  },
+  // the box is the editor's (editor.ts: every tooltip of the editor)
   ".cm-tooltip.cm-tooltip-autocomplete > ul": { fontFamily: "inherit", maxHeight: "16em" },
   ".cm-tooltip-autocomplete ul li": { padding: "2px 10px", color: "var(--fg)" },
   ".cm-tooltip-autocomplete ul li[aria-selected]": { background: "var(--selection)", color: "var(--fg)" },

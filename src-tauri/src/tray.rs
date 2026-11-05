@@ -1,4 +1,4 @@
-//! The icon in the menu bar: the app stays there when its last window closes. New, Open… and Quit.
+//! The icon in the menu bar: the app stays there when its last window closes. New, Open…, Settings… and Quit.
 
 use tauri::AppHandle;
 use tauri::image::Image;
@@ -20,6 +20,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &MenuItem::with_id(app, "tray-new", "New", true, None::<&str>)?,
             &MenuItem::with_id(app, "tray-open", "Open…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "tray-settings", "Settings…", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "tray-quit", "Quit Papers Write", true, None::<&str>)?,
         ],
     )?;
@@ -36,6 +38,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                 }
             }
             "tray-open" => documents::choose(app),
+            "tray-settings" => crate::settings::show(app),
             "tray-quit" => app.exit(0),
             _ => {}
         })

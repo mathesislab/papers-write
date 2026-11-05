@@ -166,9 +166,15 @@ fn find_in(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
 }
 
 pub(crate) fn find_tool(name: &str) -> Result<PathBuf, String> {
+    found_tool(name)
+}
+
+/// The tool as it is found without the settings: on PATH, else in the folders searched.
+pub(crate) fn found_tool(name: &str) -> Result<PathBuf, String> {
     find_in(name, &search_dirs()).ok_or_else(|| match name {
         "texmark" => "texmark is not installed (pip install texmark); it was not found on PATH, in /opt/homebrew/Caskroom/miniforge/base/bin or ~/.local/bin".to_string(),
         "latexmk" | "latexdiff" | "pdflatex" => format!("{name} was not found: install MacTeX (https://tug.org/mactex/), which has it in /Library/TeX/texbin"),
+        "pandoc" => "pandoc is not installed: brew install pandoc".to_string(),
         _ => format!("{name} was not found"),
     })
 }

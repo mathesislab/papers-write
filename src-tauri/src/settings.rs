@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, OnceLock, RwLock};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_dialog::DialogExt;
 
 const FILE: &str = "settings.json";
 
@@ -177,6 +178,58 @@ pub fn settings() -> Settings {
 #[tauri::command]
 pub fn set_settings(app: AppHandle, settings: Settings) {
     put(&app, settings);
+}
+
+/// The label of the Settings window: one, not a document.
+pub const WINDOW: &str = "settings";
+
+/// The Settings window: the one open brought forward, else made.
+pub fn show(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(WINDOW) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
+    }
+    // from the menu bar, with no window: in front only for an app with a Dock icon
+    crate::documents::regular(app, true);
+    let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("/settings".into()))
+        .title("Settings")
+        .inner_size(600.0, 680.0)
+        .min_inner_size(480.0, 420.0)
+        .tabbing_identifier("papers-write-settings")
+        .build();
+    match built {
+        Ok(window) => {
+            let _ = window.set_focus();
+        }
+        Err(e) => eprintln!("Settings: {e}"),
+    }
+}
+
+/// Where each tool is found as usual (not what the settings say), for the Settings window to show.
+#[derive(Serialize)]
+pub struct Found {
+    texmark: Option<String>,
+    latexmk: Option<String>,
+    pandoc: Option<String>,
+}
+
+#[tauri::command]
+pub fn tools_found() -> Found {
+    let found = |name| crate::build::found_tool(name).ok().map(|p| p.to_string_lossy().into_owned());
+    Found { texmark: found("texmark"), latexmk: found("latexmk"), pandoc: found("pandoc") }
+}
+
+/// A file chosen for the tool `name`; none when the dialog was cancelled.
+#[tauri::command]
+pub async fn choose_tool(app: AppHandle, name: String) -> Option<String> {
+    app.dialog()
+        .file()
+        .set_title(format!("Choose {name}"))
+        .blocking_pick_file()
+        .and_then(|f| f.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]

@@ -49,6 +49,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &PredefinedMenuItem::about(app, None, None)?,
             &separator()?,
+            &item("settings", "Settings…", Some("CmdOrCtrl+,"))?,
+            &separator()?,
             &PredefinedMenuItem::services(app, None)?,
             &separator()?,
             &PredefinedMenuItem::hide(app, None)?,
@@ -215,6 +217,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         }
         "recent-clear" => crate::projects::clear_recent(app),
         _ if id.starts_with(RECENT) => crate::projects::open_reporting(app, Path::new(&id[RECENT.len()..])),
+        "settings" => crate::settings::show(app),
         "quit" => app.exit(0),
         "close" => {
             if let Some(window) = documents::front(app) {

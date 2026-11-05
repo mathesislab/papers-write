@@ -111,7 +111,8 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<String> {
         state.blank.lock().unwrap().insert(label.clone());
     }
     regular(app, true);
-    let joined = front(app);
+    // a new window joins a document's tabs, not the Settings window
+    let joined = front(app).filter(|w| w.label().starts_with("doc-"));
     let built = WebviewWindowBuilder::new(
         app,
         &label,

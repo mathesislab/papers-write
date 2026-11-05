@@ -83,7 +83,7 @@ export const shownOf = (state: EditorState): Shown[] =>
   state.facet(shownFacet).flatMap((f) => f(state)).sort((a, b) => a.from - b.from || a.to - b.to);
 
 /** The number of colours of the authors: `--review-1` … `--review-6`. */
-const COLOURS = ["#c2410c", "#7c3aed", "#0f766e", "#be185d", "#1d4ed8", "#4d7c0f"];
+export const COLOURS = ["#c2410c", "#7c3aed", "#0f766e", "#be185d", "#1d4ed8", "#4d7c0f"];
 
 /** A person's colour, 1 to 6: a hash of their slug. The slug, not the name: a suggestion the app has not yet
  *  written has no item and no name, and is coloured as the person's others. */

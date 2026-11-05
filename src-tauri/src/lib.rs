@@ -52,6 +52,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             settings::settings,
             settings::set_settings,
+            settings::tools_found,
+            settings::choose_tool,
             documents::document,
             documents::set_blank,
             documents::save_untitled,

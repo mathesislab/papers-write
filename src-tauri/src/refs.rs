@@ -140,7 +140,7 @@ pub struct Check {
 
 /// The `.bib` files the front matter of `text` names, beside the window's document, that are there (none for an
 /// untitled one): the document's own bibliography, not the papers library.
-fn own_bibs(window: &WebviewWindow, text: &str) -> Vec<PathBuf> {
+pub(crate) fn own_bibs(window: &WebviewWindow, text: &str) -> Vec<PathBuf> {
     let Some(path) = crate::documents::path_of(window.app_handle(), window.label()) else {
         return Vec::new();
     };

@@ -15,6 +15,8 @@ export type Deps = {
   editor: () => FileEditor | undefined;
   /** told for a moment (a note at the foot of the window) */
   say: (what: string) => void;
+  /** suggestions accepted or rejected, the decisions in the files of the review: told with a message for a commit */
+  decided?: (message: string) => void;
 };
 
 export class ReviewSession {
@@ -151,6 +153,14 @@ export class ReviewSession {
   async accept(item: ReviewItem) {
     await this.#write(() => this.#accept(item));
     this.reload();
+    this.#decided("Accept", [item]);
+  }
+
+  /** The commit offered for what was decided: "Accept 3 suggestions of Jane Doe". */
+  #decided(verb: "Accept" | "Reject", items: ReviewItem[]) {
+    const names = [...new Set(items.map((i) => i.author))];
+    const who = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+    this.#deps.decided?.(`${verb} ${items.length} suggestion${items.length === 1 ? "" : "s"} of ${who}`);
   }
 
   /** Rejected, and with it the counter-suggestions still open that answer it. */
@@ -190,6 +200,7 @@ export class ReviewSession {
       await this.#write(async () => {
         for (const i of take) await this.#accept(i);
       });
+      this.#decided("Accept", take);
     } finally {
       this.reload();
     }
@@ -205,6 +216,7 @@ export class ReviewSession {
       await this.#write(async () => {
         for (const i of open) await invoke("review_decide", { on: i.id, decision: "rejected" });
       });
+      this.#decided("Reject", open);
     } finally {
       this.reload();
     }

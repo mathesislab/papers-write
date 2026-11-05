@@ -139,6 +139,17 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   git configuration of the document's folder, else your macOS full name. Needs
   a saved document. Changes others make to the review files (a pull, a sync)
   show at once.
+- Git (the `git` command): when the document is in a repository, a quiet line
+  at the foot of the window says the branch, the files changed and how far it
+  is from its upstream ("main · 3 changed · ↓1"; the upstream is fetched when
+  the window gets the keys, at most every 5 minutes). A click on it, or Git ▸
+  Commit… (⌥⌘K), opens the files changed: the document, its `.bib` files and
+  its review folder are ticked, the rest is not. Commit adds and commits those
+  paths only (never `-a`, never an amend). After Accept, Accept All or Reject
+  All the review panel offers the commit with a message that says what was
+  decided. Pull is `git pull --ff-only`: if the branch cannot go forward
+  nothing is done and it is said (resolve it in a terminal). Push is `git
+  push`, never forced, and needs an upstream.
 
 ## Develop
 

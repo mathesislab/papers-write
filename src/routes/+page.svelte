@@ -14,7 +14,9 @@
   // references from the text typed, which each call sends. Check Citations… lists in a sheet the keys cited that the
   // document's own bibliography lacks (each to add from the library) and the entries it never cites.
   //
-  // The foot of the window says the state of the document's repository (GitBar).
+  // The foot of the window says the state of the document's repository (GitBar; a click opens the Commit sheet). The Git
+  // menu (`git-menu`) is Git: Commit…, Pull, Push. After suggestions are accepted or rejected the review panel offers
+  // a commit with a message that says what was decided.
   //
   // File ▸ Exchange (`exchange`) is Exchange: Compare as Suggestions… and the Word round trip.
   //
@@ -46,6 +48,7 @@
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
+  import Git from "$lib/Git.svelte";
   import GitBar from "$lib/GitBar.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
@@ -65,6 +68,9 @@
   let gitbar = $state<GitBar>();
   /** the repository of the document (git.rs); none when it is not in one */
   let repo = $state<GitState | null>(null);
+  let git = $state<Git>();
+  /** the message of the commit offered in the review panel after suggestions were decided; none when not offered */
+  let offered = $state("");
   let error = $state("");
   /** a save that failed, where the editor's own errors do not say */
   let problem = $state("");
@@ -96,7 +102,7 @@
   })();
   let width = $state(stored >= 240 ? stored : 0);
   let panes = $state<HTMLElement>();
-  const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what) });
+  const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), decided: (m) => (offered = m) });
   /** the review panel at the right: shown (the preview is not while it is) */
   let panel = $state(false);
   /** the comment being written: the selection it is on and where the box goes */
@@ -349,6 +355,7 @@
       }),
       listen<string>("menu", (e) => (e.payload === "save" ? save() : builds?.run(e.payload))),
       listen<string>("edit", (e) => edit(e.payload)),
+      listen<string>("git-menu", (e) => git?.run(e.payload)),
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", togglePreview),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -393,7 +400,7 @@
     <div class="pane" style:width={width ? `${width}px` : "45%"}><Preview {html} error={said} {block} /></div>
   {/if}
   {#if panel}
-    <div class="pane review"><ReviewPanel {session} /></div>
+    <div class="pane review"><ReviewPanel {session} offer={offered} oncommit={() => git?.run("git-commit", offered)} ondismiss={() => (offered = "")} /></div>
   {/if}
   </div>
   {#if listing}
@@ -430,7 +437,18 @@
       {/if}
     </div>
   {/if}
-  <GitBar bind:this={gitbar} {path} bind:state={repo} onopen={() => {}} />
+  <GitBar bind:this={gitbar} {path} bind:state={repo} onopen={() => git?.run("git-commit", offered)} />
+  <Git
+    bind:this={git}
+    flush={() => editor?.flush()}
+    text={current}
+    docName={() => (path ? nameOf(path) : "")}
+    me={() => session.me?.name}
+    say={(what) => say(what)}
+    onchange={() => gitbar?.refresh(0)}
+    onfocus={() => editor?.focus()}
+    oncommitted={() => (offered = "")}
+  />
   <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
   {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
   <Exchange bind:this={exchange} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />

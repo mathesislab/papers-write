@@ -400,6 +400,17 @@ The app shows the repository's state and offers commits, pull and push for
 the files it writes; the rest is left to git. The history of a file is
 shown as tracked changes between two commits. Nothing is rewritten.
 
+- State: branch, ahead and behind of the upstream (as of the last fetch, made
+  quietly on window focus, at most every 5 minutes) and the files changed,
+  at the foot of the window.
+- Commit…: the document, its bibliography files and its review folder ticked;
+  `git add` of the ticked paths, then `git commit` of them (never `-a`, never
+  an amend; what else is staged is left staged). After accepting or rejecting
+  suggestions the review panel offers it, with a message that says what was
+  decided.
+- Pull is `--ff-only` (never a merge commit, never a rebase: when it cannot go
+  forward it stops and says so). Push needs an upstream and is never forced.
+
 ## Code
 
 - The editor (TypeScript, Svelte), exported for papers-review; a crate for

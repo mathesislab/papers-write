@@ -1,6 +1,6 @@
 //! The menu bar. New, Open…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
 //! front (event `edit`, the id of the item), File ▸ Exchange to its page (event `exchange`), Cite as [@key] to the list of references (event `cite-key`), and Save to its page (event `menu`).
-//! The Review menu goes to the page of the window in front as `review-menu` with the id of the item.
+//! The Review menu goes to the page of the window in front as `review-menu` with the id of the item, the Git menu as `git-menu`.
 
 use tauri::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, EventTarget, Wry};
@@ -129,6 +129,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("previous", "Previous Change", Some("Alt+CmdOrCtrl+Up"))?,
         ],
     )?;
+    let git = Submenu::with_items(
+        app,
+        "Git",
+        true,
+        &[
+            &item("git-commit", "Commit…", Some("Alt+CmdOrCtrl+K"))?,
+            &item("git-pull", "Pull", None)?,
+            &item("git-push", "Push", None)?,
+        ],
+    )?;
     let window = Submenu::with_items(
         app,
         "Window",
@@ -141,7 +151,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
-    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &review, &build, &pdf, &window])
+    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &review, &git, &build, &pdf, &window])
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
@@ -189,6 +199,12 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "suggest" | "comment" | "panel" | "accept-all" | "reject-all" | "next" | "previous" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "review-menu", id);
+            }
+        }
+        // the page writes the document first, asks what is needed, and the backend runs git
+        "git-commit" | "git-pull" | "git-push" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "git-menu", id);
             }
         }
         "undo" | "redo" | "symbols" | "references" | "check" => {

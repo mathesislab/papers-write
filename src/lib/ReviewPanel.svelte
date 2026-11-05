@@ -10,7 +10,7 @@
   import type { ReviewRecord } from "$lib/editor/review/types";
   import { ago, colorOf, whoIs } from "$lib/reviewFormat";
 
-  let { session }: { session: ReviewSession } = $props();
+  let { session, offer = "", oncommit, ondismiss }: { session: ReviewSession; offer?: string; oncommit?: () => void; ondismiss?: () => void } = $props();
 
   /** the person shown ("" for everyone, else a slug) and whether the decided ones show too */
   let who = $state("");
@@ -161,6 +161,13 @@
       </article>
     {/each}
   </div>
+  {#if offer}
+    <div class="offer">
+      <span>Commit the decisions?</span>
+      <button class="primary" onclick={oncommit}>Commit…</button>
+      <button onclick={ondismiss} aria-label="Not now" title="Not now">×</button>
+    </div>
+  {/if}
   {#if session.errors.length}
     <footer>
       {#each session.errors as e (e)}<p>{e}</p>{/each}
@@ -325,6 +332,17 @@
   }
   textarea:focus {
     border-color: var(--accent);
+  }
+  .offer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-top: 1px solid var(--line);
+  }
+  .offer span {
+    flex: 1;
+    color: var(--muted);
   }
   footer {
     padding: 6px 10px;

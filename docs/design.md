@@ -320,6 +320,22 @@ while their earlier suggestions are carried onto it; two people go back and
 forth on a passage with counter-suggestions. Two suggestions on the same
 text both show; accepting one leaves the other outdated, to be dealt with.
 
+### In the app (as built)
+
+- The panel at the right lists the open items in text order and replaces the
+  preview while shown (the two do not share the window). Accept puts the
+  replacement in the text as an edit of the editor, then appends the decision;
+  accepting a counter-suggestion also decides the suggestion it answers, and
+  rejecting a suggestion rejects the counter-suggestions still open on it.
+- A counter-suggestion from the panel replaces all of what the first one puts
+  there: the commands take its positions relative to that replacement (the
+  core makes it on the text as the first would leave it).
+- Accept All takes the open suggestions that are exact or moved, from the end
+  of the text backwards, leaving those that are outdated, answered by a
+  counter-suggestion or overlapping one taken.
+- The review folder is watched while a window shows its document; the page
+  reloads the items (also after its own appends) 100 ms after the last change.
+
 ### In the editor
 
 - Edit mode: typing changes the file.

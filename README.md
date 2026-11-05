@@ -77,6 +77,20 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   `@eq:x`, `\eqref{x}` ... resolved, by a Lua filter of pandoc (not
   pandoc-crossref, which need not be installed) as texmark does.
   Drag the split to resize; its width is kept for the window.
+- Review menu: suggestions and comments kept in files beside the document
+  (`.papers-write/review/<file>/`, one file per person, only appended to).
+  Suggest Changes (⇧⌘E) makes typing a suggestion of yours instead of an edit
+  (a "Suggesting" badge at the top right, per window). Add Comment… (⌥⌘M)
+  comments on the selection (⌘↵ posts). Show Review Panel (⌥⌘R) lists the
+  open ones in text order at the right, in place of the preview: who and when,
+  what changes, the thread, and Accept, Reject, Reply, Resolve, Suggest
+  Instead (a counter-suggestion), Withdraw (your own); filter by person, show
+  the resolved. Accept All and Reject All (everyone's open suggestions, after
+  asking; Accept All leaves the outdated ones and those a counter-suggestion
+  answers); Next and Previous Change (⌥⌘↓, ⌥⌘↑). You are the `user.name` of the
+  git configuration of the document's folder, else your macOS full name. Needs
+  a saved document. Changes others make to the review files (a pull, a sync)
+  show at once.
 
 ## Develop
 

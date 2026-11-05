@@ -429,8 +429,8 @@ text both show; accepting one leaves the other outdated, to be dealt with.
 - Comments: on a selection, in the margin, with replies; resolved ones
   hidden.
 - Accept or reject one, a selection, all of a person or a round, all.
-  Accepting writes the file and appends the decision; with git the app
-  offers a commit ("Accept 12 suggestions of Jane Doe").
+  Accepting writes the file and appends the decision; with git the next
+  commit's message says it ("Accept 12 suggestions of Jane Doe", Git below).
 - Views: All Markup, Accepted (as if all were accepted), Original.
 - Tools can write a review file too: an agent (Claude) suggests in its own
   file instead of editing the manuscript.
@@ -471,8 +471,46 @@ text both show; accepting one leaves the other outdated, to be dealt with.
   in the margin), or the marked-up PDF (latexdiff, comments as margin
   notes).
 - From anyone: an edited copy of the file, a commit or a branch: Compare as
-  Suggestions… turns the word-level diff from the base into suggestions
-  under their name.
+  Suggestions… turns the word-level diff into suggestions under their name
+  (Ways in, below).
+
+### Ways in
+
+Edits made without the app (in another editor, in git, without suggest mode)
+become suggestions to accept or reject one by one. The difference is always
+taken from where the other person started, never from the text as it is now:
+a diff from the current text would show everything the author wrote since as
+a suggestion to undo it.
+
+- A branch or a commit (Compare as Suggestions…, Git ▸ Review Branch…): start
+  is `git merge-base HEAD <rev>`, end is the revision. The word-level hunks of
+  the diff from start to end are the suggestions, with positions in the start
+  text and that text as their base (written like any other). The review's own
+  carrying (A new version, above) puts them on the current text: only the
+  other person's edits appear, and where the author changed the same words
+  the suggestion is outdated, never a silent revert. A revision already in
+  HEAD's history has nothing to add (that is Review Commits).
+- Commits already on the branch (Git ▸ Review Commits…: a co-author pushed to
+  main): start is the file at the parent of the first commit chosen, end is
+  HEAD's. The suggestions are made as above, and the file is set back to the
+  start text (written as the app writes), so that accepting a suggestion
+  brings its change back. The document must have nothing uncommitted (it
+  would be lost); nothing is committed (the Commit sheet does it). The first
+  commit offered is the first after the user's own last one.
+- An edited copy of the file: no history, so the diff is from the current
+  text to the copy, under the name asked for.
+- Who: each hunk is put down to a commit (`review::history`): of the lines
+  with inserted text, the newest commit of the range that wrote them (`git
+  blame --porcelain <start>..<end>`); else of the deleted lines, the commit
+  that removed them (`git blame --reverse`: the line was last seen in a
+  commit; the next commit of the range that touched the file removed it);
+  else the newest commit of the range. Its author is the suggestion's (a
+  person file each), its short hash and subject the round ("a1b2c3d Tighten
+  the abstract"), its date the record's time. Blame is by line: two commits
+  that changed one line both come out as the later one.
+- Twice: a suggestion whose author already has the same one (same base,
+  round, range and text) is not written again, and the sheet says "already in
+  the review".
 
 ### Git
 
@@ -485,15 +523,27 @@ shown as tracked changes between two commits. Nothing is rewritten.
   at the foot of the window.
 - Commit…: the document, its bibliography files and its review folder ticked;
   `git add` of the ticked paths, then `git commit` of them (never `-a`, never
-  an amend; what else is staged is left staged). After accepting or rejecting
-  suggestions the review panel offers it, with a message that says what was
-  decided.
+  an amend; what else is staged is left staged). It is the one place a commit
+  is made, for writing and reviewing alike (the review panel does not offer
+  one). Its message is prefilled from a log the window keeps of what it did
+  since the last commit: suggestions accepted or rejected (counted by whose),
+  the review cleaned up, a branch or commits reviewed as suggestions, a Word
+  review imported; joined into one ("Accept 3 suggestions of Jane Doe; review
+  of jane/edits as suggestions"). Writing only leaves it empty, for the user to
+  write. A commit empties the log, and so does showing another file.
 - Pull is `--ff-only` (never a merge commit, never a rebase: when it cannot go
   forward it stops and says so). Push needs an upstream and is never forced.
 - Compare with Commit…: a read-only tab with the text of the commit and the
   changes since (the word-level diff of Compare as Suggestions, from that
   commit to the file now) as tracked changes under "since <rev>", drawn by the
   editor's review. Nothing is written to the review files.
+- Review Branch…: `git fetch --quiet` (a failure is not told), then the local
+  and remote branches with commits touching the document that HEAD has not
+  (`git log HEAD..<branch> -- <file>`; a remote branch at the same commit as a
+  local one is left out), with their authors, how many and the last date. The
+  one chosen is reviewed as suggestions (Ways in).
+- Review Commits…: the last 30 commits of HEAD touching the document, the
+  first to review chosen among them (Ways in).
 
 ## Code
 

@@ -93,12 +93,12 @@ them) are proposed upstream; until they are released,
   twice adds nothing), a dialog saying "12 suggestions and 3 comments from Jane
   Doe". If the text changed since, they are carried like any others.
 - File ▸ Exchange ▸ Compare as Suggestions… turns another version into
-  suggestions: a commit, tag or branch of the document in git, or an edited
-  copy of the file (any path). The word-level changes from this document to
-  that version become one suggestion each, under the name of whoever made it
-  (the commit's author, filled in; asked for a file) in a review file of their
-  own, with the round "Compared with <file or revision>". The author need not
-  have the app.
+  suggestions: a branch or a commit (typed), or an edited copy of the file (any
+  path). From git, only what was done there since it left your branch (`git
+  merge-base`) comes in, each change under the author of the commit that made
+  it; for a file, the word-level changes from this document to it, under the
+  name asked for (round "Compared with <file>"). The author need not have the
+  app. The same comparison twice adds nothing ("already in the review").
 - File ▸ Exchange ▸ Export as Word with Changes… writes a `.docx` (pandoc;
   saved where a dialog says, `<name>.docx` beside the document to begin with)
   in which the open suggestions are Word's tracked changes and the comments
@@ -240,14 +240,35 @@ them) are proposed upstream; until they are released,
   the window gets the keys, at most every 5 minutes). A click on it, or Git ▸
   Commit… (⌥⌘K), opens the files changed: the document, its `.bib` files and
   its review folder are ticked, the rest is not. Commit adds and commits those
-  paths only (never `-a`, never an amend). After Accept, Accept All or Reject
-  All the review panel offers the commit with a message that says what was
-  decided. Pull is `git pull --ff-only`: if the branch cannot go forward
-  nothing is done and it is said (resolve it in a terminal). Push is `git
-  push`, never forced, and needs an upstream. Git ▸ Compare with Commit…
-  opens a tab "paper.md since v2": a tag or a commit that touched the file (or
-  any revision typed), its text read only, with the changes since drawn as
-  tracked changes.
+  paths only (never `-a`, never an amend). It is the one way to commit, for
+  writing and reviewing alike: its message is filled in from what the window
+  did since the last commit ("Accept 3 suggestions of Jane Doe; review of
+  jane/edits as suggestions"), empty when you only wrote. Pull is `git pull
+  --ff-only`: if the branch cannot go forward nothing is done and it is said
+  (resolve it in a terminal). Push is `git push`, never forced, and needs an
+  upstream. Git ▸ Compare with Commit… opens a tab "paper.md since v2": a tag
+  or a commit that touched the file (or any revision typed), its text read
+  only, with the changes since drawn as tracked changes.
+- Reviewing a co-author's edits made in git (without the app, without suggest
+  mode), to accept or reject one by one:
+  - On a branch: Git ▸ Review Branch… fetches (quietly) and lists the local
+    and remote branches with commits touching the document that yours has not,
+    with their authors, how many and when. The one chosen becomes suggestions:
+    the word-level changes from where it left your branch to its tip, each under
+    the author of its commit (a file per person), the round being the commit
+    ("a1b2c3d Tighten the abstract") and the time its date. What you wrote since
+    stays: their suggestions are carried onto your text, and one on words you
+    changed too shows as outdated, never as an undoing of yours.
+  - Already committed on your branch (they pushed to main): Git ▸ Review
+    Commits… lists the last commits touching the document; choose the first to
+    review (to begin with, the first after your own last commit). Its changes
+    and all after it become suggestions of their authors, and the document goes
+    back to the text before them, so that accepting a suggestion brings its
+    change back and rejecting it leaves it out. The document must have nothing
+    uncommitted. A sheet says what happened ("Jane Doe's edits since a1b2c3d,
+    back as suggestions"); commit when you like (Git ▸ Commit…).
+  - Who made what comes from `git blame`, by line: two commits that changed the
+    same line both count as the later one.
 - Settings (⌘, in the app menu and the menu bar icon; one window, every change
   saved at once in `settings.json` of the app's data folder, every window told).
   Editor: font (system, serif, monospace) and size, what Tab inserts, readable

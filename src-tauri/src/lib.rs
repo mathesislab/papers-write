@@ -8,8 +8,10 @@ mod git;
 mod menu;
 mod package;
 mod preview;
+mod projects;
 mod refs;
 mod review;
+mod state;
 mod tabs;
 mod tray;
 
@@ -28,6 +30,7 @@ pub fn run() {
         .manage(preview::Runs::default())
         .manage(review::Reviews::default())
         .manage(git::Git::default())
+        .manage(projects::Projects::default())
         .setup(|app| {
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
@@ -89,7 +92,17 @@ pub fn run() {
             review::review_decide,
             review::review_counter,
             review::review_mode,
-            review::review_confirm
+            review::review_confirm,
+            projects::project_bar,
+            projects::switch_project,
+            projects::remove_from_bar,
+            projects::project_card,
+            projects::set_project_info,
+            projects::asking_project,
+            projects::cancel_project,
+            projects::create_project,
+            projects::choose_library,
+            projects::choose_project
         ])
         .build(tauri::generate_context!())
         .expect("error while building papers-write")

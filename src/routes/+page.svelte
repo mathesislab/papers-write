@@ -20,6 +20,13 @@
   //
   // File ▸ Exchange (`exchange`) is Exchange: Compare as Suggestions… and the Word round trip.
   //
+  // A document of a project (a folder above it has write.toml) shows the project bar at the left (ProjectBar of
+  // papers-write/project: a tile per project, the main document's words and open suggestions; a click opens the
+  // project's main document, a right-click its menu) and a thin bar in the project's colour at the top. Project
+  // Info… (⌘I, `project-info`) is a card over the window (ProjectCard); so is the card of a new project, asked for
+  // when File ▸ Open Project… chose a folder without write.toml (`asking-project`). The bar is asked again on
+  // `projects-changed`, when the window gets the focus, and a moment after the file or its review changes.
+  //
   // View ▸ Show Preview (⇧⌘P, `preview`) toggles the pane at the right of a Markdown document: pandoc's HTML of the text
   // as typed (`preview`), asked 300 ms after the typing stops, and scrolled to the block the cursor is in.
 
@@ -28,6 +35,10 @@
   import { EditorView } from "@codemirror/view";
   import { ensureSyntaxTree } from "@codemirror/language";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { Menu, MenuItem } from "@tauri-apps/api/menu";
+  import { ProjectBar, cssOf } from "papers-write/project";
+  import ProjectCard from "$lib/ProjectCard.svelte";
+  import type { Bar } from "$lib/projects";
   import Preview from "$lib/Preview.svelte";
   import CommentBox from "$lib/CommentBox.svelte";
   import ReviewPanel from "$lib/ReviewPanel.svelte";
@@ -115,6 +126,60 @@
 
   async function ask() {
     path = (await invoke<{ path: string | null }>("document")).path;
+    loadBar();
+  }
+
+  /** the project bar: the project of the document (none: no bar) and its tiles */
+  let bar = $state<Bar>({ current: null, tiles: [] });
+  /** the folder of the project whose info card is shown */
+  let carding = $state<string | null>(null);
+  /** the folder opened as a project that has no write.toml yet, whose card asks what to write in one */
+  let asking = $state<string | null>(null);
+  let barTimer: ReturnType<typeof setTimeout> | undefined;
+  const barColour = $derived(bar.current ? cssOf(bar.current.colour) : null);
+
+  async function loadBar() {
+    clearTimeout(barTimer);
+    try {
+      bar = await invoke<Bar>("project_bar");
+    } catch (e) {
+      problem = String(e);
+    }
+  }
+
+  /** The bar asked again a moment later (the words and suggestions of a file being written). */
+  function loadBarLater(ms: number) {
+    clearTimeout(barTimer);
+    barTimer = setTimeout(loadBar, ms);
+  }
+
+  async function askProject() {
+    asking = await invoke<string | null>("asking_project");
+  }
+
+  function switchProject(root: string) {
+    invoke("switch_project", { root }).catch((e) => (problem = String(e)));
+  }
+
+  /** A right-click on a tile. */
+  async function tileMenu(root: string) {
+    const items = await Promise.all([
+      MenuItem.new({ text: "Open Project Folder in Finder", action: () => void invoke("reveal", { path: root }).catch((e) => (problem = String(e))) }),
+      MenuItem.new({ text: "Project Info…", action: () => (carding = root) }),
+      MenuItem.new({ text: "Remove from Bar", action: () => void invoke("remove_from_bar", { root }) }),
+    ]);
+    await (await Menu.new({ items })).popup();
+  }
+
+  function projectInfo() {
+    if (bar.current) carding = bar.current.root;
+    else say("Not in a project: File ▸ Open Project… makes a folder one");
+  }
+
+  function closeCard() {
+    carding = null;
+    asking = null;
+    editor?.focus();
   }
 
   function changed(text: string) {
@@ -352,17 +417,24 @@
   onMount(() => {
     setEditorFont("system", 13.5);
     ask();
+    askProject();
+    window.addEventListener("focus", loadBar);
     const unlisten = [
       listen("opened", ask),
       listen("file-changed", () => {
         editor?.changedOnDisk();
         session.reload(300);
         gitbar?.refresh(1000);
+        loadBarLater(2000);
       }),
+      listen("projects-changed", loadBar),
+      listen("asking-project", askProject),
+      listen("project-info", projectInfo),
       listen<string>("review-menu", (e) => reviewMenu(e.payload)),
       listen("review-changed", () => {
         session.reload(100);
         gitbar?.refresh(500);
+        loadBarLater(1000);
       }),
       listen<string>("menu", (e) => (e.payload === "save" ? save() : builds?.run(e.payload))),
       listen<string>("edit", (e) => edit(e.payload)),
@@ -372,10 +444,19 @@
       listen("cite-key", () => listing && refs?.cite("pandoc")),
       listen("references-changed", () => version++),
     ];
-    return () => unlisten.forEach((u) => u.then((f) => f()));
+    return () => {
+      window.removeEventListener("focus", loadBar);
+      unlisten.forEach((u) => u.then((f) => f()));
+    };
   });
 </script>
 
+<!-- the project's colour, at the top, to tell its windows apart among others -->
+{#if barColour}<div class="colour" style:background={barColour}></div>{/if}
+<div class="window" class:coloured={barColour}>
+{#if bar.current && bar.tiles.length}
+  <ProjectBar items={bar.tiles} onswitch={switchProject} onmenu={tileMenu} onadd={() => invoke("choose_project")} addTitle="Open Project… (⇧⌘O)" />
+{/if}
 <main style:--bar={reviewing ? "28px" : "0px"}>
   <div class="panes" bind:this={panes}>
   <div class="text">
@@ -465,10 +546,37 @@
   <Exchange bind:this={exchange} bind:reviewing mode={session.mode} flush={() => editor?.flush()} onfocus={() => editor?.focus()} />
   {#if error || problem || session.problem}<p class="error">{problem || error || session.problem}</p>{:else if note}<p class="note">{note}</p>{/if}
 </main>
+</div>
+{#if asking}
+  {#key asking}<ProjectCard root={asking} onclose={closeCard} />{/key}
+{:else if carding}
+  {#key carding}<ProjectCard root={carding} onclose={closeCard} />{/key}
+{/if}
 
 <style>
-  main {
+  /* absolute, not fixed: WebKit tints the title bar with what is fixed at the top of the page */
+  .colour {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    height: 6px;
+  }
+  .window {
+    display: flex;
     height: 100vh;
+    box-sizing: border-box;
+    /* the tiles' detail: words and open suggestions, on two lines */
+    --tile-detail-size: 10.5px;
+  }
+  .window.coloured {
+    padding-top: 6px;
+  }
+  main {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
     position: relative;
   }
   .panes {

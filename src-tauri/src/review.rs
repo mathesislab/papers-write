@@ -65,7 +65,7 @@ pub struct Items {
 }
 
 /// The person of the git configuration of `folder`, else the macOS full name of the user, else `$USER`.
-fn person_in(folder: &Path) -> Person {
+pub(crate) fn person_in(folder: &Path) -> Person {
     Person::from_git(folder).unwrap_or_else(|| {
         let full = std::process::Command::new("id")
             .arg("-F")

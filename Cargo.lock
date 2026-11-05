@@ -2846,6 +2846,7 @@ dependencies = [
  "papers-core",
  "papers-write-core",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

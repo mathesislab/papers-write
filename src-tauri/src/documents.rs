@@ -82,7 +82,7 @@ pub(crate) fn title(path: Option<&Path>) -> String {
 }
 
 /// The app in the Dock and ⌘Tab while a window is open; in the menu bar only otherwise (macOS).
-fn regular(app: &AppHandle, regular: bool) {
+pub(crate) fn regular(app: &AppHandle, regular: bool) {
     #[cfg(target_os = "macos")]
     {
         use tauri::ActivationPolicy::{Accessory, Regular};
@@ -98,8 +98,8 @@ pub fn is_pdf(path: &Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
-/// A window made: for the file, else untitled.
-pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<()> {
+/// A window made: for the file, else untitled. Its label.
+pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<String> {
     let state = app.state::<Documents>();
     let label = format!("doc-{}", state.next.fetch_add(1, Ordering::Relaxed) + 1);
     state
@@ -144,7 +144,7 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<()> {
     if let Some(path) = path {
         let _ = files::watch(app, &label, &path);
     }
-    Ok(())
+    Ok(label)
 }
 
 /// A window shows `path` from now on: its title, its watch, and its page told (`opened`) to read it.
@@ -271,7 +271,7 @@ pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {
             let _ = window.set_focus();
             Ok(())
         }
-        None => make(app, Some(path)).map_err(|e| e.to_string()),
+        None => make(app, Some(path)).map(|_| ()).map_err(|e| e.to_string()),
     }
 }
 

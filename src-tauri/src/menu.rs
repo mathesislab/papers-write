@@ -1,5 +1,5 @@
-//! The menu bar. New, Open…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
-//! front (event `edit`, the id of the item), File ▸ Exchange to its page (event `exchange`), Cite as [@key] to the list of references (event `cite-key`), and Save to its page (event `menu`).
+//! The menu bar. New, Open…, Open Project…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
+//! front (event `edit`, the id of the item), File ▸ Exchange to its page (event `exchange`), Cite as [@key] to the list of references (event `cite-key`), Project Info… to its page (event `project-info`), and Save to its page (event `menu`).
 //! The Review menu goes to the page of the window in front as `review-menu` with the id of the item, the Git menu as `git-menu`.
 
 use tauri::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
@@ -50,9 +50,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &item("new", "New", Some("CmdOrCtrl+N"))?,
             &item("open", "Open…", Some("CmdOrCtrl+O"))?,
+            &item("open-project", "Open Project…", Some("Shift+CmdOrCtrl+O"))?,
             &separator()?,
             &item("save", "Save", Some("CmdOrCtrl+S"))?,
             &item("close", "Close", Some("CmdOrCtrl+W"))?,
+            &separator()?,
+            &item("project-info", "Project Info…", Some("CmdOrCtrl+I"))?,
             &separator()?,
             &exchange,
         ],
@@ -168,6 +171,13 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         "open" => documents::choose(app),
+        "open-project" => crate::projects::choose(app),
+        // the page of the window in front shows the card of its document's project
+        "project-info" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "project-info", ());
+            }
+        }
         "quit" => app.exit(0),
         "close" => {
             if let Some(window) = documents::front(app) {

@@ -57,6 +57,7 @@ pub fn run() {
             exchange::compare_as_suggestions,
             exchange::revision_author,
             exchange::choose_edited_copy,
+            exchange::export_word,
             refs::references,
             refs::closest_references,
             refs::reference_sources,

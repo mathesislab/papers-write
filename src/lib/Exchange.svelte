@@ -5,6 +5,9 @@
   // Compare as Suggestions…: the revisions of the document in git (or a branch, a tag, any revision typed) or an edited
   // copy of the file, and whose edits they are (the commit's author, filled in; for a file the name is asked). Each
   // change becomes a suggestion under that name.
+  //
+  // Export as Word with Changes…: where to save the .docx (a dialog), then a sheet that says how many tracked changes
+  // and comments it has and lists what could not go to Word (suggestions that overlap, in the front matter).
 
   import { invoke } from "@tauri-apps/api/core";
 
@@ -14,13 +17,24 @@
 
   type Compare = { revisions: Revision[]; chosen: string; typed: string; file: string; name: string; email: string; busy: boolean; done: string };
   let comparing = $state<Compare | null>(null);
+  type Exported = { path: string; suggestions: number; comments: number; skipped: string[]; notes: string[] };
+  /** the sheet of an export: what it made */
+  let exported = $state<Exported | null>(null);
   let problem = $state("");
 
-  /** The menu's items: "compare". */
+  /** The menu's items: "compare", "word-export". */
   export async function run(what: string) {
-    if (what !== "compare") return;
+    if (what !== "compare" && what !== "word-export") return;
     problem = "";
     await flush();
+    if (what === "word-export") {
+      try {
+        exported = (await invoke<Exported | null>("export_word", { path: null })) ?? exported;
+      } catch (e) {
+        problem = String(e);
+      }
+      return;
+    }
     try {
       const revisions = await invoke<Revision[]>("revisions");
       comparing = { revisions, chosen: "", typed: "", file: "", name: "", email: "", busy: false, done: "" };
@@ -68,6 +82,7 @@
 
   function close() {
     comparing = null;
+    exported = null;
     problem = "";
     onfocus?.();
   }
@@ -112,6 +127,26 @@
     </label>
     <div class="buttons"><button class="go" disabled={!ready} onclick={compare}>Compare</button></div>
     {#if comparing.done}<p>{comparing.done}</p>{/if}
+  </div>
+{/if}
+{#if exported}
+  {@const path = exported.path}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="sheet" role="dialog" aria-label="Export as Word" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+    <header>
+      <b>Exported as Word</b>
+      <button onclick={close}>Close</button>
+    </header>
+    <p>
+      <code title={path}>{nameOf(path)}</code>: {exported.suggestions} tracked change{exported.suggestions === 1 ? "" : "s"} and
+      {exported.comments} comment{exported.comments === 1 ? "" : "s"}.
+    </p>
+    {#each exported.notes as note (note)}<p class="where">{note}</p>{/each}
+    {#if exported.skipped.length}
+      <p class="where">Left out ({exported.skipped.length}):</p>
+      <ul>{#each exported.skipped as line (line)}<li>{line}</li>{/each}</ul>
+    {/if}
+    <div class="buttons"><button onclick={() => invoke("reveal", { path }).catch((e) => (problem = String(e)))}>Reveal in Finder</button></div>
   </div>
 {/if}
 {#if problem}<button class="mark error" onclick={() => (problem = "")} title="Dismiss">{problem}</button>{/if}
@@ -206,5 +241,9 @@
   }
   p {
     margin: 8px 0 0;
+  }
+  ul {
+    margin: 4px 0 0;
+    padding-left: 16px;
   }
 </style>

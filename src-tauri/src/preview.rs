@@ -65,7 +65,7 @@ fn home() -> PathBuf {
 }
 
 /// pandoc: on the PATH, else where Homebrew puts it (an app started from the Dock has a short PATH).
-fn pandoc() -> Result<PathBuf, String> {
+pub(crate) fn pandoc() -> Result<PathBuf, String> {
     let on_path = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
         .unwrap_or_default();

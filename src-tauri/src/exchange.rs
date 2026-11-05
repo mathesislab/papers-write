@@ -1,14 +1,18 @@
 //! A review that comes in and goes out without the app on the other side (docs/design.md, "Sending a review, without
 //! git"). Compare as Suggestions turns an edited copy of the document, a commit or a branch into suggestions under
-//! the name of whoever made it. The document is the file of the window: the page has written it before it asks.
+//! the name of whoever made it. Export as Word with Changes makes a .docx of the document with the open suggestions
+//! and comments as Word's tracked changes and comments (pandoc: `brew install pandoc`). The document is the file of
+//! the window: the page has written it before it asks.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use write_core::review::{self, Person, Review};
 
-use crate::{build, documents};
+use crate::{build, documents, preview};
 
 /// The file of the window, to take the review of.
 fn document_of(window: &WebviewWindow) -> Result<PathBuf, String> {
@@ -123,6 +127,107 @@ pub async fn choose_edited_copy(app: AppHandle, window: WebviewWindow) -> Result
     Ok(dialog.blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned()))
 }
 
+// ---- Export as Word with Changes
+
+/// pandoc run in `dir` with `args`, given `input` on its standard input; what it wrote, else what it said.
+fn pandoc(args: &[&str], dir: &Path, input: &[u8]) -> Result<Vec<u8>, String> {
+    let mut child = Command::new(preview::pandoc()?)
+        .args(args)
+        .current_dir(dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("pandoc did not start: {e}"))?;
+    // fed by a thread: pandoc may write while it reads
+    let mut stdin = child.stdin.take().unwrap();
+    let input = input.to_vec();
+    let feed = std::thread::spawn(move || {
+        let _ = stdin.write_all(&input);
+    });
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let _ = feed.join();
+    if out.status.success() {
+        Ok(out.stdout)
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Whether pandoc should resolve citations: the text names a bibliography.
+fn cites(text: &str) -> bool {
+    text.contains("bibliography") || text.contains("references:")
+}
+
+/// What an export made.
+#[derive(Serialize)]
+pub struct Exported {
+    pub path: String,
+    pub suggestions: usize,
+    pub comments: usize,
+    /// what could not go to Word, one line each
+    pub skipped: Vec<String>,
+    /// what pandoc said that went wrong, where the document was made all the same
+    pub notes: Vec<String>,
+}
+
+/// The .docx of `current` with `items` (the open ones) as tracked changes and comments, written to `to`.
+fn export(doc: &Path, current: &str, to: &Path) -> Result<Exported, String> {
+    let items = Review::load(doc).map_err(|e| e.to_string())?.items(current);
+    let made = review::word::markdown_with_changes(current, &items);
+    let dir = doc.parent().ok_or("no folder")?;
+    let out = to.to_string_lossy().into_owned();
+    let resource = format!("--resource-path={}", dir.display());
+    let mut notes = Vec::new();
+    let args = |citeproc: bool| {
+        let mut a = vec!["-f", "markdown", "-t", "docx", "-o", out.as_str(), resource.as_str()];
+        if citeproc {
+            a.push("--citeproc");
+        }
+        a.into_iter().map(String::from).collect::<Vec<_>>()
+    };
+    let run = |citeproc: bool| {
+        let a = args(citeproc);
+        pandoc(&a.iter().map(String::as_str).collect::<Vec<_>>(), dir, made.markdown.as_bytes())
+    };
+    if let Err(e) = run(cites(current)) {
+        if !cites(current) {
+            return Err(e);
+        }
+        // a bibliography that is missing or does not parse: the citations stay as typed
+        run(false)?;
+        notes.push(format!("Citations left as typed: {}", e.lines().next().unwrap_or("")));
+    }
+    Ok(Exported { path: out, suggestions: made.suggestions, comments: made.comments, skipped: made.skipped, notes })
+}
+
+/// The window's document as a .docx with its open suggestions and comments as tracked changes and comments, at
+/// `path` (none: where a dialog says, `<name>.docx` beside the document to begin with). None when the dialog was
+/// cancelled.
+#[tauri::command]
+pub async fn export_word(app: AppHandle, window: WebviewWindow, path: Option<String>) -> Result<Option<Exported>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let doc = document_of(&window)?;
+    let to = match path {
+        Some(p) => PathBuf::from(p),
+        None => {
+            let mut dialog = app.dialog().file().set_title("Export as Word").add_filter("Word", &["docx"]);
+            if let Some(folder) = doc.parent() {
+                dialog = dialog.set_directory(folder);
+            }
+            if let Some(stem) = doc.file_stem() {
+                dialog = dialog.set_file_name(format!("{}.docx", stem.to_string_lossy()));
+            }
+            match dialog.blocking_save_file().and_then(|f| f.into_path().ok()) {
+                Some(p) => p,
+                None => return Ok(None),
+            }
+        }
+    };
+    let to = if to.extension().is_some_and(|e| e.eq_ignore_ascii_case("docx")) { to } else { to.with_extension("docx") };
+    tauri::async_runtime::spawn_blocking(move || export(&doc, &read(&doc)?, &to).map(Some)).await.map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,6 +261,30 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert!(items.iter().all(|i| i.author == "Jane Doe" && i.record.round.as_deref() == Some("Compared with paper-jane.md")));
         assert!(compare(&doc, current, &source, &Author { name: " ".into(), email: None }).is_err());
+    }
+
+    #[test]
+    fn the_document_goes_to_word_with_its_changes() {
+        if preview::pandoc().is_err() {
+            return;
+        }
+        let dir = folder("word");
+        let doc = dir.join("paper.md");
+        let current = "The grounding line retreats rapidly when the bed slopes.\n";
+        std::fs::write(&doc, current).unwrap();
+        let theirs = dir.join("theirs.md");
+        std::fs::write(&theirs, "The grounding line retreats slowly when the bed slopes.\n").unwrap();
+        let source = Source { file: Some(theirs.to_string_lossy().into_owned()), revision: None };
+        compare(&doc, current, &source, &Author { name: "Jane Doe".into(), email: None }).unwrap();
+        let to = dir.join("paper.docx");
+        let made = export(&doc, current, &to).unwrap();
+        assert_eq!((made.suggestions, made.comments), (1, 0));
+        let read = |mode: &str| {
+            let out = Command::new(preview::pandoc().unwrap()).arg(&to).args([&format!("--track-changes={mode}"), "-t", "plain", "--wrap=none"]).output().unwrap();
+            String::from_utf8(out.stdout).unwrap()
+        };
+        assert!(read("reject").contains("retreats rapidly when"));
+        assert!(read("accept").contains("retreats slowly when"));
     }
 
     #[test]

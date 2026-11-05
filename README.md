@@ -58,6 +58,15 @@ with papers-review as `papers-write/editor`; the app is a plain-text editor.
   (the commit's author, filled in; asked for a file) in a review file of their
   own, with the round "Compared with <file or revision>". The author need not
   have the app.
+- File ▸ Exchange ▸ Export as Word with Changes… writes a `.docx` (pandoc;
+  saved where a dialog says, `<name>.docx` beside the document to begin with)
+  in which the open suggestions are Word's tracked changes and the comments
+  Word's comments, under their authors' names and dates. Math becomes Word
+  equations; citations are rendered by citeproc when the front matter names a
+  bibliography. A suggestion in math, code or raw LaTeX, which a tracked
+  change cannot be put in, is a comment that says what it suggests. A sheet
+  lists what was left out (a suggestion that overlaps an earlier one, one in
+  the front matter).
 - The app stays in the menu bar when the last window closes (New, Open…,
   Quit); ⌘Q quits.
 - Edit ▸ References… (⇧⌘R) lists the references over the editor: the `.bib`

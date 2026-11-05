@@ -7,6 +7,7 @@
 //! - [`compare`]: an edited copy, a commit or a branch as suggestions.
 //! - [`ops`]: add, reply, decide, supersede and counter-suggest (appending); apply a suggestion.
 //! - [`record`]: the records of a review file, and who writes it.
+//! - [`word`]: the Word round trip (tracked changes and comments out, back in).
 //! - [`store`]: the files on disk, appended to and never rewritten.
 
 pub mod anchor;
@@ -17,6 +18,7 @@ pub mod ops;
 pub mod record;
 pub mod store;
 pub mod text;
+pub mod word;
 
 pub use anchor::{Anchor, Status};
 pub use fold::{Item, State};

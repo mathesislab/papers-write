@@ -5,6 +5,7 @@ mod documents;
 mod exchange;
 mod files;
 mod git;
+mod hover;
 mod menu;
 mod package;
 mod preview;
@@ -61,6 +62,8 @@ pub fn run() {
             files::read_text,
             files::write_text,
             preview::preview,
+            hover::render_math,
+            hover::image_data,
             build::build,
             build::marked_up,
             build::revisions,
@@ -90,6 +93,7 @@ pub fn run() {
             refs::cite_key,
             refs::bib_check,
             refs::cite_options,
+            refs::reference_of,
             review::review_me,
             review::review_items,
             review::review_suggest,

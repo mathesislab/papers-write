@@ -58,6 +58,7 @@
     type Completion,
     type Found,
     type ReviewView,
+    type HoverSources,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
@@ -293,6 +294,18 @@
     oncite: (key) => void add(key),
   };
 
+  /** The tooltips over the text: a formula rendered (pandoc's MathML), a citation key's reference, an image's thumbnail. */
+  const hover: HoverSources = {
+    math: (tex, display) => invoke<string>("render_math", { tex, display }),
+    async citation(key) {
+      const item = await invoke<Item | null>("reference_of", { key, text: current() });
+      if (!item) return null;
+      const detail = [item.title, item.container ?? item.server].filter(Boolean).join(". ");
+      return { label: citation(item), detail };
+    },
+    image: (path) => invoke<string | null>("image_data", { path }),
+  };
+
   function say(what: string) {
     note = what;
     clearTimeout(noteTimer);
@@ -516,6 +529,7 @@
         {prefs}
         {symbols}
         {completion}
+        {hover}
         autofocus
         extensions={[cursor]}
         review={session.handlers}

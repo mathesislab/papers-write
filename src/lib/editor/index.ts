@@ -26,9 +26,10 @@ export { citation, familyName, fullReference, initials, latex as latexCite, pand
 export { sections, type Section } from "./sections";
 export { DEFAULTS, LATEX, find as findSymbols, latex, merged, typed, type Entry, type Rule } from "./symbols";
 export { completionSource } from "./completion";
+export { environmentTex, hover, isTex, labelTarget, targetAt, type Target } from "./hover";
 export { contextAt, labelsOf, literalAt, nameOptions, refOptions, texContextAt, texLabelsOf, type Context, type Literal } from "./context";
 export { MATH_NAMES, TEXT_NAMES, TEX_NAMES, type LatexName } from "./lang/latex-names.ts";
-export type { CitationOption, Completion, EditorFont, Found, Hit, Indent, Item, Span, YearCount } from "./types";
+export type { CitationOption, Completion, EditorFont, Found, Hit, HoverSources, Indent, Item, Span, YearCount } from "./types";
 export { accept, itemsAt, redoSuggestion, review, reviewColour, REVIEW_COLOURS, setOwnColour, reviewMode, reviewView, scrollToItem, setReview, setReviewMode, setReviewView, undoSuggestion } from "./review/review";
 export type {
   ReviewDecision,

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use papers_core::{BibWatch, Found};
+use papers_core::{BibWatch, Found, Item};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 use write_core::bib::{self, Cited};
@@ -160,6 +160,13 @@ pub(crate) fn own_bibs(window: &WebviewWindow, text: &str) -> Vec<PathBuf> {
 pub async fn cite_options(window: WebviewWindow, prefix: String, limit: usize, text: String) -> Vec<write_core::refs::Candidate> {
     let refs = references_of(&window, &text);
     write_core::refs::candidates(&refs, &prefix, &own_bibs(&window, &text), limit)
+}
+
+/// The reference of citation key `key` (its author, year, title, container), from the document's bibliography or the
+/// library: what the editor shows on hovering a key. None when no file has it.
+#[tauri::command]
+pub async fn reference_of(window: WebviewWindow, key: String, text: String) -> Option<Item> {
+    references_of(&window, &text).entry(&key).map(|e| e.item)
 }
 
 /// The keys cited in `text` against those of the `.bib` files its front matter names (not the papers library).

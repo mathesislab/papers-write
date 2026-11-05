@@ -191,6 +191,14 @@ fn embed_tag(tag: &str, dir: &Path) -> String {
     }
     let name = percent_decode(&src.replace("&amp;", "&"));
     let file = dir.join(name.split(['?', '#']).next().unwrap_or(""));
+    match data_uri(&file) {
+        Some(uri) => format!("{}{uri}{}", &tag[..from], &tag[from + len..]),
+        None => tag.into(),
+    }
+}
+
+/// An image file as a data URI: a known type (a PDF too), under 5 MB; None for any other file or one that cannot be read.
+pub(crate) fn data_uri(file: &Path) -> Option<String> {
     let mime = match file.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref() {
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
@@ -198,17 +206,15 @@ fn embed_tag(tag: &str, dir: &Path) -> String {
         Some("svg") => "image/svg+xml",
         Some("webp") => "image/webp",
         Some("pdf") => "application/pdf",
-        _ => return tag.into(),
+        _ => return None,
     };
-    match std::fs::metadata(&file) {
-        Ok(m) if m.len() <= LARGEST => {}
-        _ => return tag.into(),
+    if std::fs::metadata(file).ok()?.len() > LARGEST {
+        return None;
     }
-    let Ok(bytes) = std::fs::read(&file) else { return tag.into() };
-    format!("{}data:{mime};base64,{}{}", &tag[..from], base64(&bytes), &tag[from + len..])
+    Some(format!("data:{mime};base64,{}", base64(&std::fs::read(file).ok()?)))
 }
 
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;

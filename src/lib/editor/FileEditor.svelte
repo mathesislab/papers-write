@@ -15,7 +15,7 @@
   import { EditorView, keymap } from "@codemirror/view";
   import { onMount } from "svelte";
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, type EditorPrefs } from "./editor";
-  import type { Completion } from "./types";
+  import type { Completion, HoverSources } from "./types";
   import {
     accept as acceptItem,
     redoSuggestion,
@@ -37,6 +37,7 @@
     latex = false,
     extensions = [],
     completion,
+    hover,
     review,
     placeholder,
     autofocus = false,
@@ -60,6 +61,9 @@
     extensions?: Extension[];
     /** what the completion of citations, references and LaTeX takes from the app (none without it) */
     completion?: Completion;
+    /** what the tooltips over formulas, citation keys and images take from the app (cross-references need none; no
+     *  tooltips without it) */
+    hover?: HoverSources;
     /** what the review asks of the app: with it, the items given by `setReview` are drawn over the text and typing in
      *  suggest mode (`setMode`) makes the user's suggestions (none without it) */
     review?: ReviewHandlers;
@@ -143,6 +147,7 @@
         rules,
         prefs,
         completion,
+        hover,
         placeholder,
         extensions: [...extensions, selection, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });

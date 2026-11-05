@@ -71,3 +71,14 @@ export type Completion = {
   /** the figure and other files whose path begins with `prefix` */
   paths?: (prefix: string) => Promise<string[]>;
 };
+
+/** What the app supplies for the tooltips of the editor (see `Options.hover`); each source is optional, and the target of
+ *  a cross-reference needs none: the editor reads it from the text. */
+export type HoverSources = {
+  /** the formula `tex` rendered, as HTML with a `<math>` element (MathML), displayed (`$$…$$`) or inline */
+  math?: (tex: string, display: boolean) => Promise<string>;
+  /** the reference of a citation key: what names it ("Schoof (2007)") and the rest (title, journal); null if unknown */
+  citation?: (key: string) => Promise<{ label: string; detail?: string } | null>;
+  /** the image at a path of the document (as `![…](path)` and `\includegraphics{path}` write it) as a data URL; null if none */
+  image?: (path: string) => Promise<string | null>;
+};

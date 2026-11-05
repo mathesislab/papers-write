@@ -29,11 +29,12 @@ import { tags } from "@lezer/highlight";
 import { acceptCompletion, completion } from "./completion";
 import { literalAt, type Literal } from "./context";
 import { difference } from "./difference";
+import { hover } from "./hover";
 import * as lang from "./lang/index.ts";
 import { suggesting } from "./review/mode.ts";
 import { sections } from "./sections";
 import { DEFAULTS, latex, typed, type Rule } from "./symbols";
-import type { Completion, EditorFont, Indent } from "./types";
+import type { Completion, EditorFont, HoverSources, Indent } from "./types";
 
 const style = HighlightStyle.define([
   { tag: tags.heading, fontWeight: "650", color: "var(--md-heading)" },
@@ -328,6 +329,9 @@ export type Options = {
   rules?: readonly Rule[];
   prefs?: EditorPrefs;
   completion?: Completion;
+  /** what the app gives for the tooltips over formulas, citation keys and images (cross-references need none); none
+   *  by default (Markdown and LaTeX only) */
+  hover?: HoverSources;
   /** what an empty editor shows, the app's (Papers Review: how to write a review); none by default */
   placeholder?: string;
   extensions?: Extension[];
@@ -368,6 +372,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
             ]),
         ...(options.placeholder ? [placeholder(options.placeholder)] : []),
         ...(complete ? [completion(complete, latexFile)] : []),
+        ...(options.hover && (!mono || latexFile) ? [hover(options.hover)] : []),
         theme(mono),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {

@@ -100,6 +100,7 @@ pub fn run() {
             refs::cite_options,
             refs::reference_of,
             refs::missing_keys,
+            refs::document_labels,
             review::review_me,
             review::review_items,
             review::review_suggest,

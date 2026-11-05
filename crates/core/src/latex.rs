@@ -1,5 +1,9 @@
 //! The bibliography of a LaTeX file: the `.bib` files named by `\bibliography{a,b}` (BibTeX) and
 //! `\addbibresource{x.bib}` (biblatex), the keys cited, and the line that names a `.bib` added to the text.
+//! The files it includes (`\input`, `\include`, `\subfile`) are followed ([`included`]): their bibliography,
+//! labels and citations belong to the document.
+
+use std::path::{Path, PathBuf};
 
 /// `line` up to its first `%` that is no `\%` (the comment dropped).
 fn uncommented(line: &str) -> &str {
@@ -159,6 +163,114 @@ pub fn with_bibliography(tex: &str, bib: &str) -> String {
     }
 }
 
+/// The deepest `\input` chain followed.
+const MAX_DEPTH: usize = 10;
+
+/// An included file: where it is and its text.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Included {
+    pub path: PathBuf,
+    pub text: String,
+}
+
+/// The files named by `\input{x}`, `\include{x}` and `\subfile{x}` in `text` (comments ignored), as written.
+pub fn input_names(text: &str) -> Vec<String> {
+    let text = without_comments(text);
+    let mut found: Vec<(usize, String)> = Vec::new();
+    for cmd in ["input", "include", "subfile", "subfileinclude"] {
+        let pat = format!("\\{cmd}");
+        let mut from = 0;
+        while let Some(i) = text[from..].find(&pat) {
+            let at = from + i;
+            from = at + pat.len();
+            if let Some(name) = arguments(&text[at..], cmd).into_iter().next() {
+                found.push((at, name.trim().to_string()));
+            }
+        }
+    }
+    found.sort();
+    found.into_iter().map(|(_, n)| n).filter(|n| !n.is_empty()).collect()
+}
+
+/// The files `text` (the text of `main`) includes, and those they include, depth first in the order of the text, each
+/// once: names relative to the folder of `main` (where LaTeX runs), `.tex` added to a name without it. A file
+/// that cannot be read, a cycle (a file including one above it, or `main`), and a chain deeper than ten are left out.
+pub fn included(main: &Path, text: &str) -> Vec<Included> {
+    let folder = main.parent().filter(|p| !p.as_os_str().is_empty()).map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+    let mut seen = vec![main.to_path_buf()];
+    let mut out = Vec::new();
+    follow(&folder, text, 1, &mut seen, &mut out);
+    out
+}
+
+fn follow(folder: &Path, text: &str, depth: usize, seen: &mut Vec<PathBuf>, out: &mut Vec<Included>) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    for name in input_names(text) {
+        let name = if name.to_ascii_lowercase().ends_with(".tex") { name } else { format!("{name}.tex") };
+        let path = folder.join(&name);
+        let key = path.canonicalize().unwrap_or_else(|_| path.clone());
+        if seen.iter().any(|s| s == &key || s.canonicalize().is_ok_and(|c| c == key)) {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&path) else { continue };
+        seen.push(key);
+        out.push(Included { path, text: body.clone() });
+        follow(folder, &body, depth + 1, seen, out);
+    }
+}
+
+/// [`bibliography`] of `text` and the files it includes, each `.bib` once.
+pub fn bibliography_with_inputs(main: &Path, text: &str) -> Vec<String> {
+    let mut names = bibliography(text);
+    for file in included(main, text) {
+        for n in bibliography(&file.text) {
+            if !names.contains(&n) {
+                names.push(n);
+            }
+        }
+    }
+    names
+}
+
+/// The keys cited in `text` and the files it includes, in order, each once.
+pub fn cited_keys_with_inputs(main: &Path, text: &str) -> Vec<String> {
+    let mut keys = cited_keys(text);
+    for file in included(main, text) {
+        for k in cited_keys(&file.text) {
+            if !keys.contains(&k) {
+                keys.push(k);
+            }
+        }
+    }
+    keys
+}
+
+/// The labels (`\label{x}`) of a LaTeX text, in order, each once; comments ignored.
+pub fn labels(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for l in arguments(&without_comments(text), "label").into_iter().map(str::trim).filter(|l| !l.is_empty()) {
+        if !out.iter().any(|x| x == l) {
+            out.push(l.to_string());
+        }
+    }
+    out
+}
+
+/// The labels of the files `text` (the text of `main`) includes, not those of `text` itself.
+pub fn included_labels(main: &Path, text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for file in included(main, text) {
+        for l in labels(&file.text) {
+            if !out.contains(&l) {
+                out.push(l);
+            }
+        }
+    }
+    out
+}
+
 /// Whether the file is LaTeX by its extension (`.tex`).
 pub fn is_latex(path: &std::path::Path) -> bool {
     path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tex"))
@@ -198,5 +310,51 @@ mod tests {
         let b = "\\usepackage[style=x]{biblatex}\n\\begin{document}\\end{document}";
         assert_eq!(bibliography(&with_bibliography(b, "r")), ["r.bib"]);
         assert_eq!(with_bibliography("text", "r.bib"), "text\n\\bibliographystyle{plain}\n\\bibliography{r}\n");
+    }
+
+    fn tree(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pw-latex-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (f, body) in files {
+            let p = dir.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn input_commands() {
+        let t = "\\input{a} \\include{chap/b.tex} \\subfile{ c } % \\input{no}\n\\includegraphics{f} \\inputminted{x}{y}";
+        assert_eq!(input_names(t), ["a", "chap/b.tex", "c"]);
+    }
+
+    #[test]
+    fn included_files_are_followed_once_in_order_without_cycles() {
+        let dir = tree(
+            "follow",
+            &[
+                ("a.tex", "\\label{la}\\input{sub/b}\\input{a}\\input{main}"),
+                ("sub/b.tex", "\\label{lb}\\cite{kb}\\bibliography{b}"),
+                ("c.tex", "\\label{lc} \\label{la}"),
+            ],
+        );
+        let main = dir.join("main.tex");
+        let text = "\\input{a}\\include{c}\\input{a}\\input{missing}\\bibliography{m}";
+        let files: Vec<_> = included(&main, text).into_iter().map(|f| f.path.strip_prefix(&dir).unwrap().to_path_buf()).collect();
+        assert_eq!(files, [PathBuf::from("a.tex"), PathBuf::from("sub/b.tex"), PathBuf::from("c.tex")]);
+        assert_eq!(bibliography_with_inputs(&main, text), ["m.bib", "b.bib"]);
+        assert_eq!(cited_keys_with_inputs(&main, "\\cite{km}\\input{a}"), ["km", "kb"]);
+        assert_eq!(included_labels(&main, text), ["la", "lb", "lc"]);
+        assert_eq!(labels("\\label{x}\\label{x} % \\label{y}"), ["x"]);
+    }
+
+    #[test]
+    fn a_chain_deeper_than_ten_stops() {
+        let files: Vec<(String, String)> = (1..=14).map(|i| (format!("f{i}.tex"), format!("\\label{{l{i}}}\\input{{f{}}}", i + 1))).collect();
+        let refs: Vec<(&str, &str)> = files.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let dir = tree("deep", &refs);
+        let found = included(&dir.join("main.tex"), "\\input{f1}");
+        assert_eq!(found.len(), MAX_DEPTH);
     }
 }

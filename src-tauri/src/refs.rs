@@ -191,12 +191,23 @@ pub async fn bib_check(window: WebviewWindow, text: String) -> Result<Check, Str
     }
     let keys: Vec<String> = own.library().map(|l| l.items().iter().map(|i| i.key.clone()).collect()).unwrap_or_default();
     // a .tex file cites with commands only (an @ in it is no citation)
-    let tex = crate::documents::path_of(window.app_handle(), window.label()).is_some_and(|p| write_core::latex::is_latex(&p));
-    if tex {
-        let cited = write_core::latex::cited_keys(&text);
+    let path = crate::documents::path_of(window.app_handle(), window.label()).filter(|p| write_core::latex::is_latex(p));
+    if let Some(path) = path {
+        let cited = write_core::latex::cited_keys_with_inputs(&path, &text);
         let missing = cited.iter().filter(|k| !keys.contains(k)).cloned().collect();
         let unused = keys.iter().filter(|k| !cited.contains(k)).cloned().collect();
         return Ok(Check { missing, unused });
     }
     Ok(Check { missing: bib::missing(&text, &keys), unused: bib::unused(&text, &keys) })
+}
+
+/// The labels defined in the files a `.tex` document `\input`s, `\include`s or `\subfile`s (relative to its folder,
+/// followed to ten deep, as the build sees them): what the editor adds to the labels of the text when it flags a
+/// `\ref` to a label nothing defines. Empty for an untitled or non-LaTeX document.
+#[tauri::command]
+pub async fn document_labels(window: WebviewWindow, text: String) -> Vec<String> {
+    match crate::documents::path_of(window.app_handle(), window.label()) {
+        Some(path) if write_core::latex::is_latex(&path) => write_core::latex::included_labels(&path, &text),
+        _ => Vec::new(),
+    }
 }

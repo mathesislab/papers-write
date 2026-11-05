@@ -74,6 +74,11 @@ them) are proposed upstream; until they are released,
   in an included file show its name). Marked-up PDF… runs `latexdiff` on the
   earlier and current `.tex` directly (no texmark) and compiles with latexmk
   into `build/diff/name-diff-<version>.pdf`. `.bib` files stay plain text.
+- A `.tex` file's `\input`, `\include` and `\subfile` are followed (relative to
+  the file, `.tex` added to a name without it, ten deep, a cycle stopped): the
+  `\bibliography` / `\addbibresource` of those files count for the references
+  and their `\cite`s for Check Citations, and their `\label`s are known to the
+  editor (`document_labels`).
 - A Markdown build's LaTeX errors come with the line of the Markdown when it
   can be told: texmark keeps no source map, so the `.tex` line at the error is
   matched against the Markdown lines by their words (`\textbf{x}` as `x`,
@@ -210,7 +215,7 @@ them) are proposed upstream; until they are released,
 - Underlines: a citation key found neither in the document's `.bib` files nor
   in the library (checked 800 ms after the typing stops, and when the
   references change), a reference to a label the document does not define
-  (`@fig:x`, `\ref{x}`; not in a `.tex` file that `\input`s others), and a label
+  (`@fig:x`, `\ref{x}`), and a label
   defined twice (both). Hover says why.
 - The system's spell checker underlines misspelled words in Markdown text, not
   in `.tex` and monospace files (the language is the system's).

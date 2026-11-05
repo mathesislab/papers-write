@@ -101,9 +101,10 @@ impl References {
 }
 
 /// The names of the `.bib` files a document says it uses, as written: the front matter's `bibliography` of Markdown, the
-/// `\bibliography` and `\addbibresource` of a `.tex` file (chosen by the extension of `path`).
+/// `\bibliography` and `\addbibresource` of a `.tex` file and of the files it `\input`s (chosen by the extension of
+/// `path`).
 pub fn bibliography_of(path: &Path, text: &str) -> Vec<String> {
-    if crate::latex::is_latex(path) { crate::latex::bibliography(text) } else { frontmatter::bibliography(text) }
+    if crate::latex::is_latex(path) { crate::latex::bibliography_with_inputs(path, text) } else { frontmatter::bibliography(text) }
 }
 
 /// The `.bib` files of the references of a Markdown or LaTeX file: those it names

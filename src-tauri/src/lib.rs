@@ -13,6 +13,7 @@ mod projects;
 mod refs;
 mod review;
 mod settings;
+mod spelling;
 mod state;
 mod tabs;
 mod trash;
@@ -35,6 +36,8 @@ pub fn run() {
         .manage(git::Git::default())
         .manage(projects::Projects::default())
         .setup(|app| {
+            // before the first web view: WebKit reads it as it starts
+            spelling::enable();
             settings::init(app.handle());
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);

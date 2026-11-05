@@ -13,12 +13,19 @@
   // made with Track Changes off are looked for only when asked (the whole text is compared, with the document made
   // into a .docx as an export does; Word names no one for them, so the sheet asks whose they are). A sheet says how
   // many came in, and lists what could not be placed in the text.
+  //
+  // Send for Review…: the round (a name, "Draft of <date>" to begin with), then where to save the `.review` file (a
+  // dialog); a sheet says what went into it.
 
   import { invoke } from "@tauri-apps/api/core";
 
   type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
 
   let { flush, onfocus }: { flush: () => unknown; onfocus?: () => void } = $props();
+
+  type Sent = { path: string; figures: number; bibliographies: number; skipped: string[] };
+  /** the sheet of Send for Review: the round, and what went into the file */
+  let sending = $state<{ round: string; busy: boolean; result: Sent | null } | null>(null);
 
   type Compare = { revisions: Revision[]; chosen: string; typed: string; file: string; name: string; email: string; busy: boolean; done: string };
   let comparing = $state<Compare | null>(null);
@@ -30,11 +37,16 @@
   let importing = $state<{ file: string; untracked: boolean; author: string; busy: boolean; result: Imported | null } | null>(null);
   let problem = $state("");
 
-  /** The menu's items: "compare", "word-export", "word-import". */
+  /** The menu's items: "send-review", "compare", "word-export", "word-import". */
   export async function run(what: string) {
-    if (what !== "compare" && what !== "word-export" && what !== "word-import") return;
+    if (!["send-review", "compare", "word-export", "word-import"].includes(what)) return;
     problem = "";
     await flush();
+    if (what === "send-review") {
+      const day = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+      sending = { round: `Draft of ${day}`, busy: false, result: null };
+      return;
+    }
     if (what === "word-import") {
       importing = { file: "", untracked: false, author: "", busy: false, result: null };
       return chooseWord();
@@ -53,6 +65,19 @@
     } catch (e) {
       problem = String(e);
     }
+  }
+
+  async function sendReview() {
+    const s = sending;
+    if (!s || !s.round.trim() || s.busy) return;
+    [s.busy, problem] = [true, ""];
+    try {
+      s.result = await invoke<Sent | null>("send_for_review", { round: s.round.trim() });
+      if (!s.result) sending = null;
+    } catch (e) {
+      problem = String(e);
+    }
+    s.busy = false;
   }
 
   const nameOf = (file: string) => file.split("/").pop() ?? file;
@@ -114,6 +139,7 @@
   }
 
   function close() {
+    sending = null;
     comparing = null;
     importing = null;
     exported = null;
@@ -125,6 +151,37 @@
   const grab = (node: HTMLElement) => node.focus();
 </script>
 
+{#if sending}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="sheet" role="dialog" aria-label="Send for Review" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+    <header>
+      <b>Send for Review</b>
+      <button onclick={close}>{sending.result ? "Close" : "Cancel"}</button>
+    </header>
+    {#if sending.result}
+      {@const r = sending.result}
+      <p>
+        <code title={r.path}>{nameOf(r.path)}</code>: the document, {r.figures} figure{r.figures === 1 ? "" : "s"}, {r.bibliographies}
+        bibliograph{r.bibliographies === 1 ? "y" : "ies"} and its review.
+      </p>
+      {#if r.skipped.length}
+        <p class="where">Not included ({r.skipped.length}):</p>
+        <ul>{#each r.skipped as line (line)}<li>{line}</li>{/each}</ul>
+      {/if}
+      <div class="buttons"><button onclick={() => invoke("reveal", { path: r.path }).catch((e) => (problem = String(e)))}>Reveal in Finder</button></div>
+    {:else}
+      <p class="where">
+        One file for someone who has Papers Write: this document as it is now, the figures and bibliography it shows, and the review so far. Their suggestions and
+        comments come back in a file of their own.
+      </p>
+      <label>
+        Round
+        <input bind:value={sending.round} spellcheck="false" onkeydown={(e) => e.key === "Enter" && sendReview()} />
+      </label>
+      <div class="buttons"><button class="go" disabled={!sending.round.trim() || sending.busy} onclick={sendReview}>Save…</button></div>
+    {/if}
+  </div>
+{/if}
 {#if comparing}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="sheet" role="dialog" aria-label="Compare as Suggestions" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>

@@ -92,6 +92,11 @@ fn doc_of(window: &WebviewWindow) -> Result<PathBuf, String> {
     crate::documents::path_of(window.app_handle(), window.label()).ok_or_else(|| UNSAVED.to_string())
 }
 
+/// Who the user is for the window's document.
+pub(crate) fn me(window: &WebviewWindow) -> Result<Person, String> {
+    Ok(setup(window)?.1)
+}
+
 /// The user for the window's document, and the document: set up (with the watch) when first asked or when the
 /// window shows another file.
 fn setup(window: &WebviewWindow) -> Result<(PathBuf, Person), String> {

@@ -6,6 +6,7 @@
 //! - [`fold`]: all the records folded into items.
 //! - [`compare`]: an edited copy, a commit or a branch as suggestions.
 //! - [`ops`]: add, reply, decide, supersede and counter-suggest (appending); apply a suggestion.
+//! - [`package`]: a review sent in one `.review` file (the document, what it shows, the review) and sent back.
 //! - [`record`]: the records of a review file, and who writes it.
 //! - [`word`]: the Word round trip (tracked changes and comments out, back in).
 //! - [`store`]: the files on disk, appended to and never rewritten.
@@ -15,6 +16,7 @@ pub mod compare;
 pub mod diff;
 pub mod fold;
 pub mod ops;
+pub mod package;
 pub mod record;
 pub mod store;
 pub mod text;

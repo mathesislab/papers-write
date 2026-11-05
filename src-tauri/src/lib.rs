@@ -6,6 +6,7 @@ mod exchange;
 mod files;
 mod git;
 mod menu;
+mod package;
 mod preview;
 mod refs;
 mod review;
@@ -70,6 +71,7 @@ pub fn run() {
             exchange::export_word,
             exchange::choose_word_file,
             exchange::import_word,
+            package::send_for_review,
             refs::references,
             refs::closest_references,
             refs::reference_sources,

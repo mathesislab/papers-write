@@ -29,6 +29,18 @@ export { completionSource } from "./completion";
 export { contextAt, labelsOf, literalAt, nameOptions, refOptions, type Context, type Literal } from "./context";
 export { MATH_NAMES, TEXT_NAMES, type LatexName } from "./lang/latex-names.ts";
 export type { CitationOption, Completion, EditorFont, Found, Hit, Indent, Item, Span, YearCount } from "./types";
+export { itemsAt, review, scrollToItem, setReview } from "./review/review";
+export type {
+  ReviewDecision,
+  ReviewHandlers,
+  ReviewItem,
+  ReviewKind,
+  ReviewMode,
+  ReviewRecord,
+  ReviewState,
+  ReviewStatus,
+  Suggested,
+} from "./review/types";
 export { default as FileEditor } from "./FileEditor.svelte";
 export type { Status } from "./FileEditor.svelte";
 export { default as RefList } from "./RefList.svelte";

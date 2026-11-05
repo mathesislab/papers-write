@@ -318,6 +318,11 @@ decision = "accepted"      # accepted | rejected | resolved | reopened | withdra
 
 The `[person]` header may also hold `through = 12`, set by Clean Up Review: the
 highest number of the ids it removed, so that new ids go above it.
+It may hold `colour = 4` (1 to 6) too: the colour its person chose in Settings, which
+co-authors see their suggestions and comments in (the colour of the hash of the
+slug when there is none). It is the second thing but appending that an owner
+does to their own file: the header alone is rewritten (the records byte for byte,
+atomically) when the setting changes.
 
 A reply has `on` (the record answered) and `text`. A counter-suggestion is a
 suggestion with `on` (the suggestion it answers) and its own base. A
@@ -530,7 +535,11 @@ shown as tracked changes between two commits. Nothing is rewritten.
   the review cleaned up, a branch or commits reviewed as suggestions, a Word
   review imported; joined into one ("Accept 3 suggestions of Jane Doe; review
   of jane/edits as suggestions"). Writing only leaves it empty, for the user to
-  write. A commit empties the log, and so does showing another file.
+  write. A commit empties the log, so does a commit made outside the app (HEAD
+  moved, seen when the window gets the keys again; the app's own pull or
+  checkout does not), and so does showing another file. A review sent back and
+  joined to the document is logged ("review of Jane Doe received: 12
+  suggestions, 3 comments").
 - Pull is `--ff-only` (never a merge commit, never a rebase: when it cannot go
   forward it stops and says so). Push needs an upstream and is never forced.
 - Compare with Commit…: a read-only tab with the text of the commit and the

@@ -101,8 +101,9 @@ them) are proposed upstream; until they are released,
   made on. Opened where the document is (the open window with that text, else
   the document asked for), it joins that review: missing bases copied, your
   file copied or its new records appended (never rewritten, so the same file
-  twice adds nothing), a dialog saying "12 suggestions and 3 comments from Jane
-  Doe". If the text changed since, they are carried like any others.
+  twice adds nothing), a sheet on its window saying "12 suggestions and 3 comments
+  from Jane Doe" (and the window's log of what it did, for the next commit's
+  message, "review of Jane Doe received: 12 suggestions, 3 comments"). If the text changed since, they are carried like any others.
 - File ▸ Exchange ▸ Compare as Suggestions… turns another version into
   suggestions: a branch or a commit (typed), or an edited copy of the file (any
   path). From git, only what was done there since it left your branch (`git
@@ -287,8 +288,10 @@ them) are proposed upstream; until they are released,
   the preview following the cursor, the symbols typed (the defaults each turned
   off, and your own). Review: your name and e-mail (empty: the git
   configuration's, else the system's; when set they win, each on its own) and
-  your colour among the review's authors (or automatic, from the name; it is
-  the colour you see for yourself). Build: the path of texmark, latexmk and
+  your colour among the review's authors (or automatic, from the name). It is
+  yours for your co-authors too: written as `colour = 1..6` in the `[person]`
+  header of your review file (only the header is rewritten, when you change
+  it), so that they see your suggestions in it. Build: the path of texmark, latexmk and
   pandoc (empty: found as usual, which the window shows as "Found: …"; a path
   that is not a file is an error where the tool is used). Window: files open as
   tabs (off: a window each, for the files opened from then on) and the app

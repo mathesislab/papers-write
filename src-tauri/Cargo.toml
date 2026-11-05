@@ -1,6 +1,6 @@
 [package]
 name = "papers-write"
-version = "0.0.2"
+version = "0.1.0"
 description = "Write papers in plain text: Markdown and LaTeX, cited from the papers library, built with texmark"
 authors = ["Alexander Robinson"]
 edition = "2024"

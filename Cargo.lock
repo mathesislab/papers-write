@@ -2826,7 +2826,7 @@ dependencies = [
 
 [[package]]
 name = "papers-write"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "notify",
  "objc2-app-kit",

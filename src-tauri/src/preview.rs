@@ -84,14 +84,13 @@ pub fn render(text: &str, dir: &Path, saved: bool, generation: &AtomicU64, mine:
     let wants = saved || text.contains("bibliography") || text.contains("references:");
     let mut error = None;
     let mut run = run(&pandoc, text, dir, wants, generation, mine);
-    if wants {
-        if let Err(e) = &run {
-            if e != SUPERSEDED {
-                // a bibliography that is missing, or one that does not parse: the text without the citations
-                error = Some(e.clone());
-                run = self::run(&pandoc, text, dir, false, generation, mine);
-            }
-        }
+    if let Err(e) = &run
+        && wants
+        && e != SUPERSEDED
+    {
+        // a bibliography that is missing, or one that does not parse: the text without the citations
+        error = Some(e.clone());
+        run = self::run(&pandoc, text, dir, false, generation, mine);
     }
     let html = embed(&run?, dir);
     Ok(Preview { html, error, ms: start.elapsed().as_millis() as u64 })

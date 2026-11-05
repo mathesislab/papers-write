@@ -3,6 +3,7 @@
 mod documents;
 mod files;
 mod menu;
+mod tray;
 
 use tauri::{DragDropEvent, Manager, RunEvent, WindowEvent};
 
@@ -14,6 +15,7 @@ pub fn run() {
             app.manage(files::Watched::default());
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
+            tray::build(app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -42,6 +44,12 @@ pub fn run() {
                 {
                     eprintln!("{e}");
                 }
+            }
+            // the last window closed: the app stays in the menu bar; Quit (⌘Q, the menu bar icon) ends it with a code
+            RunEvent::ExitRequested {
+                code: None, api, ..
+            } if app.webview_windows().is_empty() => {
+                api.prevent_exit();
             }
             // the Dock icon clicked, no window open
             #[cfg(target_os = "macos")]

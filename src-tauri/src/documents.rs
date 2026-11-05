@@ -59,6 +59,17 @@ fn title(path: Option<&Path>) -> String {
         .unwrap_or_else(|| "Untitled".into())
 }
 
+/// The app in the Dock and ⌘Tab while a window is open; in the menu bar only otherwise (macOS).
+fn regular(app: &AppHandle, regular: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::ActivationPolicy::{Accessory, Regular};
+        let _ = app.set_activation_policy(if regular { Regular } else { Accessory });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, regular);
+}
+
 /// A window made: for the file, else untitled.
 pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<()> {
     let state = app.state::<Documents>();
@@ -71,15 +82,20 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<()> {
     if path.is_none() {
         state.blank.lock().unwrap().insert(label.clone());
     }
+    regular(app, true);
     let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("/".into()))
         .title(title(path.as_deref()))
         .inner_size(900.0, 700.0)
         .tabbing_identifier(TABBING)
         .build();
-    if let Err(e) = built {
-        closed(app, &label);
-        return Err(e);
-    }
+    let window = match built {
+        Ok(window) => window,
+        Err(e) => {
+            closed(app, &label);
+            return Err(e);
+        }
+    };
+    let _ = window.set_focus();
     if let Some(path) = path {
         let _ = files::watch(app, &label, &path);
     }
@@ -110,6 +126,10 @@ pub fn closed(app: &AppHandle, label: &str) {
     state.paths.lock().unwrap().remove(label);
     state.blank.lock().unwrap().remove(label);
     files::unwatch(app, label);
+    // the window may still be among the windows as this is told
+    if app.webview_windows().keys().all(|l| l == label) {
+        regular(app, false);
+    }
 }
 
 /// Whether the untitled window has no text in it, as its page says each time that changes.
@@ -183,6 +203,8 @@ pub fn open_files(app: &AppHandle, paths: &[PathBuf]) {
 
 /// Open…: the files to choose.
 pub fn choose(app: &AppHandle) {
+    // from the menu bar, with no window: the dialog is in front only for an app with a Dock icon
+    regular(app, true);
     let handle = app.clone();
     app.dialog()
         .file()

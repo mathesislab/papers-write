@@ -87,7 +87,9 @@
         const inBib = own.includes(item.bib);
         if (!options.get(item.key)?.inBib) options.set(item.key, { key: item.key, label: citation(item), detail: item.title, inBib });
       }
-      return [...options.values()];
+      // the keys that start with what is typed first, then those of the bibliography, else as the references found them
+      const rank = (o: CitationOption) => (o.key.toLowerCase().startsWith(prefix.toLowerCase()) ? 0 : 2) + (o.inBib ? 0 : 1);
+      return [...options.values()].sort((a, b) => rank(a) - rank(b));
     },
     oncite: (key) => void add(key),
   };

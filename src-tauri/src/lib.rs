@@ -41,7 +41,8 @@ pub fn run() {
             refs::closest_references,
             refs::reference_sources,
             refs::cite_key,
-            refs::bib_check
+            refs::bib_check,
+            refs::bibliography_files
         ])
         .build(tauri::generate_context!())
         .expect("error while building papers-write")

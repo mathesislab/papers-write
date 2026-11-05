@@ -15,7 +15,18 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { openPath } from "@tauri-apps/plugin-opener";
-  import { FileEditor, PREFS, RefList, insertSymbol, replaceText, setEditorFont, type Found } from "papers-write/editor";
+  import {
+    FileEditor,
+    PREFS,
+    RefList,
+    citation,
+    insertSymbol,
+    replaceText,
+    setEditorFont,
+    type CitationOption,
+    type Completion,
+    type Found,
+  } from "papers-write/editor";
   import { listen } from "$lib/events";
   import "$lib/theme.css";
 
@@ -65,6 +76,21 @@
   const search = (query: string, limit: number) => invoke<Found>("references", { query, limit, text: current() });
   const closest = (selected: string, limit: number) => invoke<Found>("closest_references", { selected, limit, text: current() });
   const sources = () => invoke<string[]>("reference_sources", { text: current() });
+
+  /** The completion of citations as typed (`[@`, `@`, `\cite{`): the references matching what is typed, those of the
+   *  document's own bibliography marked as such, a key in both once; a key taken is added to the bibliography. */
+  const completion: Completion = {
+    async citations(prefix) {
+      const [found, own] = await Promise.all([search(prefix, 30), invoke<string[]>("bibliography_files", { text: current() })]);
+      const options = new Map<string, CitationOption>();
+      for (const { item } of found.hits) {
+        const inBib = own.includes(item.bib);
+        if (!options.get(item.key)?.inBib) options.set(item.key, { key: item.key, label: citation(item), detail: item.title, inBib });
+      }
+      return [...options.values()];
+    },
+    oncite: (key) => void add(key),
+  };
 
   function say(what: string) {
     note = what;
@@ -169,6 +195,7 @@
         save={file ? (p, text) => invoke("write_text", { path: p, text }) : async () => {}}
         mono={!markdown}
         prefs={PREFS}
+        {completion}
         onchange={changed}
         bind:error
       />

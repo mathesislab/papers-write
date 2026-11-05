@@ -139,22 +139,27 @@ pub struct Check {
     unused: Vec<String>,
 }
 
+/// The `.bib` files the front matter of `text` names, beside the window's document, that are there (none for an
+/// untitled one): the document's own bibliography, not the papers library.
+fn own_bibs(window: &WebviewWindow, text: &str) -> Vec<PathBuf> {
+    let Some(path) = crate::documents::path_of(window.app_handle(), window.label()) else {
+        return Vec::new();
+    };
+    let folder = path.parent().map(Path::to_path_buf).filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| PathBuf::from("."));
+    frontmatter::bibliography(text).into_iter().map(|n| folder.join(n)).filter(|f| f.is_file()).collect()
+}
+
+/// The document's own `.bib` files (`own_bibs`), as the references give an entry's file: the completion marks the
+/// keys already there.
+#[tauri::command]
+pub async fn bibliography_files(window: WebviewWindow, text: String) -> Vec<String> {
+    own_bibs(&window, &text).iter().map(|p| p.to_string_lossy().into_owned()).collect()
+}
+
 /// The keys cited in `text` against those of the `.bib` files its front matter names (not the papers library).
 #[tauri::command]
 pub async fn bib_check(window: WebviewWindow, text: String) -> Result<Check, String> {
-    let path = crate::documents::path_of(window.app_handle(), window.label());
-    let folder = path
-        .as_deref()
-        .and_then(Path::parent)
-        .map(Path::to_path_buf)
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| PathBuf::from("."));
-    let files: Vec<PathBuf> = if path.is_some() {
-        frontmatter::bibliography(&text).into_iter().map(|n| folder.join(n)).filter(|f| f.is_file()).collect()
-    } else {
-        Vec::new()
-    };
-    let own = References::load(files);
+    let own = References::load(own_bibs(&window, &text));
     if let Some(e) = own.error() {
         return Err(e.to_string());
     }

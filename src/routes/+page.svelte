@@ -196,6 +196,7 @@
         mono={!markdown}
         prefs={PREFS}
         {completion}
+        autofocus
         onchange={changed}
         bind:error
       />
@@ -203,7 +204,7 @@
   {/if}
   {#if listing}
     {#key version}
-      <RefList bind:this={refs} {search} {closest} {sources} oninsert={inserted} onopen={openPdf} onclose={closeList} />
+      <RefList bind:this={refs} enter="pandoc" {search} {closest} {sources} oninsert={inserted} onopen={openPdf} onclose={closeList} />
     {/key}
   {/if}
   {#if checking}

@@ -1,8 +1,9 @@
 <script lang="ts">
   // The builds of a document, over its editor: Build (⌘B), Build and Show PDF (⇧⌘B) and Marked-up PDF… of the Build
   // menu come to `run`. The document is written first (`flush`), then the backend runs texmark (and for the marked-up
-  // PDF latexdiff and latexmk; for a .tex document latexmk, and latexdiff) and tells only the status: `build-status`, shown as a mark in the corner: building,
-  // done (the time), failed. A failure, or LaTeX errors in a PDF that was made, are listed in a sheet with the log's
+  // PDF latexdiff and latexmk; for a .tex document latexmk, and latexdiff) and tells only the status: `build-status`, shown as a mark in the foot
+  // of the window, which stays: Build (nothing built yet; a click builds), building, built (the time of day; a click
+  // shows the PDF), failed. A failure, or LaTeX errors in a PDF that was made, are listed in a sheet with the log's
   // path. The marked-up PDF asks first which earlier version: the tags and the last commits of the file in git, or
   // another file. The error of a .tex document at one of its own lines (`here`), or of a Markdown build at the line it
   // was matched to (`md_line`), is a button: it takes the cursor to the line (`ongoto`).
@@ -23,7 +24,18 @@
   };
   type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
 
-  let { flush, onfocus, ongoto }: { flush: () => unknown; onfocus?: () => void; ongoto?: (line: number) => void } = $props();
+  let {
+    flush,
+    can = true,
+    onfocus,
+    ongoto,
+  }: {
+    flush: () => unknown;
+    /** a document that builds (Markdown, LaTeX): the mark shows before a build */
+    can?: boolean;
+    onfocus?: () => void;
+    ongoto?: (line: number) => void;
+  } = $props();
 
   let status = $state<Status | null>(null);
   /** the sheet of errors is shown */
@@ -32,27 +44,45 @@
   let choosing = $state<{ revisions: Revision[]; error?: string } | null>(null);
   /** what went wrong before a build could start (the document is not saved) */
   let refused = $state("");
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  /** when the last build ended */
+  let ended = $state<Date | null>(null);
 
+  const errors = $derived(status?.errors.length ?? 0);
   const label = $derived(
     !status
-      ? ""
+      ? "Build"
       : status.state === "building"
         ? status.what === "diff"
           ? "Making the marked-up PDF…"
           : "Building…"
         : status.state === "done"
-          ? `${status.what === "diff" ? "Marked-up PDF" : "Built"} in ${status.seconds?.toFixed(1)} s${status.errors.length ? `, ${status.errors.length} LaTeX error${status.errors.length === 1 ? "" : "s"}` : ""}`
+          ? `${status.what === "diff" ? "Marked-up PDF" : "Built"} ${ended?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) ?? ""}`
           : `${status.what === "diff" ? "Marked-up PDF" : "Build"} failed`,
   );
+  const title = $derived(
+    !status
+      ? "Build (⌘B)"
+      : status.state === "building"
+        ? ""
+        : status.state === "failed" || errors
+          ? "Show the errors"
+          : `Made in ${status.seconds?.toFixed(1)} s. Show the PDF`,
+  );
 
-  /** The status, and the sheet for what failed; a build that went well is told for a few seconds. */
+  /** A click on the mark: a build, the errors, or the PDF. */
+  function clicked() {
+    if (!status) return void run("build");
+    if (status.state === "building") return;
+    if (status.state === "failed" || errors) sheet = true;
+    else if (status.pdf) void request("open_document", { path: status.pdf });
+  }
+
+  /** The status, and the sheet for what failed. */
   function told(next: Status) {
-    clearTimeout(timer);
     status = next;
     refused = "";
     sheet = next.state === "failed";
-    if (next.state === "done" && !next.errors.length) timer = setTimeout(() => (status = null), 6000);
+    if (next.state !== "building") ended = new Date();
   }
 
   async function request<T>(command: string, args: Record<string, unknown> = {}): Promise<T | undefined> {
@@ -102,23 +132,19 @@
 
   onMount(() => {
     const unlisten = listen<Status>("build-status", (e) => told(e.payload));
-    return () => {
-      clearTimeout(timer);
-      unlisten.then((f) => f());
-    };
+    return () => void unlisten.then((f) => f());
   });
 </script>
 
 {#if refused}
-  <button class="mark error" onclick={() => (refused = "")} title="Dismiss">{refused}</button>
-{:else if status}
-  <button
-    class="mark"
-    class:error={status.state === "failed"}
-    onclick={() => (status!.state === "building" ? null : (sheet = status!.errors.length > 0 || status!.state === "failed"))}
-    title={status.state === "building" ? "" : status.errors.length || status.state === "failed" ? "Show the errors" : ""}
-  >
-    {#if status.state === "building"}<span class="spin" aria-hidden="true"></span>{/if}{label}
+  <button class="mark error" onclick={() => (refused = "")} title="{refused} (a click dismisses it)">{refused}</button>
+{:else if status || can}
+  <button class="mark" class:error={status?.state === "failed"} onclick={clicked} {title}>
+    {#if status?.state === "building"}<span class="spin" aria-hidden="true"></span>{:else}
+      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
+        <path d="M4 1.75h5.5L12.5 4.75v9.5h-8.5z" /><path d="M9.25 1.75v3.25h3.25" />
+      </svg>
+    {/if}{label}{#if errors && status?.state === "done"}<span class="errors">· {errors} LaTeX error{errors === 1 ? "" : "s"}</span>{/if}
   </button>
 {/if}
 
@@ -195,28 +221,35 @@
     cursor: pointer;
   }
   .mark {
-    position: absolute;
-    z-index: 5;
-    right: 14px;
-    bottom: 10px;
-    max-width: calc(100% - 28px);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    flex: none;
+    max-width: 50%;
+    overflow: hidden;
     font: inherit;
-    font-size: 12px;
+    font-size: 11.5px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: 5px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .mark:hover {
     color: var(--fg);
     background: var(--chip);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 2px 10px;
-    text-align: left;
   }
-  .mark.error {
+  .mark.error,
+  .errors {
     color: var(--error);
   }
   .spin {
     display: inline-block;
     width: 9px;
     height: 9px;
-    margin-right: 6px;
     border: 1.5px solid var(--border);
     border-top-color: var(--accent);
     border-radius: 50%;

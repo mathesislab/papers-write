@@ -14,7 +14,8 @@
   // references from the text typed, which each call sends. Check Citations… lists in a sheet the keys cited that the
   // document's own bibliography lacks (each to add from the library) and the entries it never cites.
   //
-  // The foot of the window says the state of the document's repository (GitBar; a click opens the Commit sheet). The Git
+  // The foot of the window says the review's mode (ModeControl), the build (Build), what was just done or went wrong,
+  // and the state of the document's repository (GitBar; a click opens the Commit sheet). The Git
   // menu (`git-menu`) is Git: Commit…, Pull, Push, Review Branch…, Review Commits…. The Commit sheet is the one way to
   // commit; its message is prefilled from the window's log (`log`, commitLog.ts) of what it did since the last commit:
   // suggestions accepted or rejected, the review cleaned up, edits brought in as suggestions. The log is emptied by a
@@ -70,12 +71,13 @@
   import Exchange from "$lib/Exchange.svelte";
   import Git from "$lib/Git.svelte";
   import GitBar from "$lib/GitBar.svelte";
+  import ModeControl from "$lib/ModeControl.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Settings } from "$lib/settings";
   import "$lib/theme.css";
 
-  // The review (Review menu, `review-menu`): suggesting or editing (a badge at the top right while suggesting), the
+  // The review (Review menu, `review-menu`): suggesting or editing (ModeControl, at the foot of the window), the
   // suggestions and comments of the review files carried onto the text as typed (`review_items`, asked again 500 ms
   // after the typing stops, after each write of the user's, on `review-changed` and when the file changes on disk),
   // given to the editor with `setReview`. Review ▸ Show Review Panel (⌥⌘R) shows them in a column at the right
@@ -624,9 +626,6 @@
       />
     {/key}
   {/if}
-  {#if session.mode === "suggest"}
-    <button class="mode" style:--user={userColour} title="Back to editing (⇧⌘E)" onclick={() => session.toggleMode()}>Suggesting</button>
-  {/if}
   </div>
   {#if previewing && markdown}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -671,7 +670,6 @@
       {/if}
     </div>
   {/if}
-  <GitBar bind:this={gitbar} {path} bind:state={repo} onopen={() => git?.run("git-commit")} />
   <Git
     bind:this={git}
     flush={() => editor?.flush()}
@@ -685,7 +683,6 @@
     oncommitted={() => (log = [])}
     onlog={(did) => log.push({ did })}
   />
-  <Build bind:this={builds} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
   {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
   <Exchange
     bind:this={exchange}
@@ -695,7 +692,26 @@
     onfocus={() => editor?.focus()}
     onlog={(did) => log.push({ did })}
   />
-  {#if error || problem || session.problem}<p class="error">{problem || error || session.problem}</p>{:else if note}<p class="note">{note}</p>{/if}
+  <!-- the foot of the window: the review's mode, the build, what was just done or went wrong, the repository -->
+  <footer>
+    <ModeControl
+      mode={session.mode}
+      view={session.view}
+      open={session.items.filter((item) => item.state === "open").length}
+      colour={userColour}
+      {panel}
+      reviewing={!!session.me}
+      onpanel={togglePanel}
+      onmode={(m) => m !== session.mode && session.toggleMode()}
+      onview={(v) => session.setView(v)}
+    />
+    <Build bind:this={builds} can={markdown || latex} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
+    {#if error || problem || session.problem}
+      {@const said = problem || error || session.problem}
+      <span class="said error" title={said}>{said}</span>
+    {:else if note}<span class="said" title={note}>{note}</span>{:else}<span class="said"></span>{/if}
+    <GitBar bind:this={gitbar} {path} bind:state={repo} onopen={() => git?.run("git-commit")} />
+  </footer>
 </main>
 </div>
 {#if asking}
@@ -729,31 +745,40 @@
     min-width: 0;
     height: 100%;
     position: relative;
+    --foot: 26px;
   }
   .panes {
     display: flex;
-    height: calc(100% - var(--bar, 0px));
+    height: calc(100% - var(--bar, 0px) - var(--foot));
     margin-top: var(--bar, 0px);
+  }
+  footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--foot);
+    box-sizing: border-box;
+    padding: 0 8px;
+    border-top: 1px solid var(--line);
+    background: var(--sidebar);
+  }
+  .said {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .said.error {
+    color: var(--error);
   }
   .text {
     position: relative;
     flex: 1;
     min-width: 0;
     height: 100%;
-  }
-  .mode {
-    position: absolute;
-    z-index: 5;
-    top: 8px;
-    right: 18px;
-    font: inherit;
-    font-size: 11.5px;
-    color: #fff;
-    background: var(--user);
-    border: none;
-    border-radius: 10px;
-    padding: 1px 9px;
-    opacity: 0.92;
   }
   .split {
     flex: none;
@@ -768,21 +793,6 @@
   }
   .review {
     width: 320px;
-  }
-  .error,
-  .note {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    margin: 0;
-    padding: 6px 14px;
-    background: var(--chip);
-    border-top: 1px solid var(--line);
-    font-size: 12px;
-  }
-  .error {
-    color: var(--error);
   }
   .sheet {
     position: absolute;
@@ -834,8 +844,8 @@
     background: var(--chip);
   }
   .sheet p.error {
-    position: static;
+    margin: 0;
     padding: 4px 0;
-    border: none;
+    color: var(--error);
   }
 </style>

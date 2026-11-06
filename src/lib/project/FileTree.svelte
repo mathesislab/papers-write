@@ -21,6 +21,7 @@
     files,
     linked = [],
     front = null,
+    open = $bindable([]),
     badge,
     extra,
     onopen,
@@ -37,6 +38,8 @@
     linked?: Node[];
     /** the file in front */
     front?: string | null;
+    /** the folders open (none at first) */
+    open?: string[];
     badge?: (node: Node) => Badge | null;
     extra?: (node: Node) => Extra[];
     onopen: (node: Node) => void;
@@ -96,9 +99,7 @@
 
   /** Name a new file in a folder: the folder opens, a row with the name, its name but not its ending selected. */
   function start(folder: string) {
-    const next = new Set(closed);
-    next.delete(folder);
-    closed = next;
+    if (!opened.has(folder)) open = [...open, folder];
     naming = { folder, name: "untitled.md" };
   }
 
@@ -116,14 +117,10 @@
     input.setSelectionRange(0, input.value.lastIndexOf("."));
   }
 
-  /** the folders closed (all open at first) */
-  let closed = $state(new Set<string>());
+  const opened = $derived(new Set(open));
 
   function toggle(folder: Node) {
-    const next = new Set(closed);
-    if (next.has(folder.path)) next.delete(folder.path);
-    else next.add(folder.path);
-    closed = next;
+    open = opened.has(folder.path) ? open.filter((p) => p !== folder.path) : [...open, folder.path];
   }
 
   /** The folder holding a path, with the home folder as ~ (empty for a path at the root). */
@@ -201,7 +198,7 @@
     {@const from = outside && depth === 0 ? parent(node.path) : ""}
     {#if node.kind === "folder"}
       {@const empty = !node.children?.length}
-      {@const open = (!empty && !closed.has(node.path)) || naming?.folder === node.path}
+      {@const unfolded = (!empty && opened.has(node.path)) || naming?.folder === node.path}
       <button
         class="item"
         class:empty
@@ -209,13 +206,13 @@
         oncontextmenu={(e) => menu(e, node, outside, depth === 0)}
         title={node.path}
       >
-        <span class="disclosure">{#if !empty}{@render chevron(open)}{/if}</span>
+        <span class="disclosure">{#if !empty}{@render chevron(unfolded)}{/if}</span>
         {@render folderIcon()}
         {#if from}{@render linkIcon()}{/if}
         <span class="name">{node.name}</span>
         {#if from}<span class="from">{from}</span>{/if}
       </button>
-      {#if open}
+      {#if unfolded}
         <div class="children" style:--depth={depth + 1}>
           {#if naming?.folder === node.path}{@render nameRow()}{/if}
           {#if node.children}{@render tree(node.children, depth + 1, outside)}{/if}

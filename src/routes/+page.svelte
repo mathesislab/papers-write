@@ -651,6 +651,7 @@
     <Sidebar
       bind:this={sidebar}
       bind:tab={() => sideTab, (tab) => side.set({ tab })}
+      bind:folders={() => side.folders, (folders) => side.setFolders(folders)}
       root={sideRoot}
       front={path ?? null}
       {headings}

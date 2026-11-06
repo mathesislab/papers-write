@@ -14,10 +14,11 @@
 //! `tabs-changed` when a tab comes, goes or is renamed, and `tab-shown` (true or false) when theirs comes to the front
 //! or leaves it. Which window is in front is AppKit's to say (its key window), else the last focused. A project's
 //! sidebar (shown, its width, its tab) is the same in all its pages: asked with `sidebar`, changed with
-//! `set_sidebar`, the others told `sidebar-changed` (`ProjectSidebar` of `papers-write/project`).
+//! `set_sidebar`, the others told `sidebar-changed` (`ProjectSidebar` of `papers-write/project`); so are the folders
+//! open in its file tree (`folders`, `set_folders`, `folders-changed`), which are not saved.
 //!
 //! What the pages are is the app's: it gives a `Host` (`Tabs::new`), which makes them, names them, says what file
-//! each shows and keeps what is saved; and it registers the commands `tab_strip`, `select_tab`, `close_tab`.
+//! each shows and keeps what is saved; and it registers the commands of `commands`.
 
 mod model;
 
@@ -191,6 +192,9 @@ pub struct Tabs {
     quitting: AtomicBool,
     /// the windows are being opened again at the start: nothing is saved meanwhile
     restoring: AtomicBool,
+    /// the folders open in the file tree of each project's sidebar (none: of the pages of no project), the same in
+    /// all its pages; not saved: a project opens with its folders closed
+    folders: Mutex<HashMap<Option<PathBuf>, Vec<String>>>,
 }
 
 impl Tabs {
@@ -203,6 +207,7 @@ impl Tabs {
             focused: Mutex::default(),
             quitting: AtomicBool::new(false),
             restoring: AtomicBool::new(false),
+            folders: Mutex::default(),
         }
     }
 }
@@ -780,7 +785,7 @@ fn save_windows(app: &AppHandle) {
 pub mod commands {
     use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 
-    use super::{Sidebar, Tab, host, pages_of_set, project_of_page, title_of, with_tabs};
+    use super::{Sidebar, Tab, Tabs, host, pages_of_set, project_of_page, title_of, with_tabs};
 
     /// The tabs of the asking page's set, in order.
     #[tauri::command]
@@ -831,6 +836,28 @@ pub mod commands {
         for other in pages_of_set(app, root.as_deref()) {
             if other != page.label() {
                 let _ = app.emit_to(EventTarget::webview(&other), "sidebar-changed", &sidebar);
+            }
+        }
+    }
+
+    /// The folders open in the file tree of the asking page's project.
+    #[tauri::command]
+    pub fn folders(page: Webview) -> Vec<String> {
+        let app = page.app_handle();
+        let root = project_of_page(app, page.label());
+        app.state::<Tabs>().folders.lock().unwrap().get(&root).cloned().unwrap_or_default()
+    }
+
+    /// The folders open in the file tree of the asking page's project changed: the project's other pages told
+    /// (`folders-changed`).
+    #[tauri::command]
+    pub fn set_folders(page: Webview, folders: Vec<String>) {
+        let app = page.app_handle();
+        let root = project_of_page(app, page.label());
+        app.state::<Tabs>().folders.lock().unwrap().insert(root.clone(), folders.clone());
+        for other in pages_of_set(app, root.as_deref()) {
+            if other != page.label() {
+                let _ = app.emit_to(EventTarget::webview(&other), "folders-changed", &folders);
             }
         }
     }

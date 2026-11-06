@@ -20,6 +20,7 @@
     root,
     front,
     tab = $bindable("files"),
+    folders = $bindable([]),
     headings,
     here,
     outlined,
@@ -31,6 +32,8 @@
     /** the document of the window */
     front: string | null;
     tab?: Tab;
+    /** the folders open in the file tree */
+    folders?: string[];
     headings: readonly Heading[];
     here: number;
     /** the document has headings to outline (Markdown, LaTeX) */
@@ -124,6 +127,7 @@
       {root}
       {files}
       {front}
+      bind:open={folders}
       onopen={open}
       onnew={make}
       onreveal={(path) => revealItemInDir(path).catch((e) => onsay(String(e)))}

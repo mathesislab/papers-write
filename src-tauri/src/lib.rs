@@ -76,6 +76,8 @@ pub fn run() {
             tabs::commands::close_tab,
             tabs::commands::sidebar,
             tabs::commands::set_sidebar,
+            tabs::commands::folders,
+            tabs::commands::set_folders,
             files::read_text,
             files::write_text,
             preview::preview,

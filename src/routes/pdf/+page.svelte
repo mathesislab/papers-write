@@ -7,7 +7,7 @@
   import { onMount, tick } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
   import { listen } from "$lib/events";
-  import { Tabs } from "papers-write/project";
+  import { Tabs, part, ready } from "papers-write/project";
   import "$lib/theme.css";
 
   let path = $state<string | null | undefined>();
@@ -27,6 +27,9 @@
   const name = $derived(path?.split("/").pop() ?? "");
   /** the tab is in front: the PDF (drawn by PDFKit above the page) hides with its tab */
   let front = $state(true);
+
+  /** the PDF opened the first time, for the tab to be shown (`ready`) */
+  const opened = part();
 
   async function ask() {
     path = (await invoke<{ path: string | null }>("document")).path;
@@ -85,6 +88,7 @@
   }
 
   onMount(() => {
+    ready(opened.promise);
     ask();
     const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload))];
     return () => {
@@ -153,6 +157,7 @@
           onopen={(c) => {
             count = c;
             current = Math.min(current, c);
+            opened.done();
           }}
         />
       {/key}

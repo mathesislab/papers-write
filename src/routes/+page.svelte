@@ -44,7 +44,7 @@
   import { ensureSyntaxTree } from "@codemirror/language";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
-  import { ProjectBar, ProjectSidebar, Tabs, cssOf } from "papers-write/project";
+  import { ProjectBar, ProjectSidebar, Tabs, cssOf, part, ready } from "papers-write/project";
   import ProjectCard from "$lib/ProjectCard.svelte";
   import type { Bar } from "$lib/projects";
   import Preview from "$lib/Preview.svelte";
@@ -198,7 +198,7 @@
   async function ask() {
     log = [];
     path = (await invoke<{ path: string | null }>("document")).path;
-    loadBar();
+    await loadBar();
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
     const going = await invoke<{ at: number; end: number } | null>("pending_go_to").catch(() => null);
@@ -596,9 +596,12 @@
 
   onMount(() => side.start());
 
+  /** the text read the first time, for the tab to be shown (`ready`) */
+  const textIn = part();
+
   onMount(() => {
     const stop = watchSettings(apply);
-    ask();
+    ready(ask(), textIn.promise);
     askProject();
     window.addEventListener("focus", loadBar);
     const unlisten = [
@@ -689,8 +692,14 @@
       <FileEditor
         bind:this={editor}
         load={file
-          ? async () => ({ path: file, text: await invoke<string>("read_text", { path: file }) })
-          : async () => ({ path: "", text: "" })}
+          ? async () => {
+              try {
+                return { path: file, text: await invoke<string>("read_text", { path: file }) };
+              } finally {
+                textIn.done();
+              }
+            }
+          : async () => (textIn.done(), { path: "", text: "" })}
         save={file ? (p, text) => invoke("write_text", { path: p, text }) : async () => {}}
         mono={!markdown && !latex}
         {latex}

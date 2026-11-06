@@ -15,14 +15,15 @@
 //! or leaves it. Which window is in front is AppKit's to say (its key window), else the last focused. A project's
 //! sidebar (shown, its width, its tab) is the same in all its pages: asked with `sidebar`, changed with
 //! `set_sidebar`, the others told `sidebar-changed` (`ProjectSidebar` of `papers-write/project`); so are the folders
-//! open in its file tree (`folders`, `set_folders`, `folders-changed`), which are not saved.
+//! open in its file tree (`folders`, `set_folders`, `folders-changed`), which are not saved. A page is shown once it
+//! says it is drawn (`page_ready`, `ready()` of `papers-write/project`), the page before staying in view till then.
 //!
 //! What the pages are is the app's: it gives a `Host` (`Tabs::new`), which makes them, names them, says what file
 //! each shows and keeps what is saved; and it registers the commands of `commands`.
 
 mod model;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -195,6 +196,9 @@ pub struct Tabs {
     /// the folders open in the file tree of each project's sidebar (none: of the pages of no project), the same in
     /// all its pages; not saved: a project opens with its folders closed
     folders: Mutex<HashMap<Option<PathBuf>, Vec<String>>>,
+    /// the pages drawn (`page_ready`), which may be shown: one that is not stays hidden, the page shown before it
+    /// staying in view, so a tab never shows an empty page
+    ready: Mutex<HashSet<String>>,
 }
 
 impl Tabs {
@@ -208,6 +212,7 @@ impl Tabs {
             quitting: AtomicBool::new(false),
             restoring: AtomicBool::new(false),
             folders: Mutex::default(),
+            ready: Mutex::default(),
         }
     }
 }
@@ -377,43 +382,73 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
         LogicalPosition::new(0.0, 0.0),
         LogicalSize::new(size.width, size.height),
     )?;
+    // hidden until drawn (`page_ready`); a page that never says so is shown after a while all the same
+    let _ = page.hide();
+    let (handle, waited) = (app.clone(), label.to_string());
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        ready(&handle, &waited);
+    });
     with_tabs(app, |w| w.entry(window.label().to_string()).or_default().insert(label, title));
     host(app).added(app, window, label);
     select(app, label);
     Ok(page)
 }
 
-/// A tab brought to the front: its set shown by its window, its page shown and every other page of the window
-/// hidden, the window titled after it and brought forward.
-pub fn select(app: &AppHandle, page: &str) {
-    let Some(window_label) = window_of(app, page) else {
+/// A page drawn (`page_ready`, or the wait for it over): shown when its tab is in front.
+pub fn ready(app: &AppHandle, page: &str) {
+    let Some(window) = window_of(app, page) else {
         return;
     };
-    let (pages, newly_shown) = with_tabs(app, |w| {
-        let win = w.get_mut(&window_label)?;
-        win.bring(page);
-        Some((win.pages().cloned().collect::<Vec<_>>(), win.newly_shown()))
-    })
-    .unwrap_or_default();
-    for other in &pages {
-        if let Some(webview) = app.get_webview(other) {
-            if other == page {
+    if app.state::<Tabs>().ready.lock().unwrap().insert(page.to_string()) && front_of(app, &window).as_deref() == Some(page) {
+        reveal(app, &window);
+    }
+}
+
+/// The page of the window's tab in front shown, and every other page hidden, once it is drawn; till then the page
+/// shown before stays.
+fn reveal(app: &AppHandle, window: &str) {
+    let Some(front) = front_of(app, window) else {
+        return;
+    };
+    if !app.state::<Tabs>().ready.lock().unwrap().contains(&front) {
+        return;
+    }
+    for other in pages_of(app, window) {
+        if let Some(webview) = app.get_webview(&other) {
+            if other == front {
                 let _ = webview.show();
             } else {
                 let _ = webview.hide();
             }
-            let _ = app.emit_to(EventTarget::webview(other), "tab-shown", other == page);
+            let _ = app.emit_to(EventTarget::webview(&other), "tab-shown", other == front);
         }
     }
+    if let Some(webview) = app.get_webview(&front)
+        && key_window(app).as_deref().is_none_or(|key| key == window)
+    {
+        let _ = webview.set_focus();
+    }
+}
+
+/// A tab brought to the front: its set shown by its window, its page shown (once drawn: `reveal`) and every other
+/// page of the window hidden, the window titled after it and brought forward.
+pub fn select(app: &AppHandle, page: &str) {
+    let Some(window_label) = window_of(app, page) else {
+        return;
+    };
+    let newly_shown = with_tabs(app, |w| {
+        let win = w.get_mut(&window_label)?;
+        win.bring(page);
+        win.newly_shown()
+    });
     if let Some(window) = app.get_window(&window_label) {
         let _ = window.set_title(&window_title(app, page));
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
-    if let Some(webview) = app.get_webview(page) {
-        let _ = webview.set_focus();
-    }
+    reveal(app, &window_label);
     *app.state::<Tabs>().focused.lock().unwrap() = Some(window_label.clone());
     if let Some(now) = newly_shown {
         host(app).shown(app, &window_label, now.as_deref());
@@ -480,6 +515,7 @@ pub fn remove(app: &AppHandle, page: &str) {
         return;
     };
     host(app).closed(app, page);
+    app.state::<Tabs>().ready.lock().unwrap().remove(page);
     if let Some(webview) = app.get_webview(page) {
         let _ = webview.close();
     }
@@ -513,6 +549,7 @@ pub fn window_closed(app: &AppHandle, window: &str) {
     };
     for page in win.pages() {
         host(app).closed(app, page);
+        state.ready.lock().unwrap().remove(page);
     }
     host(app).window_closed(app, window);
     if !state.quitting.load(Ordering::SeqCst) {
@@ -838,6 +875,12 @@ pub mod commands {
                 let _ = app.emit_to(EventTarget::webview(&other), "sidebar-changed", &sidebar);
             }
         }
+    }
+
+    /// The asking page is drawn: it may be shown (`ready`).
+    #[tauri::command]
+    pub fn page_ready(page: Webview) {
+        super::ready(page.app_handle(), page.label());
     }
 
     /// The folders open in the file tree of the asking page's project.

@@ -9,7 +9,7 @@
   import { EditorState } from "@codemirror/state";
   import { FileEditor, PREFS, type EditorPrefs, type ReviewHandlers, type ReviewItem } from "papers-write/editor";
   import { applyEditor, watchSettings } from "$lib/settings";
-  import { Tabs } from "papers-write/project";
+  import { Tabs, ready } from "papers-write/project";
   import "$lib/theme.css";
 
   type History = { title: string; text: string; items: ReviewItem[]; markdown: boolean };
@@ -36,7 +36,7 @@
 
   onMount(() => {
     const stop = watchSettings((s) => (prefs = applyEditor(s)));
-    ask();
+    ready(ask());
     // the document written (or changed by a pull) since the tab was opened: compared again as it gets the keys
     window.addEventListener("focus", ask);
     return () => {

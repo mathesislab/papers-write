@@ -137,10 +137,13 @@ One app later is then a matter of windows, not code.
   papers-review and with its component: a tile per project in its colour
   with its short name, and a bar in its colour at the top of the window. A
   file opened from inside a project's folder (or below) belongs to it, and
-  opens in its window. A tile brings that project's window forward (or opens
-  it with its main document): each project keeps its window and tabs, where
-  papers-review switches the window's content. papers-review may later move
-  to a page per tab too.
+  opens in its tabs. A window shows one project at a time, as in
+  papers-review: a tile switches it to that project (its tabs as left, or as
+  saved, else its main document), Open in New Window gives a project a window
+  of its own. The other projects' tabs stay alive, hidden. Each project's tabs
+  and the windows open as the app quits are kept in `state.json` and opened
+  again at the next start. papers-review may later move to a page per tab
+  too.
 - What differs from papers-review is what a project says. No due date: the
   tile shows the main document's words and its open suggestions (whether the
   last build passed, later). The info card asks for the name, short name,

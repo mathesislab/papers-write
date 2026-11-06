@@ -7,6 +7,7 @@
   import { onMount, tick } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
   import { listen } from "$lib/events";
+  import Tabs from "$lib/Tabs.svelte";
   import "$lib/theme.css";
 
   let path = $state<string | null | undefined>();
@@ -24,6 +25,8 @@
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const name = $derived(path?.split("/").pop() ?? "");
+  /** the tab is in front: the PDF (drawn by PDFKit above the page) hides with its tab */
+  let front = $state(true);
 
   async function ask() {
     path = (await invoke<{ path: string | null }>("document")).path;
@@ -83,7 +86,7 @@
 
   onMount(() => {
     ask();
-    const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<string>("find", (e) => command(e.payload))];
+    const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload))];
     return () => {
       clearTimeout(timer);
       unlisten.forEach((u) => u.then((f) => f()));
@@ -92,6 +95,8 @@
 </script>
 
 <main>
+  <!-- the tabs of the window (nothing for a tab alone) -->
+  <div class="tabrow"><Tabs /></div>
   <div class="tools">
     <span class="name" title={path ?? ""}>{name}</span>
     {#if typing !== null}
@@ -143,6 +148,7 @@
           bind:this={view}
           {path}
           page={current}
+          covered={!front}
           onpage={(p) => (current = p)}
           onopen={(c) => {
             count = c;
@@ -160,6 +166,14 @@
     display: flex;
     flex-direction: column;
     background: var(--viewer);
+  }
+  .tabrow {
+    padding: 5px 8px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  .tabrow:empty {
+    display: none;
   }
   .tools {
     display: flex;

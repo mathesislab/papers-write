@@ -79,6 +79,7 @@
   import Git from "$lib/Git.svelte";
   import GitBar from "$lib/GitBar.svelte";
   import ModeControl from "$lib/ModeControl.svelte";
+  import Tabs from "$lib/Tabs.svelte";
   import Sidebar, { type Tab } from "$lib/Sidebar.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
@@ -675,8 +676,9 @@
   </div>
 {/if}
 <main style:--bar={reviewing ? "28px" : "0px"}>
-  <!-- the top of the text: the review's mode at the right -->
+  <!-- the top of the text: the tabs of the window, the review's mode at the right -->
   <div class="top">
+    <div class="tabs"><Tabs /></div>
     <ModeControl
       mode={session.mode}
       view={session.view}
@@ -831,12 +833,16 @@
   }
   .top {
     display: flex;
-    justify-content: flex-end;
+    gap: 10px;
     align-items: center;
     height: var(--top);
     box-sizing: border-box;
     margin-top: var(--bar, 0px);
-    padding: 0 10px;
+    padding: 0 10px 0 8px;
+  }
+  .tabs {
+    flex: 1;
+    min-width: 0;
   }
   .panes {
     display: flex;

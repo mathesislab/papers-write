@@ -9,6 +9,7 @@
   import { EditorState } from "@codemirror/state";
   import { FileEditor, PREFS, type EditorPrefs, type ReviewHandlers, type ReviewItem } from "papers-write/editor";
   import { applyEditor, watchSettings } from "$lib/settings";
+  import Tabs from "$lib/Tabs.svelte";
   import "$lib/theme.css";
 
   type History = { title: string; text: string; items: ReviewItem[]; markdown: boolean };
@@ -46,6 +47,8 @@
 </script>
 
 <main>
+  <!-- the tabs of the window -->
+  <div class="tabrow"><Tabs /></div>
   {#if shown}
     <div class="bar">{shown.title}: {shown.items.length} change{shown.items.length === 1 ? "" : "s"} since, read only</div>
     {#key shown.text}
@@ -71,6 +74,13 @@
     display: flex;
     flex-direction: column;
     position: relative;
+  }
+  .tabrow {
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tabrow:empty {
+    display: none;
   }
   .bar {
     flex: none;

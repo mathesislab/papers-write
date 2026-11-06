@@ -260,7 +260,8 @@
     asking = await invoke<string | null>("asking_project");
   }
 
-  /** A click on a tile: the current project's shows or hides the sidebar, another's switches to it. */
+  /** A click on a tile: the current project's shows or hides the sidebar, another's switches the window to it (or
+   *  brings forward the window that shows it). */
   function switchProject(root: string) {
     if (root === bar.current?.root) return toggleSidebar();
     invoke("switch_project", { root }).catch((e) => (problem = String(e)));
@@ -269,6 +270,7 @@
   /** A right-click on a tile. */
   async function tileMenu(root: string) {
     const items = await Promise.all([
+      MenuItem.new({ text: "Open in New Window", action: () => void invoke("open_project_in_new_window", { root }).catch((e) => (problem = String(e))) }),
       MenuItem.new({ text: "Open Project Folder in Finder", action: () => void invoke("reveal", { path: root }).catch((e) => (problem = String(e))) }),
       MenuItem.new({ text: "Project Info…", action: () => (carding = root) }),
       MenuItem.new({ text: "Remove from Bar", action: () => void invoke("remove_from_bar", { root }) }),

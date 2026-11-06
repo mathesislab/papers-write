@@ -176,10 +176,16 @@ pub async fn project_bar(app: AppHandle, window: Webview) -> Bar {
     }
 }
 
-/// A tile clicked: the project's main document opened, or brought forward.
+/// A tile clicked: the project's window brought forward as it is; with none open, its main document opened (in a
+/// window of its own).
 #[tauri::command]
 pub fn switch_project(app: AppHandle, root: String) -> Result<(), String> {
     let project = Project::read(Path::new(&root)).map_err(|e| e.to_string())?;
+    if let Some(window) = crate::tabs::window_of_project(&app, &project.root) {
+        with_saved(&app, |saved| saved.opened(&project.root));
+        crate::tabs::bring_forward(&app, &window);
+        return Ok(());
+    }
     let main = project
         .main()
         .ok_or_else(|| format!("{}: no main document (Project Info…)", project.name()))?;
@@ -296,9 +302,7 @@ pub fn open(app: &AppHandle, root: &Path) -> Result<(), String> {
     };
     app.state::<Projects>().asking.lock().unwrap().insert(label.clone(), root);
     let _ = app.emit_to(EventTarget::webview(&label), "asking-project", ());
-    if let Some(window) = app.get_webview_window(&label) {
-        let _ = window.set_focus();
-    }
+    crate::tabs::select(app, &label);
     Ok(())
 }
 

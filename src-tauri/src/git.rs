@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, Webview, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, Webview};
 use write_core::review::Item;
 use write_core::review::compare::{as_items, suggestions};
 use write_core::review::history::{self, Added, Attribution};
@@ -681,27 +681,12 @@ pub async fn compare_with_commit(app: AppHandle, window: Webview, rev: String) -
     let state = app.state::<Git>();
     let label = format!("history-{}", state.next.fetch_add(1, Ordering::Relaxed) + 1);
     state.views.lock().unwrap().insert(label.clone(), (doc, rev));
-    let joined = documents::front(&app);
-    let built = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("/history".into()))
-        .title(made.title)
-        .inner_size(900.0, 700.0)
-        .tabbing_identifier(documents::TABBING)
-        .build();
-    match built {
-        Ok(new) => {
-            match joined {
-                Some(to) => crate::tabs::join(&new.as_ref().window(), &to.window()),
-                None => {
-                    let _ = new.set_focus();
-                }
-            }
-            Ok(())
-        }
-        Err(e) => {
-            closed(&app, &label);
-            Err(e.to_string())
-        }
+    // a tab in the window of the document's tab
+    if let Err(e) = crate::tabs::add_beside(&app, &label, "/history", window.label(), made.title) {
+        closed(&app, &label);
+        return Err(e.to_string());
     }
+    Ok(())
 }
 
 /// What a window of history shows: the document at the commit it was made for, and the changes since (the file as it

@@ -1,6 +1,5 @@
-//! The documents: one per window, as the tabs of macOS (windows of one tabbing identifier merge into tabs, and a
-//! tab dragged out is a window). A window shows a file, or is untitled until it is saved. The page asks which
-//! (`document`).
+//! The documents: a page each (`doc-N`), a tab of a window (tabs.rs). A page shows a file, or is untitled until it
+//! is saved. The page asks which (`document`).
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -8,10 +7,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use serde::Serialize;
-use tauri::{
-    AppHandle, CloseRequestApi, Emitter, EventTarget, Manager, Webview, WebviewUrl,
-    WebviewWindowBuilder, Window,
-};
+use tauri::{AppHandle, CloseRequestApi, Emitter, EventTarget, Manager, Webview, Window};
 use crate::sheet::{self, Level};
 use tauri_plugin_dialog::DialogExt;
 
@@ -20,21 +16,18 @@ use write_core::review::package;
 use crate::files;
 use crate::package as review_files;
 
-/// The windows' tabbing identifier: the windows of the app merge into tabs of one window.
-pub(crate) const TABBING: &str = "papers-write";
-
 /// What the windows show, by label: the file, or none for an untitled one.
 #[derive(Default)]
 pub struct Documents {
     paths: Mutex<HashMap<String, Option<PathBuf>>>,
     /// the untitled windows with no text in them, which a file opened takes over
     blank: Mutex<HashSet<String>>,
-    /// the number of the next window
+    /// the number of the next page
     next: AtomicUsize,
     /// the app has finished launching: before, files handed over by macOS wait in `pending`
     ready: AtomicBool,
     pending: Mutex<Vec<PathBuf>>,
-    /// the window that last had the keys: the one in front (a tab chosen makes its window key)
+    /// the page that last had the keys: the one in front
     focused: Mutex<Option<String>>,
     /// the dialog before quitting is up
     asking_quit: AtomicBool,
@@ -101,7 +94,8 @@ pub fn is_pdf(path: &Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
-/// A window made: for the file, else untitled. Its label.
+/// A page made, in a tab (tabs.rs: its project's window, the one in front, or a new one): for the file, else
+/// untitled. Its label.
 pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<String> {
     let state = app.state::<Documents>();
     let label = format!("doc-{}", state.next.fetch_add(1, Ordering::Relaxed) + 1);
@@ -114,38 +108,10 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<String> {
         state.blank.lock().unwrap().insert(label.clone());
     }
     regular(app, true);
-    // a new window joins a document's tabs, not the Settings window
-    let tabs = crate::settings::get().tabs;
-    let joined = front(app).filter(|w| tabs && w.label().starts_with("doc-"));
-    let built = WebviewWindowBuilder::new(
-        app,
-        &label,
-        WebviewUrl::App(
-            if path.as_deref().is_some_and(is_pdf) {
-                "/pdf"
-            } else {
-                "/"
-            }
-            .into(),
-        ),
-    )
-    .title(title(path.as_deref()))
-    .inner_size(900.0, 700.0)
-    // off: an identifier of its own, which the system's preference for tabs does not merge with others
-    .tabbing_identifier(if tabs { TABBING } else { &label })
-    .build();
-    let window = match built {
-        Ok(window) => window,
-        Err(e) => {
-            closed(app, &label);
-            return Err(e);
-        }
-    };
-    match joined {
-        Some(to) => crate::tabs::join(&window.as_ref().window(), &to.window()),
-        None => {
-            let _ = window.set_focus();
-        }
+    let url = if path.as_deref().is_some_and(is_pdf) { "/pdf" } else { "/" };
+    if let Err(e) = crate::tabs::add(app, &label, url, path.as_deref()) {
+        closed(app, &label);
+        return Err(e);
     }
     if let Some(path) = path {
         let _ = files::watch(app, &label, &path);
@@ -162,16 +128,14 @@ pub fn show(app: &AppHandle, label: &str, path: &Path) {
         .unwrap()
         .insert(label.to_string(), Some(path.to_path_buf()));
     state.blank.lock().unwrap().remove(label);
-    if let Some(window) = app.get_webview_window(label) {
-        let _ = window.set_title(&title(Some(path)));
-    }
+    crate::tabs::renamed(app, label);
     if let Err(e) = files::watch(app, label, path) {
         eprintln!("{e}");
     }
     let _ = app.emit_to(EventTarget::webview(label), "opened", ());
 }
 
-/// A window gone: what was kept of it goes.
+/// A page gone: what was kept of it goes.
 pub fn closed(app: &AppHandle, label: &str) {
     let state = app.state::<Documents>();
     state.paths.lock().unwrap().remove(label);
@@ -186,10 +150,6 @@ pub fn closed(app: &AppHandle, label: &str) {
     crate::review::unload(app, label);
     crate::git::closed(app, label);
     crate::sidebar::closed(app, label);
-    // the window may still be among the windows as this is told
-    if app.webview_windows().keys().all(|l| l == label) {
-        regular(app, false);
-    }
 }
 
 /// Whether the untitled window has no text in it, as its page says each time that changes.
@@ -204,23 +164,17 @@ pub fn set_blank(window: Webview, blank: bool) {
     }
 }
 
-/// A window that got the keys: the one in front from now on.
+/// A page that came to the front (its tab chosen, its window focused): the one in front from now on.
 pub fn focused(app: &AppHandle, label: &str) {
     *app.state::<Documents>().focused.lock().unwrap() = Some(label.to_string());
     crate::review::focused(app, label);
 }
 
-/// The window in front: AppKit's key window (on the main thread, where the menu's events come); else the last that
-/// got the keys (tabs say wrongly whether they have them, and a window made from another thread may never say).
+/// The page in front: the tab in front of the window in front (tabs.rs), else the last that came to the front.
 pub fn front(app: &AppHandle) -> Option<Webview> {
-    if let Some(page) = crate::tabs::key_window(app).and_then(|label| app.get_webview(&label)) {
-        return Some(page);
-    }
-    let last = app.state::<Documents>().focused.lock().unwrap().clone();
-    last.and_then(|label| app.get_webview(&label)).or_else(|| {
-        app.webviews()
-            .into_values()
-            .find(|w| w.window().is_focused().unwrap_or(false))
+    crate::tabs::front_page(app).or_else(|| {
+        let last = app.state::<Documents>().focused.lock().unwrap().clone();
+        last.and_then(|label| app.get_webview(&label))
     })
 }
 
@@ -235,8 +189,8 @@ pub fn label_of(app: &AppHandle, path: &Path) -> Option<String> {
     app.state::<Documents>().paths.lock().unwrap().iter().find(|(_, p)| p.as_deref() == Some(path.as_path())).map(|(l, _)| l.clone())
 }
 
-/// A file opened: its window brought forward when it has one; else the untitled blank window in front (or any) shows
-/// it; else a window of its own.
+/// A file opened: its tab brought to the front when it has one; else the untitled blank page in front (or any) shows
+/// it; else a tab of its own.
 pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {
     let path = path
         .canonicalize()
@@ -257,10 +211,8 @@ pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {
         .iter()
         .find(|(_, p)| p.as_deref() == Some(path.as_path()))
         .map(|(l, _)| l.clone());
-    if let Some(window) = open.and_then(|label| app.get_webview_window(&label)) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+    if let Some(label) = open {
+        crate::tabs::select(app, &label);
         return Ok(());
     }
     // a PDF has a page of its own, so no window of text shows it
@@ -273,9 +225,9 @@ pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {
         .filter(|w| blank.contains(w.label()))
         .or_else(|| blank.iter().find_map(|label| app.get_webview(label)));
     match reuse {
-        Some(window) => {
-            show(app, window.label(), &path);
-            let _ = window.set_focus();
+        Some(page) => {
+            show(app, page.label(), &path);
+            crate::tabs::select(app, page.label());
             Ok(())
         }
         None => make(app, Some(path)).map(|_| ()).map_err(|e| e.to_string()),
@@ -301,7 +253,7 @@ pub fn ready(app: &AppHandle) {
     let pending = std::mem::take(&mut *state.pending.lock().unwrap());
     if !pending.is_empty() {
         open_files(app, &pending);
-    } else if app.webview_windows().is_empty()
+    } else if !crate::tabs::any(app)
         && let Err(e) = make(app, None)
     {
         eprintln!("{e}");
@@ -366,7 +318,7 @@ pub async fn save_untitled(
     Ok(Some(file.to_string_lossy().into_owned()))
 }
 
-/// How many windows have untitled text that was never saved: those without a file that are not blank.
+/// How many pages have untitled text that was never saved: those without a file that are not blank.
 fn unsaved_count(paths: &HashMap<String, Option<PathBuf>>, blank: &HashSet<String>) -> usize {
     paths.iter().filter(|(label, path)| path.is_none() && !blank.contains(*label)).count()
 }
@@ -374,12 +326,12 @@ fn unsaved_count(paths: &HashMap<String, Option<PathBuf>>, blank: &HashSet<Strin
 /// What the dialog says before quitting with `n` windows of text never saved.
 fn quit_message(n: usize) -> String {
     match n {
-        1 => "1 window has text that was never saved.".into(),
-        n => format!("{n} windows have text that was never saved."),
+        1 => "1 tab has text that was never saved.".into(),
+        n => format!("{n} tabs have text that was never saved."),
     }
 }
 
-/// The app quits (⌘Q, the menu bar icon, the Dock icon). With text in an untitled window that was never saved it
+/// The app quits (⌘Q, the menu bar icon, the Dock icon). With text in an untitled tab that was never saved it
 /// asks once first: Quit and discard, or Cancel.
 pub fn quit(app: &AppHandle) {
     if !confirm_quit(app) {
@@ -409,35 +361,56 @@ pub fn confirm_quit(app: &AppHandle) -> bool {
     true
 }
 
-/// A window asked to close: an untitled one with text in it asks first whether to discard it.
-pub fn closing(window: &Window, api: &CloseRequestApi) {
-    let state = window.state::<Documents>();
-    let untitled = state
-        .paths
-        .lock()
-        .unwrap()
-        .get(window.label())
-        .is_some_and(|p| p.is_none());
-    if !untitled || state.blank.lock().unwrap().contains(window.label()) {
-        return;
+/// Whether the page holds untitled text that was never saved.
+fn unsaved(app: &AppHandle, page: &str) -> bool {
+    let state = app.state::<Documents>();
+    let untitled = state.paths.lock().unwrap().get(page).is_some_and(|p| p.is_none());
+    untitled && !state.blank.lock().unwrap().contains(page)
+}
+
+/// A tab to close: with untitled text never saved, a sheet asks first (Discard closes it) and this is true; false
+/// when there is nothing to ask.
+pub fn asks_before_closing(app: &AppHandle, page: &str) -> bool {
+    if !unsaved(app, page) {
+        return false;
     }
-    api.prevent_close();
-    let window = window.clone();
-    let app = window.app_handle().clone();
-    let webview = app.get_webview(window.label());
+    let webview = app.get_webview(page);
+    let (handle, label) = (app.clone(), page.to_string());
     sheet::ask_then(
-        &app,
+        app,
         webview.as_ref(),
         "Close",
-        "This window has text that was never saved. Close it and discard the text?",
+        "This tab has text that was never saved. Close it and discard the text?",
         Level::Warning,
         &["Discard", "Cancel"],
         move |button| {
             if button.as_deref() == Some("Discard") {
-                let _ = window.destroy();
+                crate::tabs::remove(&handle, &label);
             }
         },
     );
+    true
+}
+
+/// A window asked to close: when tabs of it hold untitled text, it asks first whether to discard it.
+pub fn closing(window: &Window, api: &CloseRequestApi) {
+    let app = window.app_handle().clone();
+    let n = crate::tabs::pages_of(&app, window.label()).iter().filter(|p| unsaved(&app, p)).count();
+    if n == 0 {
+        return;
+    }
+    api.prevent_close();
+    let window = window.clone();
+    let front = crate::tabs::pages_of(&app, window.label()).into_iter().find_map(|p| app.get_webview(&p));
+    let message = match n {
+        1 => "A tab has text that was never saved. Close the window and discard it?".to_string(),
+        n => format!("{n} tabs have text that was never saved. Close the window and discard it?"),
+    };
+    sheet::ask_then(&app, front.as_ref(), "Close", message, Level::Warning, &["Discard", "Cancel"], move |button| {
+        if button.as_deref() == Some("Discard") {
+            let _ = window.destroy();
+        }
+    });
 }
 
 #[cfg(test)]
@@ -456,7 +429,7 @@ mod tests {
         let blank: HashSet<String> = ["doc-1".to_string()].into();
         assert_eq!(unsaved_count(&paths, &blank), 2);
         assert_eq!(unsaved_count(&paths, &["doc-1", "doc-2", "doc-3"].map(String::from).into()), 0);
-        assert_eq!(quit_message(1), "1 window has text that was never saved.");
-        assert_eq!(quit_message(2), "2 windows have text that was never saved.");
+        assert_eq!(quit_message(1), "1 tab has text that was never saved.");
+        assert_eq!(quit_message(2), "2 tabs have text that was never saved.");
     }
 }

@@ -3,7 +3,7 @@
   "identifier": "default",
   "description": "Capability for the document windows",
   "windows": [
-    "doc-*"
+    "win-*"
   ],
   "permissions": [
     "core:default",

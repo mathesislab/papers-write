@@ -246,11 +246,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         _ if id.starts_with(RECENT) => crate::projects::open_reporting(app, Path::new(&id[RECENT.len()..])),
         "settings" => crate::settings::show(app),
         "quit" => documents::quit(app),
-        "close" => {
-            if let Some(window) = documents::front(app) {
-                let _ = window.close();
-            }
-        }
+        "close" => crate::tabs::close_front(app),
         // the page writes the document, then asks for the build
         "save" | "build" | "build-show" | "marked-up" => {
             if let Some(window) = documents::front(app) {

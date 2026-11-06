@@ -21,7 +21,7 @@ mod tabs;
 mod trash;
 mod tray;
 
-use tauri::{DragDropEvent, Manager, RunEvent, WindowEvent};
+use tauri::{DragDropEvent, Manager, RunEvent, WebviewEvent, WindowEvent};
 
 pub fn run() {
     tauri::Builder::default()
@@ -38,6 +38,7 @@ pub fn run() {
         .manage(git::Git::default())
         .manage(projects::Projects::default())
         .manage(spelling::Tags::default())
+        .manage(tabs::Tabs::default())
         .manage(sidebar::GoTos::default())
         .setup(|app| {
             settings::init(app.handle());
@@ -48,16 +49,19 @@ pub fn run() {
         })
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => documents::closing(window, api),
-            WindowEvent::Focused(true) => documents::focused(window.app_handle(), window.label()),
-            WindowEvent::Destroyed => {
-                spelling::closed(window.app_handle(), window.label());
-                documents::closed(window.app_handle(), window.label());
-            }
+            WindowEvent::Focused(true) => tabs::window_focused(window.app_handle(), window.label()),
+            WindowEvent::Destroyed => tabs::window_closed(window.app_handle(), window.label()),
             // files dropped on a window open in tabs of their own
             WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) => {
                 documents::open_files(window.app_handle(), paths);
             }
             _ => {}
+        })
+        // on a page of a window of tabs, files dropped come to the page
+        .on_webview_event(|webview, event| {
+            if let WebviewEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+                documents::open_files(webview.app_handle(), paths);
+            }
         })
         .invoke_handler(tauri::generate_handler![
             settings::settings,
@@ -67,6 +71,9 @@ pub fn run() {
             documents::document,
             documents::set_blank,
             documents::save_untitled,
+            tabs::tab_strip,
+            tabs::select_tab,
+            tabs::close_tab,
             files::read_text,
             files::write_text,
             preview::preview,
@@ -161,7 +168,7 @@ pub fn run() {
             // menu bar icon) ends it with a code
             RunEvent::ExitRequested {
                 code: None, api, ..
-            } if app.webview_windows().is_empty() && settings::get().menu_bar => {
+            } if app.windows().is_empty() && settings::get().menu_bar => {
                 api.prevent_exit();
             }
             // the Dock icon clicked, no window open

@@ -246,14 +246,18 @@ pub fn opened(app: &AppHandle, paths: Vec<PathBuf>) {
     open_files(app, &paths);
 }
 
-/// The app launched: the files handed over until now, or else a window of untitled text.
+/// The app launched: the windows open as it last quit, the files handed over until now; with neither, a window of
+/// untitled text.
 pub fn ready(app: &AppHandle) {
     let state = app.state::<Documents>();
     state.ready.store(true, Ordering::SeqCst);
     let pending = std::mem::take(&mut *state.pending.lock().unwrap());
+    // the windows open as the app last quit, each project with its tabs; then the files handed over
+    let restored = crate::tabs::restore(app);
     if !pending.is_empty() {
         open_files(app, &pending);
-    } else if !crate::tabs::any(app)
+    } else if !restored
+        && !crate::tabs::any(app)
         && let Err(e) = make(app, None)
     {
         eprintln!("{e}");
@@ -335,6 +339,7 @@ fn quit_message(n: usize) -> String {
 /// asks once first: Quit and discard, or Cancel.
 pub fn quit(app: &AppHandle) {
     if !confirm_quit(app) {
+        crate::tabs::quitting(app);
         app.exit(0);
     }
 }
@@ -355,6 +360,7 @@ pub fn confirm_quit(app: &AppHandle) -> bool {
     sheet::ask_then(app, None, "Quit", format!("{} Quit and discard it?", quit_message(n)), Level::Warning, &["Quit and discard", "Cancel"], move |button| {
         handle.state::<Documents>().asking_quit.store(false, Ordering::SeqCst);
         if button.as_deref() == Some("Quit and discard") {
+            crate::tabs::quitting(&handle);
             handle.exit(0);
         }
     });

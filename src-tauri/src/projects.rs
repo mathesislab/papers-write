@@ -17,7 +17,7 @@ use write_core::project::{self, Manifest, Project};
 use write_core::review::{Kind, Review, State};
 
 use crate::documents;
-use crate::state::Saved;
+use crate::state::{Layout, Saved, SavedWindow};
 
 #[derive(Default)]
 pub struct Projects {
@@ -91,6 +91,32 @@ fn with_saved<T>(app: &AppHandle, f: impl FnOnce(&mut Saved) -> T) -> T {
         crate::menu::refill_recent(app, &recent);
     }
     out
+}
+
+/// A project's tabs as last saved.
+pub fn layout(app: &AppHandle, root: &Path) -> Layout {
+    with_saved(app, |saved| saved.layouts.get(root).cloned().unwrap_or_default())
+}
+
+/// The projects' tabs as they are now kept (a project without files, untitled tabs only, keeps what it had).
+pub fn save_layouts(app: &AppHandle, layouts: Vec<(PathBuf, Layout)>) {
+    with_saved(app, |saved| {
+        for (root, layout) in layouts {
+            if !layout.files.is_empty() {
+                saved.layouts.insert(root, layout);
+            }
+        }
+    });
+}
+
+/// The windows to open again at the start.
+pub fn saved_windows(app: &AppHandle) -> Vec<SavedWindow> {
+    with_saved(app, |saved| saved.windows.clone())
+}
+
+/// The windows open now, kept to open again at the next start.
+pub fn save_windows(app: &AppHandle, windows: Vec<SavedWindow>) {
+    with_saved(app, |saved| saved.windows = windows);
 }
 
 /// The projects of File ▸ Open Recent, as the app kept them.
@@ -176,21 +202,21 @@ pub async fn project_bar(app: AppHandle, window: Webview) -> Bar {
     }
 }
 
-/// A tile clicked: the project's window brought forward as it is; with none open, its main document opened (in a
-/// window of its own).
+/// A tile clicked: the window that shows the project brought forward, else the window in front switched to it
+/// (tabs.rs: its tabs as left, or as saved, else its main document).
 #[tauri::command]
 pub fn switch_project(app: AppHandle, root: String) -> Result<(), String> {
     let project = Project::read(Path::new(&root)).map_err(|e| e.to_string())?;
-    if let Some(window) = crate::tabs::window_of_project(&app, &project.root) {
-        with_saved(&app, |saved| saved.opened(&project.root));
-        crate::tabs::bring_forward(&app, &window);
-        return Ok(());
-    }
-    let main = project
-        .main()
-        .ok_or_else(|| format!("{}: no main document (Project Info…)", project.name()))?;
     with_saved(&app, |saved| saved.opened(&project.root));
-    documents::open_file(&app, &main)
+    crate::tabs::show_project(&app, &project.root, crate::tabs::Target::Front)
+}
+
+/// A tile's Open in New Window: the project in a window of its own (the one that shows it, if one does).
+#[tauri::command]
+pub fn open_project_in_new_window(app: AppHandle, root: String) -> Result<(), String> {
+    let project = Project::read(Path::new(&root)).map_err(|e| e.to_string())?;
+    with_saved(&app, |saved| saved.opened(&project.root));
+    crate::tabs::show_project(&app, &project.root, crate::tabs::Target::New)
 }
 
 #[tauri::command]
@@ -290,10 +316,7 @@ pub fn open(app: &AppHandle, root: &Path) -> Result<(), String> {
         let project = Project::read(&root).map_err(|e| e.to_string())?;
         with_saved(app, |saved| saved.opened(&root));
         changed(app);
-        return match project.main() {
-            Some(main) => documents::open_file(app, &main),
-            None => Err(format!("{}: write.toml names no main document", project.name())),
-        };
+        return crate::tabs::show_project(app, &project.root, crate::tabs::Target::Front);
     }
     let text = documents::front(app).filter(|w| !documents::path_of(app, w.label()).is_some_and(|p| documents::is_pdf(&p)));
     let label = match text {

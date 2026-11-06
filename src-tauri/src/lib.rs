@@ -133,6 +133,7 @@ pub fn run() {
             review::review_cleanup,
             projects::project_bar,
             projects::switch_project,
+            projects::open_project_in_new_window,
             projects::remove_from_bar,
             projects::project_card,
             projects::set_project_info,
@@ -171,6 +172,8 @@ pub fn run() {
             } if app.windows().is_empty() && settings::get().menu_bar => {
                 api.prevent_exit();
             }
+            // quitting: the windows close now, but stay saved as open for the next start
+            RunEvent::ExitRequested { .. } => tabs::quitting(app),
             // the Dock icon clicked, no window open
             #[cfg(target_os = "macos")]
             RunEvent::Reopen {

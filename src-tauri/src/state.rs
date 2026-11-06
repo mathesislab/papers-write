@@ -1,6 +1,8 @@
-//! What the app keeps between sessions, in its data folder (`state.json`): the projects opened last and the
-//! projects of the project bar. Not in `write.toml`: what the app shows is not the project's.
+//! What the app keeps between sessions, in its data folder (`state.json`): the projects opened last, the projects
+//! of the project bar, the tabs of each project as last left, and the windows open when the app quit (their
+//! projects, to open again at the next start). Not in `write.toml`: what the app shows is not the project's.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +21,25 @@ pub struct Saved {
     pub recent: Vec<PathBuf>,
     /// the projects of the project bar, in order
     pub bar: Vec<PathBuf>,
+    /// the tabs of each project as last left
+    pub layouts: BTreeMap<PathBuf, Layout>,
+    /// the windows open as the app quit, to open again at the next start
+    pub windows: Vec<SavedWindow>,
+}
+
+/// A project's tabs: its files in order, the one in front.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Layout {
+    pub files: Vec<PathBuf>,
+    pub front: Option<PathBuf>,
+}
+
+/// A window's projects, the one shown first.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SavedWindow {
+    pub projects: Vec<PathBuf>,
 }
 
 impl Saved {
@@ -106,12 +127,14 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("papers-write-state-{}", std::process::id()));
         let mut saved = Saved::default();
         saved.opened(Path::new("/p"));
+        saved.layouts.insert("/p".into(), Layout { files: vec!["/p/a.md".into(), "/p/b.md".into()], front: Some("/p/b.md".into()) });
+        saved.windows.push(SavedWindow { projects: vec!["/p".into()] });
         saved.save(&dir);
         assert_eq!(Saved::load(&dir), saved);
         fs::write(dir.join(FILE), "{").unwrap();
         assert_eq!(Saved::load(&dir), Saved::default());
         // a file of a later version, with keys this one does not know
-        fs::write(dir.join(FILE), r#"{"bar": ["/q"], "layouts": {}}"#).unwrap();
+        fs::write(dir.join(FILE), r#"{"bar": ["/q"], "later": {}}"#).unwrap();
         assert_eq!(Saved::load(&dir).bar, [Path::new("/q")]);
         let _ = fs::remove_dir_all(&dir);
     }

@@ -234,7 +234,6 @@
   <div class="sheet" role="dialog" aria-label="Commit" tabindex="-1" onkeydown={key}>
     <header>
       <b>Commit</b>
-      <button onclick={close}>Cancel</button>
     </header>
     <ul>
       {#each committing.files as f, i (f.path)}
@@ -252,6 +251,7 @@
     <textarea rows="3" placeholder="Message (⌘↵ commits)" bind:value={committing.message} use:grab></textarea>
     {#if committing.error}<p class="error">{committing.error}</p>{/if}
     <div class="buttons">
+      <button onclick={close}>Cancel</button>
       <button class="primary" disabled={!ready} onclick={commit}>Commit {chosen.length} file{chosen.length === 1 ? "" : "s"}</button>
     </div>
   </div>
@@ -493,6 +493,7 @@
   .buttons {
     display: flex;
     justify-content: flex-end;
+    gap: 6px;
     margin-top: 8px;
   }
   button {

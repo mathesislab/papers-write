@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The review's mode at the foot of the window, always shown: Editing, or Suggesting in the user's colour, with the
+  // The review's mode at the top right of the text, always shown: Editing, or Suggesting in the user's colour, with the
   // number of open suggestions and comments. A click shows or hides the review panel; the ▾ is a menu of the modes,
   // the views (All Markup, Accepted, Original) and the panel. An untitled document has no review: it edits.
 

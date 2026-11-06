@@ -14,7 +14,7 @@
   // references from the text typed, which each call sends. Check Citations… lists in a sheet the keys cited that the
   // document's own bibliography lacks (each to add from the library) and the entries it never cites.
   //
-  // The foot of the window says the review's mode (ModeControl), the build (Build), what was just done or went wrong,
+  // The foot of the window says the build (Build), what was just done or went wrong,
   // and the state of the document's repository (GitBar; a click opens the Commit sheet). The Git
   // menu (`git-menu`) is Git: Commit…, Pull, Push, Review Branch…, Review Commits…. The Commit sheet is the one way to
   // commit; its message is prefilled from the window's log (`log`, commitLog.ts) of what it did since the last commit:
@@ -85,7 +85,7 @@
   import { applyEditor, watchSettings, type Settings } from "$lib/settings";
   import "$lib/theme.css";
 
-  // The review (Review menu, `review-menu`): suggesting or editing (ModeControl, at the foot of the window), the
+  // The review (Review menu, `review-menu`): suggesting or editing (ModeControl, at the top right of the text), the
   // suggestions and comments of the review files carried onto the text as typed (`review_items`, asked again 500 ms
   // after the typing stops, after each write of the user's, on `review-changed` and when the file changes on disk),
   // given to the editor with `setReview`. Review ▸ Show Review Panel (⌥⌘R) shows them in a column at the right
@@ -675,6 +675,20 @@
   </div>
 {/if}
 <main style:--bar={reviewing ? "28px" : "0px"}>
+  <!-- the top of the text: the review's mode at the right -->
+  <div class="top">
+    <ModeControl
+      mode={session.mode}
+      view={session.view}
+      open={session.items.filter((item) => item.state === "open").length}
+      colour={userColour}
+      {panel}
+      reviewing={!!session.me}
+      onpanel={togglePanel}
+      onmode={(m) => m !== session.mode && session.toggleMode()}
+      onview={(v) => session.setView(v)}
+    />
+  </div>
   <div class="panes" bind:this={panes}>
   <div class="text">
   {#if path !== undefined}
@@ -770,19 +784,8 @@
     onfocus={() => editor?.focus()}
     onlog={(did) => log.push({ did })}
   />
-  <!-- the foot of the window: the review's mode, the build, what was just done or went wrong, the repository -->
+  <!-- the foot of the window: the build, what was just done or went wrong, the repository -->
   <footer>
-    <ModeControl
-      mode={session.mode}
-      view={session.view}
-      open={session.items.filter((item) => item.state === "open").length}
-      colour={userColour}
-      {panel}
-      reviewing={!!session.me}
-      onpanel={togglePanel}
-      onmode={(m) => m !== session.mode && session.toggleMode()}
-      onview={(v) => session.setView(v)}
-    />
     <Build bind:this={builds} can={markdown || latex} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
     {#if error || problem || session.problem}
       {@const said = problem || error || session.problem}
@@ -824,11 +827,20 @@
     height: 100%;
     position: relative;
     --foot: 26px;
+    --top: 32px;
+  }
+  .top {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    height: var(--top);
+    box-sizing: border-box;
+    margin-top: var(--bar, 0px);
+    padding: 0 10px;
   }
   .panes {
     display: flex;
-    height: calc(100% - var(--bar, 0px) - var(--foot));
-    margin-top: var(--bar, 0px);
+    height: calc(100% - var(--bar, 0px) - var(--top) - var(--foot));
   }
   footer {
     display: flex;

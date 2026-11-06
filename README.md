@@ -29,10 +29,15 @@ them) are proposed upstream; until they are released,
 - Any file opens at once: File ▸ Open… (⌘O), Open With or a double click
   (md, markdown, txt, tex, bib, yaml, toml, pdf), a drop on the Dock icon or on a
   window. A file already open comes forward.
-- Each file is a macOS window tab (System Settings ▸ Desktop & Dock ▸ Prefer
-  tabs when opening documents); a tab dragged out is a window. ⌘N is a new
-  window of untitled text, kept in the window; ⌘S asks where to save it, and
-  from then on it is that file.
+- Each file is a tab. A project has a window of its own, with the tabs of its
+  files; a file outside any project opens in the window in front (Settings ▸
+  Window ▸ Open files as tabs off: each file in a window of its own). The tabs
+  are a strip at the top of the text, each as wide as its name, the close
+  button at its right (a middle click closes too); a tab in the back keeps
+  its text, undo, scroll and find. ⌘W closes the tab, the last tab its
+  window. ⌘N is a new tab of untitled text; ⌘S asks where to save it, and
+  from then on it is that file. A tab or window with untitled text asks
+  before closing.
 - A file is saved as typed, half a second after the typing stops. If it
   changes on disk (another editor, a sync client), it is read again, or the
   bar asks which to keep.
@@ -154,9 +159,9 @@ them) are proposed upstream; until they are released,
   tile per project in its colour with its short name (else its initials), the
   main document's words and its open suggestions ("6.2k words", "3 open"),
   the current one marked (and, if Settings ▸ Window says so, a thin bar in the
-  project's colour at the top). A click on a tile opens the project's main
-  document in a tab (or brings it forward); on the current project's tile it
-  shows or hides the sidebar; a right-click: Open Project Folder in Finder, Project Info…,
+  project's colour at the top). A click on a tile brings the project's
+  window forward (none open: its main document in a new window); on the
+  current project's tile it shows or hides the sidebar; a right-click: Open Project Folder in Finder, Project Info…,
   Remove from Bar; `+` is Open Project…. File ▸ Project Info… (⌘I) is a card
   of the fields of `write.toml`, written on Done (Esc drops it). The bar and
   the projects opened last are kept in the app's `state.json`.

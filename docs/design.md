@@ -119,9 +119,14 @@ One app later is then a matter of windows, not code.
 
 - Opens any text file: Open With and the Dock, `⌘O`, `⌘N` for a blank one,
   a command (`pw paper.md`, not yet), files dropped. A new window is untitled
-  text kept in the window, saved with `⌘S` (a file is saved as typed).
-  Files open as macOS window tabs;
-  a tab dragged out is a window of its own, and as many windows as wanted.
+  text kept in its tab, saved with `⌘S` (a file is saved as typed).
+  A window per project, a tab per file (`tabs.rs`): each tab is a page of its
+  own, a child of the window, shown in front or hidden but alive (text, undo,
+  scroll, find kept), so the backend's per-document state stays per page.
+  The pages draw the strip of tabs themselves (TabStrip of
+  papers-write/project, shared with papers-review). macOS's own tabs are not
+  used: on recent macOS their bar cannot be hidden, and they are macOS only;
+  this works the same on Linux and Windows.
   Opens in well under a second: the library, pandoc and git are loaded when
   first needed. It stays in the menu bar when the last window closes, as
   Papers Desktop does, so the next window is there at once.
@@ -131,10 +136,11 @@ One app later is then a matter of windows, not code.
 - A project (File ▸ Open Project, a folder) adds the project bar, as in
   papers-review and with its component: a tile per project in its colour
   with its short name, and a bar in its colour at the top of the window. A
-  file opened from inside a project's folder (or below) belongs to it. A tile
-  opens the project's main document as a tab: the app stays one window per
-  document, and the bar switches documents, not the window's content as in
-  papers-review.
+  file opened from inside a project's folder (or below) belongs to it, and
+  opens in its window. A tile brings that project's window forward (or opens
+  it with its main document): each project keeps its window and tabs, where
+  papers-review switches the window's content. papers-review may later move
+  to a page per tab too.
 - What differs from papers-review is what a project says. No due date: the
   tile shows the main document's words and its open suggestions (whether the
   last build passed, later). The info card asks for the name, short name,

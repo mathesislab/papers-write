@@ -1,7 +1,7 @@
 // The outline of a document: its headings (Markdown `#`…`######` and underlined ones; `\section`… in a LaTeX file) with
 // their level and where they are, for the column beside the text. A pure function of the state, tested without an editor.
 
-import { language, syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, language, syntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
 
 /** A heading: its level (1 is the shallowest the markup has: `#`, `\part`), its text, and where its line begins.
@@ -84,7 +84,8 @@ export function outline(state: EditorState): Heading[] {
     return found;
   }
   const attributes: string[] = [];
-  syntaxTree(state).iterate({
+  // the whole text parsed (the state's own tree may stop short of it when the first parse ran out of time)
+  (ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state)).iterate({
     enter(node) {
       const m = /^(?:ATXHeading|SetextHeading)([1-6])$/.exec(node.name);
       if (!m) return;

@@ -79,11 +79,7 @@ impl Host for Write {
         crate::projects::save_windows(app, windows);
     }
 
-    fn sidebar(&self, app: &AppHandle, root: Option<&Path>) -> Sidebar {
-        crate::projects::sidebar(app, root)
-    }
-
-    fn set_sidebar(&self, app: &AppHandle, root: Option<&Path>, sidebar: Sidebar) {
-        crate::projects::set_sidebar(app, root, sidebar);
+    fn with_sidebars(&self, app: &AppHandle, f: &mut dyn FnMut(&mut Sidebars)) {
+        crate::projects::with_sidebars(app, f);
     }
 }

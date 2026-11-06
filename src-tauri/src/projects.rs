@@ -17,7 +17,7 @@ use write_core::project::{self, Manifest, Project};
 use write_core::review::{Kind, Review, State};
 
 use crate::documents;
-use crate::state::{Layout, Saved, SavedWindow, Sidebar};
+use crate::state::{Layout, Saved, SavedWindow, Sidebars};
 
 #[derive(Default)]
 pub struct Projects {
@@ -119,20 +119,9 @@ pub fn save_windows(app: &AppHandle, windows: Vec<SavedWindow>) {
     with_saved(app, |saved| saved.windows = windows);
 }
 
-/// A project's sidebar as kept (none: the pages of no project); the last one changed for a project shown for the
-/// first time.
-pub fn sidebar(app: &AppHandle, root: Option<&Path>) -> Sidebar {
-    with_saved(app, |saved| root.and_then(|r| saved.sidebars.get(r)).unwrap_or(&saved.sidebar).clone())
-}
-
-/// A project's sidebar kept.
-pub fn set_sidebar(app: &AppHandle, root: Option<&Path>, sidebar: Sidebar) {
-    with_saved(app, |saved| {
-        if let Some(root) = root {
-            saved.sidebars.insert(root.to_path_buf(), sidebar.clone());
-        }
-        saved.sidebar = sidebar;
-    });
+/// The projects' sidebars, read or changed by `f` (papers-tabs), and saved when changed.
+pub fn with_sidebars(app: &AppHandle, f: &mut dyn FnMut(&mut Sidebars)) {
+    with_saved(app, |saved| f(&mut saved.sidebars));
 }
 
 /// The projects of File ▸ Open Recent, as the app kept them.

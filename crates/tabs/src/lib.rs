@@ -64,6 +64,34 @@ impl Default for Sidebar {
     }
 }
 
+/// The projects' sidebars as kept, and the last one changed, which a project shown for the first time takes and then
+/// keeps as its own (a project does not follow another's changes). Kept by the app (`Host::with_sidebars`); its fields
+/// are those of the app's saved state (`#[serde(flatten)]`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Sidebars {
+    pub sidebars: std::collections::BTreeMap<PathBuf, Sidebar>,
+    pub sidebar: Sidebar,
+}
+
+impl Sidebars {
+    /// A project's sidebar (none: the pages of no project, which show the last one changed).
+    pub fn of(&mut self, root: Option<&Path>) -> Sidebar {
+        match root {
+            Some(root) => self.sidebars.entry(root.to_path_buf()).or_insert_with(|| self.sidebar.clone()).clone(),
+            None => self.sidebar.clone(),
+        }
+    }
+
+    /// A project's sidebar changed.
+    pub fn set(&mut self, root: Option<&Path>, sidebar: Sidebar) {
+        if let Some(root) = root {
+            self.sidebars.insert(root.to_path_buf(), sidebar.clone());
+        }
+        self.sidebar = sidebar;
+    }
+}
+
 /// How pages share windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Windows {
@@ -145,11 +173,8 @@ pub trait Host: Send + Sync + 'static {
     /// The windows open now, to open again at the next start.
     fn save_windows(&self, app: &AppHandle, windows: Vec<SavedWindow>);
 
-    /// A project's sidebar as kept (none: the pages of no project).
-    fn sidebar(&self, app: &AppHandle, root: Option<&Path>) -> Sidebar;
-
-    /// A project's sidebar as it is now, to keep.
-    fn set_sidebar(&self, app: &AppHandle, root: Option<&Path>, sidebar: Sidebar);
+    /// The sidebars as kept, given to `f` to read or change; kept again after.
+    fn with_sidebars(&self, app: &AppHandle, f: &mut dyn FnMut(&mut Sidebars));
 }
 
 /// The windows' tabs, by window label, and the app's `Host`: managed by the app (`app.manage(Tabs::new(host))`).
@@ -790,7 +815,10 @@ pub mod commands {
     #[tauri::command]
     pub fn sidebar(page: Webview) -> Sidebar {
         let app = page.app_handle();
-        host(app).sidebar(app, project_of_page(app, page.label()).as_deref())
+        let root = project_of_page(app, page.label());
+        let mut sidebar = Sidebar::default();
+        host(app).with_sidebars(app, &mut |s| sidebar = s.of(root.as_deref()));
+        sidebar
     }
 
     /// The sidebar of the asking page's project changed: kept, and the project's other pages told
@@ -799,11 +827,30 @@ pub mod commands {
     pub fn set_sidebar(page: Webview, sidebar: Sidebar) {
         let app = page.app_handle();
         let root = project_of_page(app, page.label());
-        host(app).set_sidebar(app, root.as_deref(), sidebar.clone());
+        host(app).with_sidebars(app, &mut |s| s.set(root.as_deref(), sidebar.clone()));
         for other in pages_of_set(app, root.as_deref()) {
             if other != page.label() {
                 let _ = app.emit_to(EventTarget::webview(&other), "sidebar-changed", &sidebar);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_project_shown_first_takes_the_last_sidebar_changed_and_then_keeps_its_own() {
+        let (a, b) = (Path::new("/a"), Path::new("/b"));
+        let outline = Sidebar { tab: Some("outline".into()), ..Sidebar::default() };
+        let files = Sidebar { tab: Some("files".into()), ..Sidebar::default() };
+        let mut s = Sidebars::default();
+        s.set(Some(a), outline.clone());
+        assert_eq!(s.of(Some(b)), outline);
+        s.set(Some(a), files.clone());
+        assert_eq!(s.of(Some(b)), outline);
+        assert_eq!(s.of(Some(a)), files);
+        assert_eq!(s.of(None), files);
     }
 }

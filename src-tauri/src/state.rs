@@ -25,14 +25,13 @@ pub struct Saved {
     pub layouts: BTreeMap<PathBuf, Layout>,
     /// the windows open as the app quit, to open again at the next start
     pub windows: Vec<SavedWindow>,
-    /// the sidebar of each project
-    pub sidebars: BTreeMap<PathBuf, Sidebar>,
-    /// the sidebar of the pages of no project, and of a project shown for the first time: the last one changed
-    pub sidebar: Sidebar,
+    /// the sidebar of each project, and the last one changed (`sidebars` and `sidebar` in the file)
+    #[serde(flatten)]
+    pub sidebars: Sidebars,
 }
 
-/// A project's tabs and sidebar, and a window's projects, as papers-tabs saves them.
-pub use crate::tabs::{Layout, SavedWindow, Sidebar};
+/// A project's tabs, the projects' sidebars, and a window's projects, as papers-tabs saves them.
+pub use crate::tabs::{Layout, SavedWindow, Sidebars};
 
 impl Saved {
     /// What `dir` keeps; nothing when the file is missing or broken.
@@ -83,6 +82,17 @@ impl Saved {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sidebars_are_kept_as_two_fields_of_the_file() {
+        let json = r#"{"sidebars":{"/a":{"shown":false,"width":300.0,"tab":"outline"}},"sidebar":{"shown":true,"width":250.0,"tab":null}}"#;
+        let saved: Saved = serde_json::from_str(json).unwrap();
+        assert_eq!(saved.sidebars.sidebars[Path::new("/a")].width, 300.0);
+        assert_eq!(saved.sidebars.sidebar.width, 250.0);
+        let back = serde_json::to_value(&saved).unwrap();
+        assert_eq!(back["sidebars"]["/a"]["tab"], "outline");
+        assert_eq!(back["sidebar"]["width"], 250.0);
+    }
 
     #[test]
     fn opened_projects_come_first_once_and_join_the_bar_at_the_end() {

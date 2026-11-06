@@ -1,14 +1,16 @@
 <script lang="ts">
   // The builds of a document, over its editor: Build (⌘B), Build and Show PDF (⇧⌘B) and Marked-up PDF… of the Build
   // menu come to `run`. The document is written first (`flush`), then the backend runs texmark (and for the marked-up
-  // PDF latexdiff and latexmk; for a .tex document latexmk, and latexdiff) and tells only the status: `build-status`, shown as a mark in the foot
-  // of the window, which stays: Build (nothing built yet; a click builds), building, built (the time of day; a click
-  // shows the PDF), failed. A failure, or LaTeX errors in a PDF that was made, are listed in a sheet with the log's
+  // PDF latexdiff and latexmk; for a .tex document latexmk, and latexdiff) and tells only the status: `build-status`, shown in the foot of the window, where it stays: a split button
+  // (Build, Building…, Built 14:02, Build failed) whose click builds and shows the PDF, its ▾ the builds to choose
+  // from (Build, Build and Show PDF, Marked-up PDF…, Show PDF), and a button for the errors when there are some. A failure, or LaTeX errors in a PDF that was made, are listed in a sheet with the log's
   // path. The marked-up PDF asks first which earlier version: the tags and the last commits of the file in git, or
   // another file. The error of a .tex document at one of its own lines (`here`), or of a Markdown build at the line it
   // was matched to (`md_line`), is a button: it takes the cursor to the line (`ongoto`).
 
   import { invoke } from "@tauri-apps/api/core";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
+  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { onMount } from "svelte";
   import { listen } from "$lib/events";
 
@@ -60,21 +62,21 @@
           : `${status.what === "diff" ? "Marked-up PDF" : "Build"} failed`,
   );
   const title = $derived(
-    !status
-      ? "Build (⌘B)"
-      : status.state === "building"
-        ? ""
-        : status.state === "failed" || errors
-          ? "Show the errors"
-          : `Made in ${status.seconds?.toFixed(1)} s. Show the PDF`,
+    status?.state === "done" ? `Made in ${status.seconds?.toFixed(1)} s. Build and Show PDF (⇧⌘B)` : "Build and Show PDF (⇧⌘B)",
   );
 
-  /** A click on the mark: a build, the errors, or the PDF. */
-  function clicked() {
-    if (!status) return void run("build");
-    if (status.state === "building") return;
-    if (status.state === "failed" || errors) sheet = true;
-    else if (status.pdf) void request("open_document", { path: status.pdf });
+  /** The ▾ beside the button: the builds to choose from, and the PDF made last. */
+  async function menu(e: MouseEvent) {
+    const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const pdf = status?.state === "done" ? status.pdf : null;
+    const items = await Promise.all([
+      MenuItem.new({ text: "Build", accelerator: "CmdOrCtrl+B", action: () => void run("build") }),
+      MenuItem.new({ text: "Build and Show PDF", accelerator: "Shift+CmdOrCtrl+B", action: () => void run("build-show") }),
+      PredefinedMenuItem.new({ item: "Separator" }),
+      MenuItem.new({ text: "Marked-up PDF…", action: () => void run("marked-up") }),
+      ...(pdf ? [MenuItem.new({ text: "Show PDF", action: () => void request("open_document", { path: pdf }) })] : []),
+    ]);
+    await (await Menu.new({ items })).popup(new LogicalPosition(at.left, at.top));
   }
 
   /** The status, and the sheet for what failed. */
@@ -139,13 +141,24 @@
 {#if refused}
   <button class="mark error" onclick={() => (refused = "")} title="{refused} (a click dismisses it)">{refused}</button>
 {:else if status || can}
-  <button class="mark" class:error={status?.state === "failed"} onclick={clicked} {title}>
-    {#if status?.state === "building"}<span class="spin" aria-hidden="true"></span>{:else}
-      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
-        <path d="M4 1.75h5.5L12.5 4.75v9.5h-8.5z" /><path d="M9.25 1.75v3.25h3.25" />
-      </svg>
-    {/if}{label}{#if errors && status?.state === "done"}<span class="errors">· {errors} LaTeX error{errors === 1 ? "" : "s"}</span>{/if}
-  </button>
+  <!-- a click builds and shows the PDF; the ▾ is the other builds; what went wrong is a button of its own -->
+  <div class="split" class:error={status?.state === "failed"}>
+    <button class="mark" onclick={() => status?.state !== "building" && run("build-show")} {title}>
+      {#if status?.state === "building"}<span class="spin" aria-hidden="true"></span>{:else}
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
+          <path d="M4 1.75h5.5L12.5 4.75v9.5h-8.5z" /><path d="M9.25 1.75v3.25h3.25" />
+        </svg>
+      {/if}{label}
+    </button>
+    <button class="more" onclick={menu} title="Build, Build and Show PDF, Marked-up PDF…" aria-label="Builds">
+      <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+    </button>
+  </div>
+  {#if status && status.state !== "building" && (status.state === "failed" || errors)}
+    <button class="errors" onclick={() => (sheet = true)} title="Show the errors">
+      {status.state === "failed" ? "Show why" : `${errors} LaTeX error${errors === 1 ? "" : "s"}`}
+    </button>
+  {/if}
 {/if}
 
 {#if sheet && status && status.state !== "building"}
@@ -220,31 +233,49 @@
     text-align: left;
     cursor: pointer;
   }
-  .mark {
+  .split {
+    display: inline-flex;
+    flex: none;
+    align-items: stretch;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .mark,
+  .more,
+  .errors {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    min-width: 0;
-    flex: none;
-    max-width: 50%;
-    overflow: hidden;
     font: inherit;
     font-size: 11.5px;
     color: var(--muted);
     background: none;
     border: none;
-    border-radius: 5px;
-    padding: 1px 6px;
+    padding: 1px 7px;
     white-space: nowrap;
-    text-overflow: ellipsis;
   }
-  .mark:hover {
+  .more {
+    padding: 1px 5px;
+    border-left: 1px solid var(--line);
+  }
+  .mark:hover,
+  .more:hover,
+  .errors:hover {
     color: var(--fg);
     background: var(--chip);
   }
-  .mark.error,
+  .split.error .mark,
   .errors {
     color: var(--error);
+  }
+  .errors {
+    flex: none;
+    border-radius: 5px;
+  }
+  .mark.error {
+    color: var(--error);
+    border-radius: 5px;
   }
   .spin {
     display: inline-block;

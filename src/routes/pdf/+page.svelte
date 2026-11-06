@@ -7,7 +7,7 @@
   import { onMount, tick } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
   import { listen } from "$lib/events";
-  import Tabs from "$lib/Tabs.svelte";
+  import { Tabs } from "papers-write/project";
   import "$lib/theme.css";
 
   let path = $state<string | null | undefined>();

@@ -9,7 +9,7 @@
   import { EditorState } from "@codemirror/state";
   import { FileEditor, PREFS, type EditorPrefs, type ReviewHandlers, type ReviewItem } from "papers-write/editor";
   import { applyEditor, watchSettings } from "$lib/settings";
-  import Tabs from "$lib/Tabs.svelte";
+  import { Tabs } from "papers-write/project";
   import "$lib/theme.css";
 
   type History = { title: string; text: string; items: ReviewItem[]; markdown: boolean };

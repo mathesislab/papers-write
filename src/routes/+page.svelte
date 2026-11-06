@@ -44,7 +44,7 @@
   import { ensureSyntaxTree } from "@codemirror/language";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
-  import { ProjectBar, cssOf } from "papers-write/project";
+  import { ProjectBar, Tabs, cssOf } from "papers-write/project";
   import ProjectCard from "$lib/ProjectCard.svelte";
   import type { Bar } from "$lib/projects";
   import Preview from "$lib/Preview.svelte";
@@ -79,7 +79,6 @@
   import Git from "$lib/Git.svelte";
   import GitBar from "$lib/GitBar.svelte";
   import ModeControl from "$lib/ModeControl.svelte";
-  import Tabs from "$lib/Tabs.svelte";
   import Sidebar, { type Tab } from "$lib/Sidebar.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";

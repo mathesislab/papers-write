@@ -1,7 +1,7 @@
 //! The windows of the Papers apps (Papers Write, Papers Review) and their tabs. A window (`win-N`) holds pages, one
 //! per tab, as children filling it. A window shows one project at a time: its pages are grouped in sets, one per
-//! project, the one shown first; the tab in front of it is shown, every other page hidden but alive (text, undo,
-//! scroll and find stay). A project's tile switches the window to that project (its tabs as left, or as saved, else
+//! project, the one shown first; the page of the tab in front of it is above the others, which stay behind it,
+//! alive and drawn (text, undo, scroll and find stay). A project's tile switches the window to that project (its tabs as left, or as saved, else
 //! what the app opens it with), or brings forward the window that shows it; Open in New Window gives it a window of
 //! its own. A file opens in its project's set, the window switched to it; a file outside any project in the set
 //! shown in front. When the app says so (`Host::windows`), each project, or each page, has a window of its own.
@@ -199,6 +199,9 @@ pub struct Tabs {
     /// the pages drawn (`page_ready`), which may be shown: one that is not stays hidden, the page shown before it
     /// staying in view, so a tab never shows an empty page
     ready: Mutex<HashSet<String>>,
+    /// the page above the others of each window: the one in view (the model's front may be a page still being drawn,
+    /// or none yet, as a project comes)
+    on_top: Mutex<HashMap<String, String>>,
 }
 
 impl Tabs {
@@ -213,6 +216,7 @@ impl Tabs {
             restoring: AtomicBool::new(false),
             folders: Mutex::default(),
             ready: Mutex::default(),
+            on_top: Mutex::default(),
         }
     }
 }
@@ -382,8 +386,12 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
         LogicalPosition::new(0.0, 0.0),
         LogicalSize::new(size.width, size.height),
     )?;
-    // hidden until drawn (`page_ready`); a page that never says so is shown after a while all the same
-    let _ = page.hide();
+    // behind the page in view till it says it is drawn (`page_ready`); one that never says so comes to the front
+    // after a while all the same
+    let on_top = app.state::<Tabs>().on_top.lock().unwrap().get(window.label()).cloned();
+    if let Some(shown) = on_top.and_then(|f| app.get_webview(&f)) {
+        behind(&page, &shown);
+    }
     let (handle, waited) = (app.clone(), label.to_string());
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(2));
@@ -405,8 +413,31 @@ pub fn ready(app: &AppHandle, page: &str) {
     }
 }
 
-/// The page of the window's tab in front shown, and every other page hidden, once it is drawn; till then the page
-/// shown before stays.
+/// A page put behind `other` in its window: drawn, but not seen (AppKit stacks a window's views in the order they
+/// were added; what is above the pages, a pane of the app's, stays above).
+fn behind(page: &Webview, other: &Webview) {
+    #[cfg(target_os = "macos")]
+    {
+        let page = page.clone();
+        let _ = other.with_webview(move |other| {
+            let other = other.inner() as usize;
+            let _ = page.with_webview(move |page| {
+                use objc2_app_kit::{NSView, NSWindowOrderingMode};
+                // the web views live while their window does, and this runs on the main thread
+                let (view, other) = unsafe { (&*(page.inner() as *const NSView), &*(other as *const NSView)) };
+                if let Some(parent) = unsafe { view.superview() } {
+                    parent.addSubview_positioned_relativeTo(view, NSWindowOrderingMode::Below, Some(other));
+                }
+            });
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (page, other);
+}
+
+/// The page of the window's tab in front put above the window's other pages, once it is drawn; till then the page
+/// shown before stays. The pages are never hidden, only stacked: a page hidden is not drawn, and shows empty for a
+/// moment when shown again.
 fn reveal(app: &AppHandle, window: &str) {
     let Some(front) = front_of(app, window) else {
         return;
@@ -414,12 +445,14 @@ fn reveal(app: &AppHandle, window: &str) {
     if !app.state::<Tabs>().ready.lock().unwrap().contains(&front) {
         return;
     }
+    let Some(shown) = app.get_webview(&front) else {
+        return;
+    };
+    app.state::<Tabs>().on_top.lock().unwrap().insert(window.to_string(), front.clone());
     for other in pages_of(app, window) {
         if let Some(webview) = app.get_webview(&other) {
-            if other == front {
-                let _ = webview.show();
-            } else {
-                let _ = webview.hide();
+            if other != front {
+                behind(&webview, &shown);
             }
             let _ = app.emit_to(EventTarget::webview(&other), "tab-shown", other == front);
         }
@@ -524,6 +557,7 @@ pub fn remove(app: &AppHandle, page: &str) {
         let state = app.state::<Tabs>();
         state.windows.lock().unwrap().remove(&window_label);
         state.order.lock().unwrap().retain(|w| *w != window_label);
+        state.on_top.lock().unwrap().remove(&window_label);
         host(app).window_closed(app, &window_label);
         if let Some(window) = app.get_window(&window_label) {
             let _ = window.destroy();
@@ -551,6 +585,7 @@ pub fn window_closed(app: &AppHandle, window: &str) {
         host(app).closed(app, page);
         state.ready.lock().unwrap().remove(page);
     }
+    state.on_top.lock().unwrap().remove(window);
     host(app).window_closed(app, window);
     if !state.quitting.load(Ordering::SeqCst) {
         state.order.lock().unwrap().retain(|w| w != window);

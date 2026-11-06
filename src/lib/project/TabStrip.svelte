@@ -4,10 +4,13 @@
 </script>
 
 <script lang="ts">
+  import type { Snippet } from "svelte";
+
   // The tabs of a window as a strip, shared by papers-write and papers-review: each as wide as its name needs
   // (within bounds), the one in front marked, a close button at its right (shown on the tab in front and on hover).
   // A click chooses a tab (`onselect`), the close button or a middle click closes it (`onclose`). It only draws: what
-  // the tabs are and what choosing does are the app's. Nothing shows for fewer than `least` tabs.
+  // the tabs are and what choosing does are the app's. Nothing shows for fewer than `least` tabs. An app may put a
+  // control of its own on a tab, before the close button (`extra`, shown like it).
   //
   // Its colours are the app's: --fg, --muted, --bg (the tab in front), --chip (hover), --border.
 
@@ -17,6 +20,7 @@
     least = 2,
     onselect,
     onclose,
+    extra,
   }: {
     tabs: TabItem[];
     /** the id of the tab in front */
@@ -25,6 +29,8 @@
     least?: number;
     onselect: (id: string) => void;
     onclose: (id: string) => void;
+    /** a control of the app's on a tab, before its close button */
+    extra?: Snippet<[TabItem]>;
   } = $props();
 </script>
 
@@ -43,6 +49,10 @@
         onkeydown={(e) => e.key === "Enter" && onselect(tab.id)}
       >
         <span class="name">{tab.title}</span>
+        {#if extra}
+          <!-- a click on the app's control is not a click on the tab -->
+          <span class="extra" role="none" onclick={(e) => e.stopPropagation()}>{@render extra(tab)}</span>
+        {/if}
         <button
           class="close"
           title="Close Tab"
@@ -106,7 +116,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .close {
+  .close,
+  .extra > :global(*) {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -120,11 +131,17 @@
     border-radius: 4px;
     visibility: hidden;
   }
+  .extra {
+    display: contents;
+  }
   .tab.on .close,
-  .tab:hover .close {
+  .tab:hover .close,
+  .tab.on .extra > :global(*),
+  .tab:hover .extra > :global(*) {
     visibility: visible;
   }
-  .close:hover {
+  .close:hover,
+  .extra > :global(*:hover) {
     color: var(--fg);
     background: color-mix(in srgb, var(--fg) 12%, transparent);
   }

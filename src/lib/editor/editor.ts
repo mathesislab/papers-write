@@ -303,8 +303,15 @@ const GUTTER = "3.5em";
 /** The text as a column of `COLUMN` at most, in the middle, as Obsidian has it: the room left is a margin on each
  *  side (of the lines, so that a click there still goes into the text), down to the usual padding in a narrow window.
  *  With the line numbers, they stand beside the column. */
+/** The margin on each side of the column, shaded (`--editor-margin`, else a touch of the text's colour in the
+ *  background's) so that the width of the text shows; none in a window too narrow for one. */
+const MARGIN = `max(0px, calc((100cqw - ${COLUMN}) / 2))`;
 const readable = EditorView.theme({
   "&": { containerType: "inline-size" },
+  ".cm-scroller": {
+    backgroundImage: `linear-gradient(to right, var(--shade) ${MARGIN}, transparent ${MARGIN}, transparent calc(100% - ${MARGIN}), var(--shade) calc(100% - ${MARGIN}))`,
+    "--shade": "var(--editor-margin, color-mix(in srgb, var(--fg, #000) 3.5%, var(--bg, #fff)))",
+  },
   // more specific than the theme's padding of the lines, which it overrides
   ".cm-content .cm-line": { paddingInline: `max(18px, calc((100cqw - ${COLUMN}) / 2))` },
   ".cm-gutters": { paddingLeft: `max(0px, calc((100cqw - ${COLUMN}) / 2 - ${GUTTER}))` },

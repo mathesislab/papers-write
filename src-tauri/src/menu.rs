@@ -1,6 +1,8 @@
 //! The menu bar. New, Open…, Open Recent (the projects opened before), Open Project…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
 //! front (event `edit`, the id of the item), File ▸ Exchange to its page (event `exchange`), Cite as [@key] to the list of references (event `cite-key`), Project Info… to its page (event `project-info`), and Save to its page (event `menu`).
 //! The Review menu goes to the page of the window in front as `review-menu` with the id of the item, the Git menu as `git-menu`.
+//! Edit ▸ Find goes to the page in front as `find` (the text's bar, a PDF's search, the sidebar's search of the
+//! project); View ▸ Show Preview, Show Sidebar and Show Outline as `preview`, `sidebar` and `outline`.
 
 use tauri::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use std::path::{Path, PathBuf};
@@ -141,6 +143,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
+            &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
         ],
     )?;
@@ -270,7 +273,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
-        "preview" | "outline" => {
+        "preview" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
             }

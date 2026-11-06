@@ -17,8 +17,7 @@
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, setSpelling, type EditorPrefs } from "./editor";
   import type { Completion, Diagnostics, HoverSources, Spelling } from "./types";
   import { recheck } from "./diagnostics";
-  import { find as findIn, type FindCommand } from "./find";
-  import Outline from "./Outline.svelte";
+  import { find as findIn, replaceEverywhere, type FindCommand, type ProjectQuery } from "./find";
   import { currentHeading, outline as outlineOf, type Heading } from "./outline";
   import {
     accept as acceptItem,
@@ -44,7 +43,7 @@
     hover,
     diagnostics,
     spelling,
-    outline = false,
+    onoutline,
     review,
     placeholder,
     autofocus = false,
@@ -76,8 +75,9 @@
     diagnostics?: Diagnostics;
     /** the system's spell checker on the prose (Markdown files only); none turns it off */
     spelling?: Spelling;
-    /** the outline of the headings in a column at the left of the text (Markdown and LaTeX) */
-    outline?: boolean;
+    /** the headings of the text and the one the cursor is under, told as they change (Markdown and LaTeX), for an
+     *  outline the app shows (Outline); `goToHeading` takes the cursor to one */
+    onoutline?: (headings: Heading[], here: number) => void;
     /** what the review asks of the app: with it, the items given by `setReview` are drawn over the text and typing in
      *  suggest mode (`setMode`) makes the user's suggestions (none without it) */
     review?: ReviewHandlers;
@@ -113,28 +113,27 @@
   const entries = $derived([...rules, ...[...LATEX].map(([keys, insert]) => ({ keys, insert }))]);
   // ⌘/ in the editor lists the symbols (the menu's Symbols… has the key first, in the app)
   const listKey = Prec.high(keymap.of([{ key: "Mod-/", run: () => (list(), true) }]));
-  /** the headings of the text and the one the cursor is under (kept while the outline is shown) */
-  let headings = $state.raw<Heading[]>([]);
-  let here = $state(-1);
+  /** the headings of the text and the one the cursor is under (kept while someone listens) */
+  let headings: Heading[] = [];
+  let here = -1;
   const selection = EditorView.updateListener.of((u) => {
     if (u.selectionSet || u.docChanged) selected = selectedWords(u.state);
-    if (outline && (u.docChanged || u.selectionSet || u.viewportChanged)) {
+    if (onoutline && (u.docChanged || u.selectionSet)) {
+      const before = here;
       if (u.docChanged) headings = outlineOf(u.state);
       here = currentHeading(headings, u.state.selection.main.head);
+      if (u.docChanged || here !== before) onoutline(headings, here);
     }
   });
+  /** The headings of the text as it is, told (when someone listens). */
   function readHeadings() {
-    if (!outline || !editor) return;
+    if (!onoutline || !editor) return;
     headings = outlineOf(editor.state);
     here = currentHeading(headings, editor.state.selection.main.head);
+    onoutline(headings, here);
   }
-  // shown: the headings of the text as it is
-  $effect(() => {
-    outline;
-    readHeadings();
-  });
   /** A heading chosen in the outline: the cursor there, its line near the top. */
-  function goTo(heading: Heading) {
+  export function goToHeading(heading: Heading) {
     if (!editor) return;
     editor.dispatch({ selection: { anchor: heading.from }, effects: EditorView.scrollIntoView(heading.from, { y: "start", yMargin: 12 }) });
     editor.focus();
@@ -201,6 +200,11 @@
       if (items) showReview(editor, items);
     }
     readHeadings();
+    if (selecting) {
+      const { from, to } = selecting;
+      selecting = null;
+      queueMicrotask(() => select(from, to));
+    }
     onchange?.(file.text);
     [status, error] = ["saved", ""];
     if (autofocus && !editor.hasFocus) editor.focus();
@@ -294,12 +298,29 @@
   /** The lines at the cursor indented less or more (⌘[ and ⌘] of the Go menu). */
   export const outdent = () => editor && indentLess(editor);
   export const indent = () => editor && indentMore(editor);
-  /** The cursor at the start of line `n` (1-based; the last if there are fewer), in view, with the keys. */
   /** A command of Find (the menu's): the bar, the next or previous match, the selection to find. */
   export function find(what: FindCommand) {
     if (editor) findIn(editor, what);
   }
 
+  /** Every match of a search of the project replaced (in suggest mode, as suggestions). */
+  export function replaceAll(query: ProjectQuery, by: string) {
+    if (editor) replaceEverywhere(editor, query, by);
+  }
+
+  /** the range to select once the file is read, when asked before */
+  let selecting: { from: number; to: number } | null = null;
+
+  /** The range [from, to] (UTF-16) selected, in view, with the keys; once the file is read if it is not yet. */
+  export function select(from: number, to: number) {
+    if (!editor) return void (selecting = { from, to });
+    const end = editor.state.doc.length;
+    const range = { anchor: Math.min(from, end), head: Math.min(to, end) };
+    editor.dispatch({ selection: range, effects: EditorView.scrollIntoView(range.anchor, { y: "center" }) });
+    editor.focus();
+  }
+
+  /** The cursor at the start of line `n` (1-based; the last if there are fewer), in view, with the keys. */
   export function goToLine(n: number) {
     if (!editor) return;
     const { doc } = editor.state;
@@ -344,7 +365,6 @@
     </div>
   {/if}
   <div class="body">
-    {#if outline}<Outline {headings} current={here} onselect={goTo} />{/if}
     <div class="host" bind:this={host}></div>
   </div>
   {#if listing}

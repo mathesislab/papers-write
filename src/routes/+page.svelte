@@ -25,14 +25,18 @@
   //
   // A document of a project (a folder above it has write.toml) shows the project bar at the left (ProjectBar of
   // papers-write/project: a tile per project, the main document's words and open suggestions; a click opens the
-  // project's main document, a right-click its menu) and, when Settings ▸ Window says so, a thin bar in the project's colour at the top. Project
+  // project's main document, or for the current project shows or hides the sidebar; a right-click its menu) and, when Settings ▸ Window says so, a thin bar in the project's colour at the top. Project
   // Info… (⌘I, `project-info`) is a card over the window (ProjectCard); so is the card of a new project, asked for
   // when File ▸ Open Project… chose a folder without write.toml (`asking-project`). The bar is asked again on
   // `projects-changed`, when the window gets the focus, and a moment after the file or its review changes.
   //
   // View ▸ Show Preview (⇧⌘P, `preview`) toggles the pane at the right of a Markdown document: pandoc's HTML of the text
   // as typed (`preview`), asked 300 ms after the typing stops, and scrolled to the block the cursor is in.
-  // View ▸ Show Outline (⌥⌘O, `outline`) toggles the column of headings at the left of a Markdown or LaTeX document.
+  // The sidebar at the left (Sidebar: the files of the project or the document's folder, the outline, the search of
+  // the project) is shown and hidden by a click on the project's tile and View ▸ Show Sidebar (⌥⌘S, `sidebar`); View ▸
+  // Show Outline (⌥⌘O, `outline`) shows it on the outline, Edit ▸ Find ▸ Find in Project… (⇧⌘F) on the search. A
+  // match opened comes as `go-to` (or `pending_go_to` for a window made for it), Replace All of the search as
+  // `replace-all` to the windows of the files it changes.
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, untrack } from "svelte";
@@ -67,12 +71,15 @@
     type ReviewView,
     type HoverSources,
     type FindCommand,
+    type Heading,
+    type ProjectQuery,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
   import Git from "$lib/Git.svelte";
   import GitBar from "$lib/GitBar.svelte";
   import ModeControl from "$lib/ModeControl.svelte";
+  import Sidebar, { type Tab } from "$lib/Sidebar.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Settings } from "$lib/settings";
@@ -145,22 +152,54 @@
   })();
   let width = $state(stored >= 240 ? stored : 0);
   let panes = $state<HTMLElement>();
-  /** the outline of the headings at the left of the text: shown, kept for the next window */
-  let outlining = $state(
-    (() => {
-      try {
-        return localStorage.getItem("outline") === "1";
-      } catch {
-        return false;
-      }
-    })(),
-  );
-  function toggleOutline() {
-    outlining = !outlining;
+  // The sidebar at the left (Sidebar): shown or not, its tab and its width, kept for the next window.
+  const kept = (key: string) => {
     try {
-      localStorage.setItem("outline", outlining ? "1" : "0");
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
+  const keep = (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
     } catch {}
-    if (!outlining) editor?.focus();
+  };
+  let siding = $state(kept("sidebar") === "1");
+  let sideTab = $state<Tab>((kept("sidebar-tab") as Tab | null) ?? "files");
+  let sideWidth = $state(Math.max(180, Number(kept("sidebar-width")) || 240));
+  let sidebar = $state<Sidebar>();
+  $effect(() => keep("sidebar", siding ? "1" : "0"));
+  $effect(() => keep("sidebar-tab", sideTab));
+  /** the headings of the document and the one the cursor is under, for the outline */
+  let headings = $state.raw<Heading[]>([]);
+  let here = $state(-1);
+
+  function toggleSidebar() {
+    siding = !siding;
+    if (!siding) editor?.focus();
+  }
+
+  /** View ▸ Show Outline: the sidebar on its outline, or hidden when it shows it. */
+  function toggleOutline() {
+    if (siding && sideTab === "outline") return toggleSidebar();
+    siding = true;
+    sideTab = "outline";
+  }
+
+  /** The sidebar's right edge dragged: its width. */
+  function resizeSide(e: PointerEvent) {
+    const edge = e.currentTarget as HTMLElement;
+    edge.setPointerCapture(e.pointerId);
+    const left = (edge.parentElement as HTMLElement).getBoundingClientRect().left;
+    const move = (m: PointerEvent) => (sideWidth = Math.round(Math.min(Math.max(m.clientX - left, 180), 520)));
+    const stop = () => {
+      edge.removeEventListener("pointermove", move);
+      edge.removeEventListener("pointerup", stop);
+      keep("sidebar-width", String(sideWidth));
+    };
+    edge.addEventListener("pointermove", move);
+    edge.addEventListener("pointerup", stop);
   }
   const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), log: (e) => log.push(e), colours: (m) => setColours(withOwn(m)) });
   /** the review panel at the right: shown (the preview is not while it is) */
@@ -176,6 +215,9 @@
     path = (await invoke<{ path: string | null }>("document")).path;
     loadBar();
     takeReceived();
+    // a match of the project's search opened this document: selected once it is read
+    const going = await invoke<{ at: number; end: number } | null>("pending_go_to").catch(() => null);
+    if (going) queueMicrotask(() => editor?.select(going.at, going.end));
   }
 
   /** the reviews sent back and joined to this document (the backend says them, a window made for it is not listening yet) */
@@ -194,6 +236,8 @@
   let barTimer: ReturnType<typeof setTimeout> | undefined;
   /** the thin bar in the project's colour at the top (Settings ▸ Window) */
   let colourBar = $state(false);
+  /** the folder the sidebar shows: the project's, else the document's */
+  const sideRoot = $derived(bar.current?.root ?? (path ? path.slice(0, path.lastIndexOf("/")) : null));
   const barColour = $derived(bar.current && colourBar ? cssOf(bar.current.colour) : null);
 
   async function loadBar() {
@@ -215,7 +259,9 @@
     asking = await invoke<string | null>("asking_project");
   }
 
+  /** A click on a tile: the current project's shows or hides the sidebar, another's switches to it. */
   function switchProject(root: string) {
+    if (root === bar.current?.root) return toggleSidebar();
     invoke("switch_project", { root }).catch((e) => (problem = String(e)));
   }
 
@@ -488,7 +534,11 @@
 
   /** Edit ▸ Find: in the text (the editor's bar), or in the project (the sidebar's search). */
   function findCommand(what: string) {
-    if (what === "find-project") return; // the sidebar's search: next commit
+    if (what === "find-project") {
+      if (!sideRoot) return say("Save the document first, to search its folder");
+      siding = true;
+      return queueMicrotask(() => sidebar?.find());
+    }
     editor?.find(what === "find-replace" ? "replace" : (what.replace(/^find-?/, "") || "find") as FindCommand);
   }
 
@@ -586,6 +636,9 @@
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", togglePreview),
       listen("outline", toggleOutline),
+      listen("sidebar", () => (sideRoot ? toggleSidebar() : say("Save the document first, to see its folder"))),
+      listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
+      listen<{ at: number; end: number }>("go-to", (e) => editor?.select(e.payload.at, e.payload.end)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
       listen<string>("find", (e) => findCommand(e.payload)),
       listen("references-changed", () => version++),
@@ -603,6 +656,23 @@
 <div class="window" class:coloured={barColour}>
 {#if bar.current && bar.tiles.length}
   <ProjectBar items={bar.tiles} onswitch={switchProject} onmenu={tileMenu} onadd={() => invoke("choose_project")} addTitle="Open Project… (⇧⌘O)" />
+{/if}
+{#if siding && sideRoot}
+  <div class="side" style:width="{sideWidth}px">
+    <Sidebar
+      bind:this={sidebar}
+      bind:tab={sideTab}
+      root={sideRoot}
+      front={path ?? null}
+      {headings}
+      {here}
+      outlined={markdown || latex}
+      onheading={(h) => editor?.goToHeading(h)}
+      onsay={say}
+    />
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="edge" onpointerdown={resizeSide}></div>
+  </div>
 {/if}
 <main style:--bar={reviewing ? "28px" : "0px"}>
   <div class="panes" bind:this={panes}>
@@ -625,7 +695,7 @@
         {hover}
         {diagnostics}
         spelling={spelling ? speller : undefined}
-        outline={outlining && (markdown || latex)}
+        onoutline={markdown || latex ? (h, i) => ([headings, here] = [h, i]) : undefined}
         autofocus
         extensions={[cursor]}
         review={session.handlers}
@@ -787,6 +857,20 @@
     flex: 1;
     min-width: 0;
     height: 100%;
+  }
+  .side {
+    position: relative;
+    flex: none;
+    height: 100%;
+  }
+  .edge {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 3;
   }
   .split {
     flex: none;

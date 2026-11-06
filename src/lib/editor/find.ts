@@ -173,6 +173,18 @@ function selected(state: EditorState): string {
   return from < to && !text.includes("\n") ? text : "";
 }
 
+/** A search of the project (write_core::search::Query), whose matches in this text are to be replaced. */
+export type ProjectQuery = { text: string; case: boolean; word: boolean; regex: boolean };
+
+/** Every match of `query` replaced by `by`, as Replace All of the bar does (an edit, or suggestions in suggest mode). */
+export function replaceEverywhere(view: EditorView, query: ProjectQuery, by: string) {
+  const before = getSearchQuery(view.state);
+  const q = new SearchQuery({ search: query.text, caseSensitive: query.case, wholeWord: query.word, regexp: query.regex, literal: true, replace: by });
+  view.dispatch({ effects: setSearchQuery.of(q) });
+  replaceAll(view);
+  view.dispatch({ effects: setSearchQuery.of(before) });
+}
+
 /** A command of the menu. */
 export function find(view: EditorView, what: FindCommand) {
   const open = searchPanelOpen(view.state);

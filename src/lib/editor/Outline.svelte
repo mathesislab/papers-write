@@ -32,11 +32,10 @@
 
 <style>
   .outline {
-    flex: none;
-    width: 210px;
+    height: 100%;
+    box-sizing: border-box;
     overflow-y: auto;
     padding: 8px 0 40px;
-    border-right: 1px solid var(--line);
     font-family: var(--editor-font, -apple-system, system-ui, sans-serif);
     font-size: 12.5px;
   }

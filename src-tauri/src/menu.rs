@@ -218,6 +218,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
+            &separator()?,
+            &item("previous-tab", "Show Previous Tab", Some("Shift+CmdOrCtrl+["))?,
+            &item("next-tab", "Show Next Tab", Some("Shift+CmdOrCtrl+]"))?,
         ],
     )?;
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
@@ -247,6 +250,8 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "settings" => crate::settings::show(app),
         "quit" => documents::quit(app),
         "close" => crate::tabs::close_front(app),
+        "previous-tab" => crate::tabs::step(app, -1),
+        "next-tab" => crate::tabs::step(app, 1),
         // the page writes the document, then asks for the build
         "save" | "build" | "build-show" | "marked-up" => {
             if let Some(window) = documents::front(app) {

@@ -38,7 +38,7 @@ them) are proposed upstream; until they are released,
   app quits open again at the next start; a window closed by hand does not. The tabs
   are a strip at the top of the text, each as wide as its name, the close
   button at its right (a middle click closes too); a tab in the back keeps
-  its text, undo, scroll and find. ⌘W closes the tab, the last tab its
+  its text, undo, scroll and find. ⇧⌘[ and ⇧⌘] show the tab before or after; ⌘W closes the tab, the last tab its
   window. ⌘N is a new tab of untitled text; ⌘S asks where to save it, and
   from then on it is that file. A tab or window with untitled text asks
   before closing.

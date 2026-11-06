@@ -372,13 +372,14 @@
 {/if}
 
 <style>
+  /* above the repository's item at the right of the window's foot, which opens it */
   .sheet {
     position: absolute;
     z-index: 6;
-    top: 12px;
-    right: 14px;
-    width: min(460px, calc(100% - 28px));
-    max-height: calc(100% - 60px);
+    bottom: calc(var(--foot, 0px) + 6px);
+    right: 8px;
+    width: min(460px, calc(100% - 16px));
+    max-height: calc(100% - var(--foot, 0px) - 60px);
     overflow: auto;
     box-sizing: border-box;
     padding: 10px 14px;

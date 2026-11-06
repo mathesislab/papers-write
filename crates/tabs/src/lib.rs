@@ -359,11 +359,10 @@ pub fn select(app: &AppHandle, page: &str) {
     let Some(window_label) = window_of(app, page) else {
         return;
     };
-    let (pages, was, now) = with_tabs(app, |w| {
+    let (pages, newly_shown) = with_tabs(app, |w| {
         let win = w.get_mut(&window_label)?;
-        let was = win.shown().map(Path::to_path_buf);
         win.bring(page);
-        Some((win.pages().cloned().collect::<Vec<_>>(), was, win.shown().map(Path::to_path_buf)))
+        Some((win.pages().cloned().collect::<Vec<_>>(), win.newly_shown()))
     })
     .unwrap_or_default();
     for other in &pages {
@@ -386,7 +385,7 @@ pub fn select(app: &AppHandle, page: &str) {
         let _ = webview.set_focus();
     }
     *app.state::<Tabs>().focused.lock().unwrap() = Some(window_label.clone());
-    if was != now {
+    if let Some(now) = newly_shown {
         host(app).shown(app, &window_label, now.as_deref());
     }
     host(app).focused(app, page);

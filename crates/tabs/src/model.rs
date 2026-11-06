@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Default)]
 pub struct Win {
     pub sets: Vec<Set>,
+    /// the project the app was last told the window shows (`newly_shown`)
+    told: Option<PathBuf>,
 }
 
 /// The tabs of one project in a window (none: files outside any project): their pages in order, the one in front.
@@ -50,6 +52,17 @@ impl Win {
     /// The project shown.
     pub fn shown(&self) -> Option<&Path> {
         self.sets.first()?.project.as_deref()
+    }
+
+    /// The project shown, when the app has not been told of it yet (a window's first, another switched to); it is
+    /// told now. Compared with what was told rather than with what was shown before a change, since a project's set
+    /// may come to the front before its first page does (`show_project`).
+    pub fn newly_shown(&mut self) -> Option<Option<PathBuf>> {
+        let now = self.shown().map(Path::to_path_buf);
+        (now != self.told).then(|| {
+            self.told = now.clone();
+            now
+        })
     }
 
     /// The set of `project` shown first, made when new; a loose file (no project) joins whatever is shown.
@@ -140,6 +153,22 @@ mod tests {
 
     fn fronts(win: &Win) -> Vec<(Option<&Path>, Option<&str>)> {
         win.sets.iter().map(|s| (s.project.as_deref(), s.front.as_deref())).collect()
+    }
+
+    #[test]
+    fn a_project_shown_is_told_once_even_when_its_set_came_first_empty() {
+        let mut w = win(&[("/a", &["1"])]);
+        assert_eq!(w.newly_shown(), Some(Some(PathBuf::from("/a"))));
+        assert_eq!(w.newly_shown(), None);
+        // a project switched to: its set first, empty, then its first page
+        w.sets.insert(0, Set { project: Some(PathBuf::from("/b")), ..Set::default() });
+        w.insert("2", None);
+        w.bring("2");
+        assert_eq!(w.newly_shown(), Some(Some(PathBuf::from("/b"))));
+        w.bring("1");
+        assert_eq!(w.newly_shown(), Some(Some(PathBuf::from("/a"))));
+        w.bring("1");
+        assert_eq!(w.newly_shown(), None);
     }
 
     #[test]

@@ -6,6 +6,15 @@ use super::store::{self, Error, Result};
 use super::text::{after, before, byte_of, slug, utf16_of};
 use super::Review;
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
+
+/// The records written one at a time: the next id is read from the person's file and the record appended to it with
+/// no other write in between (the app writes several at once: Replace All in suggest mode).
+static WRITING: Mutex<()> = Mutex::new(());
+
+fn one_at_a_time() -> MutexGuard<'static, ()> {
+    WRITING.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// What a person has just made: a suggestion or a comment on a range of the text it is made on. `from` and `to` are
 /// UTF-16 code units of that text (the current text; for a counter-suggestion, the text with the first one applied).
@@ -99,6 +108,7 @@ impl Review {
     /// A new suggestion or comment of `me` on `current_text`: its base written if new, the record appended to
     /// `me`'s file.
     pub fn add(doc: &Path, me: &Person, current_text: &str, new: NewRecord) -> Result<Record> {
+        let _turn = one_at_a_time();
         let id = next_id(doc, &slug(&me.name))?;
         let r = anchored(doc, id, current_text, &new)?;
         write(doc, me, r)
@@ -106,6 +116,7 @@ impl Review {
 
     /// A reply of `me` to the record `on`.
     pub fn reply(doc: &Path, me: &Person, on: &str, text: &str) -> Result<Record> {
+        let _turn = one_at_a_time();
         Self::exists(doc, on)?;
         let mut r = Record::blank(next_id(doc, &slug(&me.name))?, Kind::Reply);
         r.on = Some(on.to_string());
@@ -116,6 +127,7 @@ impl Review {
     /// A decision of `me` on the suggestion or comment `on`: accepted, rejected, resolved, reopened or withdrawn.
     /// (Accepting also needs the new text written: that is the caller's.)
     pub fn decide(doc: &Path, me: &Person, on: &str, decision: Decision) -> Result<Record> {
+        let _turn = one_at_a_time();
         Self::exists(doc, on)?;
         let mut r = Record::blank(next_id(doc, &slug(&me.name))?, Kind::Decision);
         r.on = Some(on.to_string());
@@ -126,6 +138,7 @@ impl Review {
     /// `me` edits their own suggestion or comment `old_id`: a new record, anchored on `current_text`, that
     /// supersedes it. It keeps the kind, the thread it is in (`on`) and, unless `new` gives one, the round.
     pub fn supersede(doc: &Path, me: &Person, current_text: &str, old_id: &str, new: NewRecord) -> Result<Record> {
+        let _turn = one_at_a_time();
         let slug = slug(&me.name);
         let path = store::person_path(doc, &slug);
         let old = if path.exists() { store::parse(&path)?.record.into_iter().find(|r| r.id == old_id) } else { None };
@@ -144,6 +157,7 @@ impl Review {
     /// leave it (`apply` of it onto `current_text`), which is written as its base. `new.from` and `new.to` are
     /// positions in that text, not in `current_text`.
     pub fn counter(doc: &Path, me: &Person, current_text: &str, on_suggestion: &str, new: NewRecord) -> Result<Record> {
+        let _turn = one_at_a_time();
         if new.kind != Kind::Suggestion {
             return Err(Error::Invalid("a counter-suggestion is a suggestion".into()));
         }
@@ -221,6 +235,29 @@ mod tests {
     fn range_of(text: &str, needle: &str) -> (usize, usize) {
         let b = text.find(needle).unwrap();
         (utf16_of(text, b), utf16_of(text, b + needle.len()))
+    }
+
+    #[test]
+    fn suggestions_made_at_once_have_ids_of_their_own() {
+        let d = doc("paper.md");
+        let words = ["grounding", "line", "retreats", "rapidly", "bed", "slopes", "inland", "show"];
+        let ids: Vec<String> = std::thread::scope(|s| {
+            let made: Vec<_> = words
+                .iter()
+                .map(|w| {
+                    let d = &d;
+                    s.spawn(move || {
+                        let (f, t) = range_of(TEXT, w);
+                        Review::add(d, &jane(), TEXT, NewRecord::suggestion(f, t, "")).unwrap().id
+                    })
+                })
+                .collect();
+            made.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let mut unique = ids.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), words.len(), "{ids:?}");
     }
 
     #[test]

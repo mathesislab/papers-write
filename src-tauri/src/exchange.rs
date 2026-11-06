@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use write_core::exchange::{self, Imported};
 use write_core::review::history::{self, Added, Change};
 use write_core::review::{self, Person};
@@ -16,7 +16,7 @@ use write_core::review::{self, Person};
 use crate::{documents, git};
 
 /// The file of the window, to take the review of.
-fn document_of(window: &WebviewWindow) -> Result<PathBuf, String> {
+fn document_of(window: &Webview) -> Result<PathBuf, String> {
     documents::path_of(window.app_handle(), window.label()).ok_or_else(|| "Save the document first (⌘S)".to_string())
 }
 
@@ -26,7 +26,7 @@ fn read(path: &Path) -> Result<String, String> {
 }
 
 /// The review changed on disk: the panes that show it read it again.
-fn changed(app: &AppHandle, window: &WebviewWindow) {
+fn changed(app: &AppHandle, window: &Webview) {
     let _ = app.emit_to(EventTarget::webview(window.label()), "review-changed", ());
 }
 
@@ -73,7 +73,7 @@ fn compare(doc: &Path, current: &str, source: &Source, author: Option<&Author>) 
 /// The window's document compared with a file, a branch or a commit: each change a suggestion of whoever made it
 /// (`author`, for a file). What was written.
 #[tauri::command]
-pub async fn compare_as_suggestions(app: AppHandle, window: WebviewWindow, source: Source, author: Option<Author>) -> Result<Added, String> {
+pub async fn compare_as_suggestions(app: AppHandle, window: Webview, source: Source, author: Option<Author>) -> Result<Added, String> {
     let doc = document_of(&window)?;
     let made = tauri::async_runtime::spawn_blocking(move || {
         let current = read(&doc)?;
@@ -89,7 +89,7 @@ pub async fn compare_as_suggestions(app: AppHandle, window: WebviewWindow, sourc
 
 /// The file to compare with, chosen in a dialog; none when it was cancelled.
 #[tauri::command]
-pub async fn choose_edited_copy(app: AppHandle, window: WebviewWindow) -> Result<Option<String>, String> {
+pub async fn choose_edited_copy(app: AppHandle, window: Webview) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     let mut dialog = app.dialog().file().set_title("Edited copy");
     if let Ok(doc) = document_of(&window)
@@ -106,7 +106,7 @@ pub async fn choose_edited_copy(app: AppHandle, window: WebviewWindow) -> Result
 /// `path` (none: where a dialog says, `<name>.docx` beside the document to begin with). None when the dialog was
 /// cancelled.
 #[tauri::command]
-pub async fn export_word(app: AppHandle, window: WebviewWindow, path: Option<String>) -> Result<Option<exchange::Exported>, String> {
+pub async fn export_word(app: AppHandle, window: Webview, path: Option<String>) -> Result<Option<exchange::Exported>, String> {
     use tauri_plugin_dialog::DialogExt;
     let doc = document_of(&window)?;
     let to = match path {
@@ -133,7 +133,7 @@ pub async fn export_word(app: AppHandle, window: WebviewWindow, path: Option<Str
 
 /// The .docx to import, chosen in a dialog; none when it was cancelled.
 #[tauri::command]
-pub async fn choose_word_file(app: AppHandle, window: WebviewWindow) -> Result<Option<String>, String> {
+pub async fn choose_word_file(app: AppHandle, window: Webview) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     let mut dialog = app.dialog().file().set_title("Word review").add_filter("Word", &["docx"]);
     if let Ok(doc) = document_of(&window)
@@ -148,7 +148,7 @@ pub async fn choose_word_file(app: AppHandle, window: WebviewWindow) -> Result<O
 /// comments, each under the name of whoever made it (their own review file); with `also_untracked`, what was changed
 /// with tracking off under `fallback_author`. What could not be placed in the text is returned, not written.
 #[tauri::command]
-pub async fn import_word(app: AppHandle, window: WebviewWindow, path: String, also_untracked: bool, fallback_author: String) -> Result<Imported, String> {
+pub async fn import_word(app: AppHandle, window: Webview, path: String, also_untracked: bool, fallback_author: String) -> Result<Imported, String> {
     let doc = document_of(&window)?;
     let made = tauri::async_runtime::spawn_blocking(move || exchange::import(&doc, &read(&doc)?, Path::new(&path), also_untracked, &fallback_author))
         .await

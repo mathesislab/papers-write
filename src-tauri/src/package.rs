@@ -15,7 +15,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use crate::sheet::{self, Level};
 use tauri_plugin_dialog::DialogExt;
 use write_core::review::package::{self, Merged, Opened, PackageKind};
@@ -101,7 +101,7 @@ pub struct Reviewing {
 
 /// What the document of the window is a review of: none unless it was opened from a `.review`.
 #[tauri::command]
-pub fn review_package(window: WebviewWindow) -> Option<Reviewing> {
+pub fn review_package(window: Webview) -> Option<Reviewing> {
     let doc = documents::path_of(window.app_handle(), window.label())?;
     let m = package::of_unpacked(&doc)?;
     Some(Reviewing { name: m.from.name, email: m.from.email, round: m.round, document: m.document })
@@ -122,7 +122,7 @@ pub struct Sent {
 /// The document of the window with what it shows and its review as a `.review` file named for `round`, where a dialog
 /// says (beside the document to begin with). None when the dialog was cancelled.
 #[tauri::command]
-pub async fn send_for_review(app: AppHandle, window: WebviewWindow, round: String) -> Result<Option<Sent>, String> {
+pub async fn send_for_review(app: AppHandle, window: Webview, round: String) -> Result<Option<Sent>, String> {
     let doc = documents::path_of(&app, window.label()).ok_or("Save the document first (⌘S)")?;
     let round = round.trim().to_string();
     if round.is_empty() {
@@ -166,7 +166,7 @@ pub struct Returned {
 /// The user's own review of the window's document (one opened from a `.review`) as a `.review` file named for them,
 /// where a dialog says. None when the dialog was cancelled.
 #[tauri::command]
-pub async fn send_back(app: AppHandle, window: WebviewWindow) -> Result<Option<Returned>, String> {
+pub async fn send_back(app: AppHandle, window: Webview) -> Result<Option<Returned>, String> {
     let doc = documents::path_of(&app, window.label()).ok_or("Save the document first (⌘S)")?;
     let sent = package::of_unpacked(&doc).ok_or("This document was not opened from a review file: there is nothing to send back")?;
     let me: Person = review::me(&window)?;
@@ -263,7 +263,7 @@ fn join(app: &AppHandle, opened: &Opened) -> Result<(), String> {
     if let (Some(label), Some(entry)) = (&label, logged(&merged, &opened.manifest.from.name)) {
         review::received(app, label, entry);
     }
-    let window = label.and_then(|l| app.get_webview_window(&l));
+    let window = label.and_then(|l| app.get_webview(&l));
     sheet::tell(app, window.as_ref(), "Review received", said(&merged, &opened.manifest.from.name), Level::Info);
     Ok(())
 }

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, Webview};
 
 /// A text to check, with the editor's name for it.
 #[derive(Deserialize)]
@@ -171,7 +171,7 @@ pub fn closed(app: &AppHandle, label: &str) {
 
 /// The misspelled words of each text (none where there is no system checker).
 #[tauri::command]
-pub async fn check_spelling(window: WebviewWindow, texts: Vec<Text>, language: Option<String>) -> Vec<Checked> {
+pub async fn check_spelling(window: Webview, texts: Vec<Text>, language: Option<String>) -> Vec<Checked> {
     #[cfg(target_os = "macos")]
     {
         let tag = tag_of(window.app_handle(), window.label());
@@ -186,7 +186,7 @@ pub async fn check_spelling(window: WebviewWindow, texts: Vec<Text>, language: O
 
 /// What the checker suggests for a misspelled word.
 #[tauri::command]
-pub async fn spelling_guesses(window: WebviewWindow, word: String, language: Option<String>) -> Vec<String> {
+pub async fn spelling_guesses(window: Webview, word: String, language: Option<String>) -> Vec<String> {
     #[cfg(target_os = "macos")]
     {
         let tag = tag_of(window.app_handle(), window.label());
@@ -201,7 +201,7 @@ pub async fn spelling_guesses(window: WebviewWindow, word: String, language: Opt
 
 /// The word added to the user's dictionary (all documents, all apps that use it).
 #[tauri::command]
-pub async fn learn_word(window: WebviewWindow, word: String) {
+pub async fn learn_word(window: Webview, word: String) {
     #[cfg(target_os = "macos")]
     on_main(window.app_handle(), move || mac::learn(&word)).await;
     #[cfg(not(target_os = "macos"))]
@@ -210,7 +210,7 @@ pub async fn learn_word(window: WebviewWindow, word: String) {
 
 /// The word ignored in this window's document only.
 #[tauri::command]
-pub async fn ignore_word(window: WebviewWindow, word: String) {
+pub async fn ignore_word(window: Webview, word: String) {
     #[cfg(target_os = "macos")]
     {
         let tag = tag_of(window.app_handle(), window.label());

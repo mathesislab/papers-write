@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use papers_core::{BibWatch, Found, Item};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use write_core::bib::{self, Cited};
 use write_core::refs::{References, bibliography_of, project_library_of, sources_in, sources_of};
 
@@ -60,7 +60,7 @@ impl Slot {
 
 /// The references of `window` for the document as typed (`text`), loaded or read again if they are not those of
 /// its file and front matter.
-fn references_of(window: &WebviewWindow, text: &str) -> Arc<References> {
+fn references_of(window: &Webview, text: &str) -> Arc<References> {
     let app = window.app_handle();
     let label = window.label();
     let path = crate::documents::path_of(app, label);
@@ -105,7 +105,7 @@ pub fn unload(app: &AppHandle, label: &str) {
 
 /// The papers matching `query`, at most `limit`.
 #[tauri::command]
-pub async fn references(window: WebviewWindow, query: String, limit: usize, text: String) -> Result<Found, String> {
+pub async fn references(window: Webview, query: String, limit: usize, text: String) -> Result<Found, String> {
     let refs = references_of(&window, &text);
     refs.error().map_or(Ok(()), |e| Err(e.to_string()))?;
     Ok(refs.search(&query, limit))
@@ -113,7 +113,7 @@ pub async fn references(window: WebviewWindow, query: String, limit: usize, text
 
 /// The papers closest to `selected` (a reference as written, a title), at most `limit`.
 #[tauri::command]
-pub async fn closest_references(window: WebviewWindow, selected: String, limit: usize, text: String) -> Result<Found, String> {
+pub async fn closest_references(window: Webview, selected: String, limit: usize, text: String) -> Result<Found, String> {
     let refs = references_of(&window, &text);
     refs.error().map_or(Ok(()), |e| Err(e.to_string()))?;
     Ok(refs.closest(&selected, limit))
@@ -121,13 +121,13 @@ pub async fn closest_references(window: WebviewWindow, selected: String, limit: 
 
 /// The `.bib` files the references are read from.
 #[tauri::command]
-pub async fn reference_sources(window: WebviewWindow, text: String) -> Vec<String> {
+pub async fn reference_sources(window: Webview, text: String) -> Vec<String> {
     references_of(&window, &text).sources().iter().map(|p| p.to_string_lossy().into_owned()).collect()
 }
 
 /// The key cited in the document: in its `.bib`, copied there from the references if it is not.
 #[tauri::command]
-pub async fn cite_key(window: WebviewWindow, key: String, text: String) -> Result<Cited, String> {
+pub async fn cite_key(window: Webview, key: String, text: String) -> Result<Cited, String> {
     let Some(path) = crate::documents::path_of(window.app_handle(), window.label()) else {
         return Err("Save the document first, to give it a bibliography".into());
     };
@@ -146,7 +146,7 @@ pub struct Check {
 
 /// The `.bib` files the front matter of `text` names, beside the window's document, that are there (none for an
 /// untitled one): the document's own bibliography, not the papers library.
-pub(crate) fn own_bibs(window: &WebviewWindow, text: &str) -> Vec<PathBuf> {
+pub(crate) fn own_bibs(window: &Webview, text: &str) -> Vec<PathBuf> {
     let Some(path) = crate::documents::path_of(window.app_handle(), window.label()) else {
         return Vec::new();
     };
@@ -157,7 +157,7 @@ pub(crate) fn own_bibs(window: &WebviewWindow, text: &str) -> Vec<PathBuf> {
 /// The references offered for a citation key typed so far: the document's own first, then the keys that start
 /// with it, then the other matches (`write_core::refs::candidates`).
 #[tauri::command]
-pub async fn cite_options(window: WebviewWindow, prefix: String, limit: usize, text: String) -> Vec<write_core::refs::Candidate> {
+pub async fn cite_options(window: Webview, prefix: String, limit: usize, text: String) -> Vec<write_core::refs::Candidate> {
     let refs = references_of(&window, &text);
     write_core::refs::candidates(&refs, &prefix, &own_bibs(&window, &text), limit)
 }
@@ -165,14 +165,14 @@ pub async fn cite_options(window: WebviewWindow, prefix: String, limit: usize, t
 /// The reference of citation key `key` (its author, year, title, container), from the document's bibliography or the
 /// library: what the editor shows on hovering a key. None when no file has it.
 #[tauri::command]
-pub async fn reference_of(window: WebviewWindow, key: String, text: String) -> Option<Item> {
+pub async fn reference_of(window: Webview, key: String, text: String) -> Option<Item> {
     references_of(&window, &text).entry(&key).map(|e| e.item)
 }
 
 /// Of the citation `keys` of `text`, those neither the document's own bibliography nor the library has (the editor
 /// underlines them, 800 ms after the typing stops).
 #[tauri::command]
-pub async fn missing_keys(window: WebviewWindow, keys: Vec<String>, text: String) -> Vec<String> {
+pub async fn missing_keys(window: Webview, keys: Vec<String>, text: String) -> Vec<String> {
     // an untitled text has no bibliography yet: nothing to say until it is saved
     if crate::documents::path_of(window.app_handle(), window.label()).is_none() {
         return Vec::new();
@@ -184,7 +184,7 @@ pub async fn missing_keys(window: WebviewWindow, keys: Vec<String>, text: String
 
 /// The keys cited in `text` against those of the `.bib` files its front matter names (not the papers library).
 #[tauri::command]
-pub async fn bib_check(window: WebviewWindow, text: String) -> Result<Check, String> {
+pub async fn bib_check(window: Webview, text: String) -> Result<Check, String> {
     let own = References::load(own_bibs(&window, &text));
     if let Some(e) = own.error() {
         return Err(e.to_string());
@@ -205,7 +205,7 @@ pub async fn bib_check(window: WebviewWindow, text: String) -> Result<Check, Str
 /// followed to ten deep, as the build sees them): what the editor adds to the labels of the text when it flags a
 /// `\ref` to a label nothing defines. Empty for an untitled or non-LaTeX document.
 #[tauri::command]
-pub async fn document_labels(window: WebviewWindow, text: String) -> Vec<String> {
+pub async fn document_labels(window: Webview, text: String) -> Vec<String> {
     match crate::documents::path_of(window.app_handle(), window.label()) {
         Some(path) if write_core::latex::is_latex(&path) => write_core::latex::included_labels(&path, &text),
         _ => Vec::new(),

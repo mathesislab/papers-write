@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use crate::sheet::Level;
 use crate::settings::Settings;
 use write_core::review::text::slug;
@@ -48,7 +48,7 @@ pub fn received(app: &AppHandle, label: &str, entry: String) {
 
 /// What the log of the window has to say of the reviews received since it last asked.
 #[tauri::command]
-pub fn review_received(window: WebviewWindow) -> Vec<String> {
+pub fn review_received(window: Webview) -> Vec<String> {
     window.app_handle().state::<Reviews>().received.lock().unwrap().remove(window.label()).unwrap_or_default()
 }
 
@@ -135,18 +135,18 @@ fn folder_of(doc: &Path) -> &Path {
 }
 
 /// The window's document, else an error that says to save it.
-fn doc_of(window: &WebviewWindow) -> Result<PathBuf, String> {
+fn doc_of(window: &Webview) -> Result<PathBuf, String> {
     crate::documents::path_of(window.app_handle(), window.label()).ok_or_else(|| UNSAVED.to_string())
 }
 
 /// Who the user is for the window's document.
-pub(crate) fn me(window: &WebviewWindow) -> Result<Person, String> {
+pub(crate) fn me(window: &Webview) -> Result<Person, String> {
     Ok(setup(window)?.1)
 }
 
 /// The user for the window's document, and the document: set up (with the watch) when first asked or when the
 /// window shows another file.
-fn setup(window: &WebviewWindow) -> Result<(PathBuf, Person), String> {
+fn setup(window: &Webview) -> Result<(PathBuf, Person), String> {
     let doc = doc_of(window)?;
     let app = window.app_handle();
     let state = app.state::<Reviews>();
@@ -232,13 +232,13 @@ fn comment(doc: &Path, me: &Person, text: &str, from: usize, to: usize, body: &s
 /// Who the user is: the git `user.name` and `user.email` of the document's folder, else the full name of the user in
 /// the system, else `$USER`.
 #[tauri::command]
-pub async fn review_me(window: WebviewWindow) -> Result<Me, String> {
+pub async fn review_me(window: Webview) -> Result<Me, String> {
     Ok(Me::of(&setup(&window)?.1))
 }
 
 /// The items of the document's review carried onto `text` (the text as typed), in the order of their place in it.
 #[tauri::command]
-pub async fn review_items(window: WebviewWindow, text: String) -> Result<Items, String> {
+pub async fn review_items(window: Webview, text: String) -> Result<Items, String> {
     let (doc, _) = setup(&window)?;
     load(&doc, &text)
 }
@@ -246,28 +246,28 @@ pub async fn review_items(window: WebviewWindow, text: String) -> Result<Items, 
 /// A suggestion of the user on `text`, from `from` to `to` replaced by `insert`; with `id`, their suggestion `id`
 /// changed. Returns the id of the record written (an edit has a new id).
 #[tauri::command]
-pub async fn review_suggest(window: WebviewWindow, text: String, id: Option<String>, from: usize, to: usize, insert: String) -> Result<String, String> {
+pub async fn review_suggest(window: Webview, text: String, id: Option<String>, from: usize, to: usize, insert: String) -> Result<String, String> {
     let (doc, me) = setup(&window)?;
     suggest(&doc, &me, &text, id.as_deref(), from, to, &insert)
 }
 
 /// The user's suggestion `id` withdrawn (a suggestion typed away to nothing; any suggestion or comment of theirs).
 #[tauri::command]
-pub async fn review_withdraw(window: WebviewWindow, id: String) -> Result<(), String> {
+pub async fn review_withdraw(window: Webview, id: String) -> Result<(), String> {
     let (doc, me) = setup(&window)?;
     Review::decide(&doc, &me, &id, Decision::Withdrawn).map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// A comment of the user on `from..to` of `text`. Returns its id.
 #[tauri::command]
-pub async fn review_comment(window: WebviewWindow, text: String, from: usize, to: usize, body: String) -> Result<String, String> {
+pub async fn review_comment(window: Webview, text: String, from: usize, to: usize, body: String) -> Result<String, String> {
     let (doc, me) = setup(&window)?;
     comment(&doc, &me, &text, from, to, &body)
 }
 
 /// A reply of the user to the suggestion, comment or reply `on`.
 #[tauri::command]
-pub async fn review_reply(window: WebviewWindow, on: String, body: String) -> Result<(), String> {
+pub async fn review_reply(window: Webview, on: String, body: String) -> Result<(), String> {
     if body.trim().is_empty() {
         return Err("A reply needs some text".into());
     }
@@ -278,35 +278,35 @@ pub async fn review_reply(window: WebviewWindow, on: String, body: String) -> Re
 /// The user's decision on `on`: accepted, rejected, resolved, reopened or withdrawn. (Accepting also needs the new
 /// text, which the editor makes.)
 #[tauri::command]
-pub async fn review_decide(window: WebviewWindow, on: String, decision: Decision) -> Result<(), String> {
+pub async fn review_decide(window: Webview, on: String, decision: Decision) -> Result<(), String> {
     let (doc, me) = setup(&window)?;
     Review::decide(&doc, &me, &on, decision).map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// A counter-suggestion of the user to the suggestion `on` (see `counter`: positions in what `on` puts there).
 #[tauri::command]
-pub async fn review_counter(window: WebviewWindow, text: String, on: String, from: usize, to: usize, insert: String, note: Option<String>) -> Result<String, String> {
+pub async fn review_counter(window: Webview, text: String, on: String, from: usize, to: usize, insert: String, note: Option<String>) -> Result<String, String> {
     let (doc, me) = setup(&window)?;
     counter(&doc, &me, &text, &Counter { on, from, to, insert, note })
 }
 
 /// What Clean Up Review would remove for the user: their resolved records, the bases nothing needs; nothing is written.
 #[tauri::command]
-pub async fn review_cleanup_plan(window: WebviewWindow) -> Result<Cleanup, String> {
+pub async fn review_cleanup_plan(window: Webview) -> Result<Cleanup, String> {
     let (doc, me) = setup(&window)?;
     cleanup_plan(&doc, &me).map_err(|e| e.to_string())
 }
 
 /// Clean Up Review: the user's own file without its resolved records, the bases nothing needs deleted.
 #[tauri::command]
-pub async fn review_cleanup(window: WebviewWindow) -> Result<Cleanup, String> {
+pub async fn review_cleanup(window: Webview) -> Result<Cleanup, String> {
     let (doc, me) = setup(&window)?;
     cleanup(&doc, &me).map_err(|e| e.to_string())
 }
 
 /// The page says whether its window is suggesting: kept for the check mark of the menu.
 #[tauri::command]
-pub fn review_mode(window: WebviewWindow, suggesting: bool) {
+pub fn review_mode(window: Webview, suggesting: bool) {
     let app = window.app_handle();
     app.state::<Reviews>().suggesting.lock().unwrap().insert(window.label().to_string(), suggesting);
     if crate::documents::front(app).is_some_and(|w| w.label() == window.label()) {
@@ -316,7 +316,7 @@ pub fn review_mode(window: WebviewWindow, suggesting: bool) {
 
 /// The page says which view its window shows (`markup`, `accepted` or `original`): kept for the check marks.
 #[tauri::command]
-pub fn review_view(window: WebviewWindow, view: String) {
+pub fn review_view(window: Webview, view: String) {
     let app = window.app_handle();
     app.state::<Reviews>().views.lock().unwrap().insert(window.label().to_string(), view.clone());
     if crate::documents::front(app).is_some_and(|w| w.label() == window.label()) {
@@ -326,7 +326,7 @@ pub fn review_view(window: WebviewWindow, view: String) {
 
 /// Asks before a step that cannot be taken back (Accept All, Reject All): true if the user went on.
 #[tauri::command]
-pub async fn review_confirm(window: WebviewWindow, message: String, ok: String) -> bool {
+pub async fn review_confirm(window: Webview, message: String, ok: String) -> bool {
     let app = window.app_handle().clone();
     crate::sheet::ask(&app, Some(&window), "Review", message, Level::Warning, &[&ok, "Cancel"]).await.as_deref() == Some(ok.as_str())
 }

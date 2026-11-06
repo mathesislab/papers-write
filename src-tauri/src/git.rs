@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, Webview, WebviewUrl, WebviewWindowBuilder};
 use write_core::review::Item;
 use write_core::review::compare::{as_items, suggestions};
 use write_core::review::history::{self, Added, Attribution};
@@ -250,7 +250,7 @@ pub(crate) fn state_of(doc: &Path) -> Option<State> {
 }
 
 /// The document of the window, else an error that says to save it.
-pub(crate) fn doc_of(window: &WebviewWindow) -> Result<PathBuf, String> {
+pub(crate) fn doc_of(window: &Webview) -> Result<PathBuf, String> {
     documents::path_of(window.app_handle(), window.label()).ok_or_else(|| "Save the document first (⌘S)".to_string())
 }
 
@@ -261,7 +261,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
 
 /// The repository of the window's document: none when it is untitled or not in a repository.
 #[tauri::command]
-pub async fn git_state(window: WebviewWindow) -> Result<Option<State>, String> {
+pub async fn git_state(window: Webview) -> Result<Option<State>, String> {
     let Ok(doc) = doc_of(&window) else { return Ok(None) };
     blocking(move || state_of(&doc)).await
 }
@@ -269,7 +269,7 @@ pub async fn git_state(window: WebviewWindow) -> Result<Option<State>, String> {
 /// Fetches the upstream of the repository, quietly, for the ahead and behind: at most every 5 minutes for a
 /// repository, and a failure (offline, no remote, a password asked for) is not told. Whether it fetched.
 #[tauri::command]
-pub async fn git_fetch(app: AppHandle, window: WebviewWindow) -> Result<bool, String> {
+pub async fn git_fetch(app: AppHandle, window: Webview) -> Result<bool, String> {
     let Ok(doc) = doc_of(&window) else { return Ok(false) };
     blocking(move || {
         let Some(top) = toplevel(folder_of(&doc)) else { return false };
@@ -411,7 +411,7 @@ pub(crate) fn push(doc: &Path) -> Result<String, String> {
 
 /// The files changed, for the Commit sheet (`text` is the document as typed, which names its bibliography).
 #[tauri::command]
-pub async fn git_changes(window: WebviewWindow, text: String) -> Result<Vec<Candidate>, String> {
+pub async fn git_changes(window: Webview, text: String) -> Result<Vec<Candidate>, String> {
     let doc = doc_of(&window)?;
     let bibs = crate::refs::own_bibs(&window, &text);
     blocking(move || changes_of(&doc, &bibs)).await?
@@ -419,19 +419,19 @@ pub async fn git_changes(window: WebviewWindow, text: String) -> Result<Vec<Cand
 
 /// The paths committed with the message; what git says.
 #[tauri::command]
-pub async fn git_commit(window: WebviewWindow, paths: Vec<String>, message: String) -> Result<String, String> {
+pub async fn git_commit(window: Webview, paths: Vec<String>, message: String) -> Result<String, String> {
     let doc = doc_of(&window)?;
     blocking(move || commit(&doc, &paths, &message)).await?
 }
 
 #[tauri::command]
-pub async fn git_pull(window: WebviewWindow) -> Result<String, String> {
+pub async fn git_pull(window: Webview) -> Result<String, String> {
     let doc = doc_of(&window)?;
     blocking(move || pull(&doc)).await?
 }
 
 #[tauri::command]
-pub async fn git_push(window: WebviewWindow) -> Result<String, String> {
+pub async fn git_push(window: Webview) -> Result<String, String> {
     let doc = doc_of(&window)?;
     blocking(move || push(&doc)).await?
 }
@@ -534,7 +534,7 @@ pub(crate) fn branches_of(doc: &Path, fetch: bool) -> Result<Vec<Branch>, String
 
 /// The branches with edits of the window's document that HEAD has not, for Git ▸ Review Branch… (fetched first).
 #[tauri::command]
-pub async fn review_branches(window: WebviewWindow, fetch: bool) -> Result<Vec<Branch>, String> {
+pub async fn review_branches(window: Webview, fetch: bool) -> Result<Vec<Branch>, String> {
     let doc = doc_of(&window)?;
     blocking(move || branches_of(&doc, fetch)).await?
 }
@@ -619,14 +619,14 @@ pub(crate) fn review_commits_of(doc: &Path, first: &str) -> Result<Reviewed, Str
 
 /// The last commits of the window's document on this branch, for Git ▸ Review Commits….
 #[tauri::command]
-pub async fn recent_commits(window: WebviewWindow) -> Result<Recents, String> {
+pub async fn recent_commits(window: Webview) -> Result<Recents, String> {
     let doc = doc_of(&window)?;
     blocking(move || recent_of(&doc)).await?
 }
 
 /// The window's document from the commit `first` on, back as suggestions (the page has written it first).
 #[tauri::command]
-pub async fn review_commits(app: AppHandle, window: WebviewWindow, first: String) -> Result<Reviewed, String> {
+pub async fn review_commits(app: AppHandle, window: Webview, first: String) -> Result<Reviewed, String> {
     let doc = doc_of(&window)?;
     let made = blocking(move || review_commits_of(&doc, &first)).await??;
     let _ = app.emit_to(tauri::EventTarget::webview(window.label()), "review-changed", ());
@@ -673,7 +673,7 @@ fn read(doc: &Path) -> Result<String, String> {
 /// The window's document at `rev` in a tab of its own, read only, with the changes since as tracked changes (the
 /// page has written the document: the file is what is compared). Nothing is saved from it.
 #[tauri::command]
-pub async fn compare_with_commit(app: AppHandle, window: WebviewWindow, rev: String) -> Result<(), String> {
+pub async fn compare_with_commit(app: AppHandle, window: Webview, rev: String) -> Result<(), String> {
     let doc = doc_of(&window)?;
     let (path, at) = (doc.clone(), rev.clone());
     // the commit is read first: a revision that does not have the file is told here, not in an empty tab
@@ -690,7 +690,7 @@ pub async fn compare_with_commit(app: AppHandle, window: WebviewWindow, rev: Str
     match built {
         Ok(new) => {
             match joined {
-                Some(to) => crate::tabs::join(&new, &to),
+                Some(to) => crate::tabs::join(&new.as_ref().window(), &to.window()),
                 None => {
                     let _ = new.set_focus();
                 }
@@ -707,7 +707,7 @@ pub async fn compare_with_commit(app: AppHandle, window: WebviewWindow, rev: Str
 /// What a window of history shows: the document at the commit it was made for, and the changes since (the file as it
 /// is now, so the tab asked again shows what has changed since it opened).
 #[tauri::command]
-pub async fn history(app: AppHandle, window: WebviewWindow) -> Result<History, String> {
+pub async fn history(app: AppHandle, window: Webview) -> Result<History, String> {
     let (doc, rev) = app
         .state::<Git>()
         .views

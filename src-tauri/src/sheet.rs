@@ -8,7 +8,7 @@
 
 use std::sync::mpsc;
 
-use tauri::{AppHandle, WebviewWindow};
+use tauri::{AppHandle, Webview};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -53,10 +53,11 @@ fn pressed(result: MessageDialogResult, buttons: &[&str]) -> Option<String> {
     }
 }
 
-/// `message` as a sheet (on `window`, else the window in front), `then` called with the button pressed. Never blocks.
+/// `message` as a sheet (on the window of the page `window`, else the page in front), `then` called with the button
+/// pressed. Never blocks.
 pub fn ask_then(
     app: &AppHandle,
-    window: Option<&WebviewWindow>,
+    window: Option<&Webview>,
     title: &str,
     message: impl Into<String>,
     kind: Level,
@@ -67,8 +68,8 @@ pub fn ask_then(
     let own = window.map(|w| w.label());
     let label = parent_label(own, front.as_ref().map(|w| w.label()));
     let parent = label.and_then(|l| match window {
-        Some(w) if w.label() == l => Some(w.clone()),
-        _ => front.clone().filter(|w| w.label() == l),
+        Some(w) if w.label() == l => Some(w.window()),
+        _ => front.as_ref().filter(|w| w.label() == l).map(|w| w.window()),
     });
     let mut dialog = app.dialog().message(message).title(title).kind(kind.plugin()).buttons(buttons_of(buttons));
     if let Some(p) = &parent {
@@ -84,7 +85,7 @@ pub fn ask_then(
 /// `ask_then` awaited: the button pressed. For async commands.
 pub async fn ask(
     app: &AppHandle,
-    window: Option<&WebviewWindow>,
+    window: Option<&Webview>,
     title: &str,
     message: impl Into<String>,
     kind: Level,
@@ -100,7 +101,7 @@ pub async fn ask(
 /// `ask_then` waited for, on a thread of one's own (never the main thread, which the sheet needs).
 pub fn ask_blocking(
     app: &AppHandle,
-    window: Option<&WebviewWindow>,
+    window: Option<&Webview>,
     title: &str,
     message: impl Into<String>,
     kind: Level,
@@ -114,7 +115,7 @@ pub fn ask_blocking(
 }
 
 /// A message with an OK button only (an error, news), shown and forgotten.
-pub fn tell(app: &AppHandle, window: Option<&WebviewWindow>, title: &str, message: impl Into<String>, kind: Level) {
+pub fn tell(app: &AppHandle, window: Option<&Webview>, title: &str, message: impl Into<String>, kind: Level) {
     ask_then(app, window, title, message, kind, &["OK"], |_| {});
 }
 

@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{Manager, WebviewWindow};
+use tauri::{Manager, Webview};
 
 use crate::documents;
 
@@ -44,7 +44,7 @@ pub const SUPERSEDED: &str = "superseded";
 
 /// The preview of `text`, as the document of this window reads it.
 #[tauri::command]
-pub async fn preview(window: WebviewWindow, text: String) -> Result<Preview, String> {
+pub async fn preview(window: Webview, text: String) -> Result<Preview, String> {
     let runs = window.state::<Runs>();
     let generation = runs.0.lock().unwrap().entry(window.label().to_string()).or_default().clone();
     let mine = generation.fetch_add(1, Ordering::SeqCst) + 1;

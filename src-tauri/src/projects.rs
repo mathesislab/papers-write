@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use crate::sheet::{self, Level};
 use tauri_plugin_dialog::DialogExt;
 use write_core::colour::Colour;
@@ -157,7 +157,7 @@ fn tile(root: &Path, current: bool) -> Tile {
 /// The project bar of the window: its document's project, and the tiles of the bar (that project's at the end when
 /// it is not in the bar).
 #[tauri::command]
-pub async fn project_bar(app: AppHandle, window: WebviewWindow) -> Bar {
+pub async fn project_bar(app: AppHandle, window: Webview) -> Bar {
     let project = documents::path_of(&app, window.label()).and_then(|path| Project::of(&path).ok().flatten());
     let Some(project) = project else {
         return Bar { current: None, tiles: Vec::new() };
@@ -232,20 +232,20 @@ pub fn set_project_info(app: AppHandle, root: String, manifest: Manifest) -> Res
 
 /// The folder whose card the window asks for: a folder opened as a project that has no `write.toml`.
 #[tauri::command]
-pub fn asking_project(window: WebviewWindow) -> Option<String> {
+pub fn asking_project(window: Webview) -> Option<String> {
     window.state::<Projects>().asking.lock().unwrap().get(window.label()).map(|p| s(p))
 }
 
 /// The card of a new project cancelled: nothing is written.
 #[tauri::command]
-pub fn cancel_project(window: WebviewWindow) {
+pub fn cancel_project(window: Webview) {
     window.state::<Projects>().asking.lock().unwrap().remove(window.label());
 }
 
 /// The new project of the card made: with `paper`, its main document first, from the paper-draft skeleton (never
 /// over a file); then `write.toml`. It joins the bar and its main document opens.
 #[tauri::command]
-pub fn create_project(app: AppHandle, window: WebviewWindow, root: String, manifest: Manifest, paper: bool) -> Result<(), String> {
+pub fn create_project(app: AppHandle, window: Webview, root: String, manifest: Manifest, paper: bool) -> Result<(), String> {
     let root = PathBuf::from(root);
     let main = manifest.main.first().ok_or("Choose the main document")?.clone();
     let written = if paper {

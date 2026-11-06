@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 
-use tauri::{Manager, WebviewWindow};
+use tauri::{Manager, Webview};
 
 use crate::{documents, preview};
 
@@ -82,7 +82,7 @@ pub fn image_in(dir: &Path, path: &str) -> Option<String> {
 
 /// The image at `path` of the document of this window, as a data URI.
 #[tauri::command]
-pub async fn image_data(window: WebviewWindow, path: String) -> Option<String> {
+pub async fn image_data(window: Webview, path: String) -> Option<String> {
     let dir = documents::path_of(window.app_handle(), window.label())
         .and_then(|p| p.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default());

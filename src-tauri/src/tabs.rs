@@ -2,10 +2,10 @@
 //! identifier into tabs only when the user prefers tabs (by default, in full screen only), so a window made joins
 //! the tabs of the window in front itself. Which window is in front is AppKit's to say (its key window).
 
-use tauri::WebviewWindow;
+use tauri::Window;
 
 /// `window` added as a tab of the window `to` (macOS; nothing elsewhere).
-pub fn join(window: &WebviewWindow, to: &WebviewWindow) {
+pub fn join(window: &Window, to: &Window) {
     #[cfg(target_os = "macos")]
     {
         use objc2_app_kit::{NSWindow, NSWindowOrderingMode};

@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use serde::Serialize;
 use tauri::{
-    AppHandle, CloseRequestApi, Emitter, EventTarget, Manager, WebviewUrl, WebviewWindow,
+    AppHandle, CloseRequestApi, Emitter, EventTarget, Manager, Webview, WebviewUrl,
     WebviewWindowBuilder, Window,
 };
 use crate::sheet::{self, Level};
@@ -49,7 +49,7 @@ pub struct Document {
 
 /// The file a window shows, or none when it is untitled.
 #[tauri::command]
-pub fn document(window: WebviewWindow) -> Document {
+pub fn document(window: Webview) -> Document {
     let paths = window
         .state::<Documents>()
         .paths
@@ -142,7 +142,7 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<String> {
         }
     };
     match joined {
-        Some(to) => crate::tabs::join(&window, &to),
+        Some(to) => crate::tabs::join(&window.as_ref().window(), &to.window()),
         None => {
             let _ = window.set_focus();
         }
@@ -194,7 +194,7 @@ pub fn closed(app: &AppHandle, label: &str) {
 
 /// Whether the untitled window has no text in it, as its page says each time that changes.
 #[tauri::command]
-pub fn set_blank(window: WebviewWindow, blank: bool) {
+pub fn set_blank(window: Webview, blank: bool) {
     let state = window.state::<Documents>();
     let mut set = state.blank.lock().unwrap();
     if blank {
@@ -212,15 +212,15 @@ pub fn focused(app: &AppHandle, label: &str) {
 
 /// The window in front: AppKit's key window (on the main thread, where the menu's events come); else the last that
 /// got the keys (tabs say wrongly whether they have them, and a window made from another thread may never say).
-pub fn front(app: &AppHandle) -> Option<WebviewWindow> {
-    if let Some(window) = crate::tabs::key_window(app).and_then(|label| app.get_webview_window(&label)) {
-        return Some(window);
+pub fn front(app: &AppHandle) -> Option<Webview> {
+    if let Some(page) = crate::tabs::key_window(app).and_then(|label| app.get_webview(&label)) {
+        return Some(page);
     }
     let last = app.state::<Documents>().focused.lock().unwrap().clone();
-    last.and_then(|label| app.get_webview_window(&label)).or_else(|| {
-        app.webview_windows()
+    last.and_then(|label| app.get_webview(&label)).or_else(|| {
+        app.webviews()
             .into_values()
-            .find(|w| w.is_focused().unwrap_or(false))
+            .find(|w| w.window().is_focused().unwrap_or(false))
     })
 }
 
@@ -271,7 +271,7 @@ pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {
     };
     let reuse = front(app)
         .filter(|w| blank.contains(w.label()))
-        .or_else(|| blank.iter().find_map(|label| app.get_webview_window(label)));
+        .or_else(|| blank.iter().find_map(|label| app.get_webview(label)));
     match reuse {
         Some(window) => {
             show(app, window.label(), &path);
@@ -339,7 +339,7 @@ pub fn choose(app: &AppHandle) {
 #[tauri::command]
 pub async fn save_untitled(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Webview,
     text: String,
 ) -> Result<Option<String>, String> {
     let Some(file) = app
@@ -424,7 +424,7 @@ pub fn closing(window: &Window, api: &CloseRequestApi) {
     api.prevent_close();
     let window = window.clone();
     let app = window.app_handle().clone();
-    let webview = app.get_webview_window(window.label());
+    let webview = app.get_webview(window.label());
     sheet::ask_then(
         &app,
         webview.as_ref(),

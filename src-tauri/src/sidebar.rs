@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use write_core::files::{self, Node};
 use write_core::search::{self, FileHits, Query};
 
@@ -113,7 +113,7 @@ pub fn open_at(app: AppHandle, path: String, at: usize, end: usize) -> Result<()
 
 /// The match to select once the window's document has loaded, if one waits.
 #[tauri::command]
-pub fn pending_go_to(window: WebviewWindow) -> Option<GoTo> {
+pub fn pending_go_to(window: Webview) -> Option<GoTo> {
     window.state::<GoTos>().0.lock().unwrap().remove(window.label())
 }
 

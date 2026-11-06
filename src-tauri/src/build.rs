@@ -26,7 +26,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use tauri_plugin_dialog::DialogExt;
 use write_core::project;
 
@@ -683,7 +683,7 @@ fn tell(app: &AppHandle, label: &str, status: Status) {
 }
 
 /// A request: run it, or keep it for when the build of the document going on ends.
-fn request(app: &AppHandle, window: &WebviewWindow, file: PathBuf, job: Job) {
+fn request(app: &AppHandle, window: &Webview, file: PathBuf, job: Job) {
     let state = app.state::<Builds>();
     {
         let mut builds = state.0.lock().unwrap();
@@ -744,7 +744,7 @@ fn request(app: &AppHandle, window: &WebviewWindow, file: PathBuf, job: Job) {
 }
 
 /// The document of the window, to build: Markdown (texmark) or LaTeX (latexmk).
-fn document_of(window: &WebviewWindow) -> Result<PathBuf, String> {
+fn document_of(window: &Webview) -> Result<PathBuf, String> {
     let path = documents::path_of(window.app_handle(), window.label())
         .ok_or("Save the document first (⌘S): a file is built")?;
     if kind_of(&path).is_some() {
@@ -756,7 +756,7 @@ fn document_of(window: &WebviewWindow) -> Result<PathBuf, String> {
 
 /// Build (⌘B), or with `show` Build and Show PDF (⇧⌘B). The page has written the document.
 #[tauri::command]
-pub fn build(app: AppHandle, window: WebviewWindow, show: bool) -> Result<(), String> {
+pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> {
     let file = document_of(&window)?;
     request(&app, &window, file, Job::Build { show });
     Ok(())
@@ -764,7 +764,7 @@ pub fn build(app: AppHandle, window: WebviewWindow, show: bool) -> Result<(), St
 
 /// The marked-up PDF of the document against `earlier`.
 #[tauri::command]
-pub fn marked_up(app: AppHandle, window: WebviewWindow, earlier: Earlier) -> Result<(), String> {
+pub fn marked_up(app: AppHandle, window: Webview, earlier: Earlier) -> Result<(), String> {
     let file = document_of(&window)?;
     request(&app, &window, file, Job::Diff(earlier));
     Ok(())
@@ -773,7 +773,7 @@ pub fn marked_up(app: AppHandle, window: WebviewWindow, earlier: Earlier) -> Res
 /// The versions of the window's document in git: the tags, and the last 30 commits that touched it (`git`); none
 /// when it is not in a repository.
 #[tauri::command]
-pub async fn revisions(window: WebviewWindow) -> Result<Vec<Revision>, String> {
+pub async fn revisions(window: Webview) -> Result<Vec<Revision>, String> {
     let file = document_of(&window)?;
     tauri::async_runtime::spawn_blocking(move || git::revisions_of(&file))
         .await
@@ -782,7 +782,7 @@ pub async fn revisions(window: WebviewWindow) -> Result<Vec<Revision>, String> {
 
 /// The file to compare with, chosen in a dialog; none when it was cancelled.
 #[tauri::command]
-pub async fn earlier_file(app: AppHandle, window: WebviewWindow) -> Result<Option<String>, String> {
+pub async fn earlier_file(app: AppHandle, window: Webview) -> Result<Option<String>, String> {
     let mut dialog = app
         .dialog()
         .file()

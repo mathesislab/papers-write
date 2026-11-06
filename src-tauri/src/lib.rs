@@ -14,6 +14,7 @@ mod refs;
 mod review;
 mod settings;
 mod sheet;
+mod sidebar;
 mod spelling;
 mod state;
 mod tabs;
@@ -37,6 +38,7 @@ pub fn run() {
         .manage(git::Git::default())
         .manage(projects::Projects::default())
         .manage(spelling::Tags::default())
+        .manage(sidebar::GoTos::default())
         .setup(|app| {
             settings::init(app.handle());
             app.set_menu(menu::build(app.handle())?)?;
@@ -131,7 +133,14 @@ pub fn run() {
             projects::cancel_project,
             projects::create_project,
             projects::choose_library,
-            projects::choose_project
+            projects::choose_project,
+            sidebar::project_files,
+            sidebar::search_project,
+            sidebar::replace_in_project,
+            sidebar::open_at,
+            sidebar::pending_go_to,
+            sidebar::new_markdown_file,
+            sidebar::trash_path
         ])
         .build(tauri::generate_context!())
         .expect("error while building papers-write")

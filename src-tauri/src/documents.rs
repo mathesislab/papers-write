@@ -185,6 +185,7 @@ pub fn closed(app: &AppHandle, label: &str) {
     crate::refs::unload(app, label);
     crate::review::unload(app, label);
     crate::git::closed(app, label);
+    crate::sidebar::closed(app, label);
     // the window may still be among the windows as this is told
     if app.webview_windows().keys().all(|l| l == label) {
         regular(app, false);

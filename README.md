@@ -38,13 +38,14 @@ them) are proposed upstream; until they are released,
   bar asks which to keep.
 - A PDF opens in a tab like the text files (PDFKit, as Preview shows it): the
   page in view (click it to go to a page), zoom in, out and to fit the width
-  (⌘= ⌘- ⌘0, PDF menu), Find (⌘F, next ⌘G, previous ⇧⌘G). A PDF that changes on
+  (⌘= ⌘- ⌘0, PDF menu), Find (Edit ▸ Find: ⌘F, next ⌘G, previous ⇧⌘G). A PDF that changes on
   disk, a build rewriting it, is read again at the same page.
 - Build ▸ Build (⌘B) writes the document and runs `texmark <file> --pdf` in its
   folder, into `build/` beside it (`build/name.tex`, `name.pdf`, `name.log`;
   Markdown documents, saved; LaTeX below). Build and Show PDF (⇧⌘B) then opens the PDF
-  in a tab, which reloads by itself on each rebuild. A mark in the corner
-  says building, done (the time) or failed; a failure lists the first errors
+  in a tab, which reloads by itself on each rebuild. The foot of the window
+  says Build (a click builds), building, built (the time; a click shows the
+  PDF) or failed; a failure lists the first errors
   of the LaTeX log (`!` lines with the line of the `.tex`) in a sheet, with
   the log to reveal in Finder or open as text. One build per document at a
   time; one asked meanwhile runs after it. texmark is found on PATH, in
@@ -152,9 +153,10 @@ them) are proposed upstream; until they are released,
   or below it, belongs to it: its window shows the project bar at the left, a
   tile per project in its colour with its short name (else its initials), the
   main document's words and its open suggestions ("6.2k words", "3 open"),
-  the current one marked, and a thin bar in the project's colour at the top.
-  A click on a tile opens the project's main document in a tab (or brings it
-  forward); a right-click: Open Project Folder in Finder, Project Info…,
+  the current one marked (and, if Settings ▸ Window says so, a thin bar in the
+  project's colour at the top). A click on a tile opens the project's main
+  document in a tab (or brings it forward); on the current project's tile it
+  shows or hides the sidebar; a right-click: Open Project Folder in Finder, Project Info…,
   Remove from Bar; `+` is Open Project…. File ▸ Project Info… (⌘I) is a card
   of the fields of `write.toml`, written on Done (Esc drops it). The bar and
   the projects opened last are kept in the app's `state.json`.
@@ -204,9 +206,24 @@ them) are proposed upstream; until they are released,
   eq: Eq., eqs: Eqs., tbl: Table, tbls: Tables, sec: Sect., secs: Sects., lst:
   Listing, lsts: Listings}` (a plural left out is the singular; empty is bare).
   Drag the split to resize; its width is kept for the window.
-- View ▸ Show Outline (⌥⌘O) lists the headings (`#`… in Markdown, `\section`…
-  in a `.tex` file) in a column at the left of the text, indented by level, the
-  one the cursor is under marked; a click goes there. Shown or hidden is kept.
+- The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
+  project's tile) has three tabs. Files: the project's folder as a tree (the
+  document's folder outside a project); a click opens a text file or PDF in a
+  tab, anything else in its default app; a right-click makes a Markdown file,
+  shows it in Finder, opens it in its default app or moves it to the Trash.
+  Outline (⌥⌘O): the headings (`#`… in Markdown, `\section`… in a `.tex`
+  file), indented by level, the one the cursor is under marked; a click goes
+  there. Search (Edit ▸ Find ▸ Find in Project…, ⇧⌘F): the project's text
+  files (`.md`, `.tex`, `.bib`, `.txt`, …; not hidden folders or `build/`),
+  with case, whole word and regular expression; the matches by file, a click
+  opens the file at the match; Replace All… asks first how many, in how many
+  files (a file open in a window is changed by its editor, so undo and suggest
+  mode apply). Shown or hidden, the tab and the width are kept.
+- Edit ▸ Find: Find… (⌘F) and Find and Replace… (⌥⌘F) open a bar above the
+  text: the matches counted, case, whole word, regular expression, previous
+  and next (⇧⌘G ⌘G, ⇧↵ ↵), Replace (↵ in its field) and All (⌘↵). Use
+  Selection for Find (⌘E). In suggest mode a replacement is a suggestion.
+- With a readable width, the margins beside the column are a shade darker.
 - Hover (a pause of 300 ms; none while the mouse is down): over math
   (`$..$`, `$$..$$`, `equation`, `align`...) the equation, rendered by pandoc
   as MathML (cached); over a citation key its reference (authors, year, title,
@@ -232,7 +249,9 @@ them) are proposed upstream; until they are released,
 - Review menu: suggestions and comments kept in files beside the document
   (`.papers-write/review/<file>/`, one file per person, only appended to).
   Suggest Changes (⇧⌘E) makes typing a suggestion of yours instead of an edit
-  (a "Suggesting" badge at the top right, per window). Add Comment… (⌥⌘M)
+  (the mode at the top right of the text, per window: Editing, or Suggesting
+  in your colour, with the open items; a click shows the review panel, its ▾
+  the modes and views). Add Comment… (⌥⌘M)
   comments on the selection (⌘↵ posts). Show Review Panel (⌥⌘R) lists the
   open ones in text order at the right, in place of the preview: who and when,
   what changes, the thread, and Accept, Reject, Reply, Resolve, Suggest
@@ -255,8 +274,8 @@ them) are proposed upstream; until they are released,
   git configuration of the document's folder, else your macOS full name. Needs
   a saved document. Changes others make to the review files (a pull, a sync)
   show at once.
-- Git (the `git` command): when the document is in a repository, a quiet line
-  at the foot of the window says the branch, the files changed and how far it
+- Git (the `git` command): when the document is in a repository, a quiet item
+  at the right of the window's foot says the branch, the files changed and how far it
   is from its upstream ("main · 3 changed · ↓1"; the upstream is fetched when
   the window gets the keys, at most every 5 minutes). A click on it, or Git ▸
   Commit… (⌥⌘K), opens the files changed: the document, its `.bib` files and

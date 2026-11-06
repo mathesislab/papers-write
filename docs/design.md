@@ -73,7 +73,8 @@ needs it, as papers-rs did.
 - `src/lib/editor/`, exported as `papers-write/editor`: the CodeMirror setup
   (fonts, readable width, word count, reload keeping cursor and undo), the
   Markdown + LaTeX language, the symbols and their list, the file editor
-  (load, save, changed on disk, Reload or Keep mine), the outline, the
+  (load, save, changed on disk, Reload or Keep mine), the headings for an
+  outline, find and replace, the
   completion with its sources given by the app (citations, labels, paths),
   the reference list, and the review overlay (suggest mode, comments). What
   is one app's own (the page and line of a quote in papers-review, the

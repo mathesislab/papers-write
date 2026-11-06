@@ -2869,12 +2869,14 @@ version = "0.1.0"
 dependencies = [
  "papers-core",
  "papers-rs",
+ "regex",
  "serde",
  "serde_json",
  "sha1_smol",
  "similar",
  "toml 0.8.2",
  "toml_edit 0.25.18+spec-1.1.0",
+ "walkdir",
 ]
 
 [[package]]

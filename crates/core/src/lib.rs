@@ -10,6 +10,7 @@
 //! - [`colour`]: the colours of a project, by name (papers-review's).
 //! - [`project`]: a folder with `write.toml`, and the project a document belongs to.
 //! - [`files`]: the files of a project as a tree (papers-review's).
+//! - [`search`]: a project searched, and text replaced in its files.
 
 pub mod bib;
 pub mod colour;
@@ -20,6 +21,7 @@ pub mod latex;
 pub mod project;
 pub mod refs;
 pub mod review;
+pub mod search;
 pub mod srcmap;
 
 pub use bib::{Cited, Error, cite, cited_keys, missing, unused};

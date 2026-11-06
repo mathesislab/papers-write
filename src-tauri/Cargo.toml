@@ -25,6 +25,8 @@ tauri-plugin-opener = "2"
 # a PDF in PDFKit, as papers-review shows them
 tauri-plugin-pdfkit = { git = "https://github.com/mathesislab/tauri-plugin-pdfkit", tag = "v0.4.0" }
 papers-write-core = { version = "0.1.0", path = "../crates/core" }
+# the windows and their tabs, as Papers Review has them
+papers-tabs = { version = "0.1.0", path = "../crates/tabs" }
 # the .bib files watched (papers-core, as papers-write-core has it)
 papers-core = { git = "https://github.com/mathesislab/papers-desktop", tag = "v0.9.0" }
 

@@ -38,7 +38,7 @@ pub fn run() {
         .manage(git::Git::default())
         .manage(projects::Projects::default())
         .manage(spelling::Tags::default())
-        .manage(tabs::Tabs::default())
+        .manage(tabs::Tabs::new(tabs::Write))
         .manage(sidebar::GoTos::default())
         .setup(|app| {
             settings::init(app.handle());
@@ -71,9 +71,9 @@ pub fn run() {
             documents::document,
             documents::set_blank,
             documents::save_untitled,
-            tabs::tab_strip,
-            tabs::select_tab,
-            tabs::close_tab,
+            tabs::commands::tab_strip,
+            tabs::commands::select_tab,
+            tabs::commands::close_tab,
             files::read_text,
             files::write_text,
             preview::preview,

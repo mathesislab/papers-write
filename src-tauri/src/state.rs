@@ -27,20 +27,8 @@ pub struct Saved {
     pub windows: Vec<SavedWindow>,
 }
 
-/// A project's tabs: its files in order, the one in front.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Layout {
-    pub files: Vec<PathBuf>,
-    pub front: Option<PathBuf>,
-}
-
-/// A window's projects, the one shown first.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct SavedWindow {
-    pub projects: Vec<PathBuf>,
-}
+/// A project's tabs, and a window's projects, as papers-tabs saves them.
+pub use crate::tabs::{Layout, SavedWindow};
 
 impl Saved {
     /// What `dir` keeps; nothing when the file is missing or broken.

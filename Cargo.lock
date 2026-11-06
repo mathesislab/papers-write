@@ -2837,6 +2837,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "papers-tabs"
+version = "0.1.0"
+dependencies = [
+ "objc2",
+ "objc2-app-kit",
+ "serde",
+ "tauri",
+]
+
+[[package]]
 name = "papers-write"
 version = "0.3.0"
 dependencies = [
@@ -2845,6 +2855,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "papers-core",
+ "papers-tabs",
  "papers-write-core",
  "serde",
  "serde_json",

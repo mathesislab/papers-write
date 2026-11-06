@@ -109,7 +109,7 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<String> {
     }
     regular(app, true);
     let url = if path.as_deref().is_some_and(is_pdf) { "/pdf" } else { "/" };
-    if let Err(e) = crate::tabs::add(app, &label, url, path.as_deref()) {
+    if let Err(e) = crate::tabs::add(app, &label, url, path.as_deref().and_then(write_core::project::find).as_deref()) {
         closed(app, &label);
         return Err(e);
     }

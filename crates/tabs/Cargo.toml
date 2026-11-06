@@ -1,0 +1,15 @@
+[package]
+name = "papers-tabs"
+version = "0.1.0"
+edition = "2024"
+description = "The windows of the Papers apps and their tabs: a page per tab, a set of tabs per project, saved and opened again"
+
+[dependencies]
+# unstable: pages as children of a window
+tauri = { version = "2", features = ["unstable"] }
+serde = { version = "1", features = ["derive"] }
+
+# the key window, as AppKit says
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSResponder", "NSApplication"] }

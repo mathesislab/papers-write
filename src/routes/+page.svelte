@@ -66,6 +66,7 @@
     type Found,
     type ReviewView,
     type HoverSources,
+    type FindCommand,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
@@ -485,6 +486,12 @@
     else (what === "redo" ? editor.redo : editor.undo)();
   }
 
+  /** Edit ▸ Find: in the text (the editor's bar), or in the project (the sidebar's search). */
+  function findCommand(what: string) {
+    if (what === "find-project") return; // the sidebar's search: next commit
+    editor?.find(what === "find-replace" ? "replace" : (what.replace(/^find-?/, "") || "find") as FindCommand);
+  }
+
   /** The keys to the sheet as it opens, so Esc reaches it. */
   const grab = (node: HTMLElement) => node.focus();
 
@@ -580,6 +587,7 @@
       listen("preview", togglePreview),
       listen("outline", toggleOutline),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
+      listen<string>("find", (e) => findCommand(e.payload)),
       listen("references-changed", () => version++),
     ];
     return () => {

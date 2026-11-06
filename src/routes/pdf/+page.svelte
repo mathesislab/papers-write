@@ -71,18 +71,19 @@
         return view?.zoom(-1);
       case "zoom-fit":
         return view?.zoom(0);
-      case "pdf-find":
+      case "find":
+      case "find-replace":
         return startFind();
-      case "pdf-next":
-      case "pdf-previous":
-        if (text) return search(true, what === "pdf-previous");
+      case "find-next":
+      case "find-previous":
+        if (text) return search(true, what === "find-previous");
         return startFind();
     }
   }
 
   onMount(() => {
     ask();
-    const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload))];
+    const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<string>("find", (e) => command(e.payload))];
     return () => {
       clearTimeout(timer);
       unlisten.forEach((u) => u.then((f) => f()));

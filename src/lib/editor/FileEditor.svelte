@@ -17,6 +17,7 @@
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, setSpelling, type EditorPrefs } from "./editor";
   import type { Completion, Diagnostics, HoverSources, Spelling } from "./types";
   import { recheck } from "./diagnostics";
+  import { find as findIn, type FindCommand } from "./find";
   import Outline from "./Outline.svelte";
   import { currentHeading, outline as outlineOf, type Heading } from "./outline";
   import {
@@ -294,6 +295,11 @@
   export const outdent = () => editor && indentLess(editor);
   export const indent = () => editor && indentMore(editor);
   /** The cursor at the start of line `n` (1-based; the last if there are fewer), in view, with the keys. */
+  /** A command of Find (the menu's): the bar, the next or previous match, the selection to find. */
+  export function find(what: FindCommand) {
+    if (editor) findIn(editor, what);
+  }
+
   export function goToLine(n: number) {
     if (!editor) return;
     const { doc } = editor.state;

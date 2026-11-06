@@ -97,6 +97,21 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &exchange,
         ],
     )?;
+    // the window in front finds (its text, or its PDF); Find in Project… is the sidebar's search
+    let find = Submenu::with_items(
+        app,
+        "Find",
+        true,
+        &[
+            &item("find", "Find…", Some("CmdOrCtrl+F"))?,
+            &item("find-replace", "Find and Replace…", Some("Alt+CmdOrCtrl+F"))?,
+            &item("find-next", "Find Next", Some("CmdOrCtrl+G"))?,
+            &item("find-previous", "Find Previous", Some("Shift+CmdOrCtrl+G"))?,
+            &item("find-selection", "Use Selection for Find", Some("CmdOrCtrl+E"))?,
+            &separator()?,
+            &item("find-project", "Find in Project…", Some("Shift+CmdOrCtrl+F"))?,
+        ],
+    )?;
     let edit = Submenu::with_items(
         app,
         "Edit",
@@ -109,6 +124,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &PredefinedMenuItem::copy(app, None)?,
             &PredefinedMenuItem::paste(app, None)?,
             &PredefinedMenuItem::select_all(app, None)?,
+            &separator()?,
+            &find,
             &separator()?,
             &item("symbols", "Symbols…", Some("CmdOrCtrl+/"))?,
             &separator()?,
@@ -151,10 +168,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
             &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
             &item("zoom-fit", "Fit Width", Some("CmdOrCtrl+0"))?,
-            &separator()?,
-            &item("pdf-find", "Find…", Some("CmdOrCtrl+F"))?,
-            &item("pdf-next", "Find Next", Some("CmdOrCtrl+G"))?,
-            &item("pdf-previous", "Find Previous", Some("Shift+CmdOrCtrl+G"))?,
         ],
     )?;
     let review = Submenu::with_items(
@@ -247,6 +260,11 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "exchange", id);
             }
         }
+        "find" | "find-replace" | "find-next" | "find-previous" | "find-selection" | "find-project" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "find", id);
+            }
+        }
         "cite-key" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
@@ -257,7 +275,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
             }
         }
-        "zoom-in" | "zoom-out" | "zoom-fit" | "pdf-find" | "pdf-next" | "pdf-previous" => {
+        "zoom-in" | "zoom-out" | "zoom-fit" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id);
             }

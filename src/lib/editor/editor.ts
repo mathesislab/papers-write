@@ -30,6 +30,7 @@ import { acceptCompletion, completion } from "./completion";
 import { literalAt, type Literal } from "./context";
 import { difference } from "./difference";
 import { diagnostics } from "./diagnostics";
+import { finding } from "./find";
 import { hover } from "./hover";
 import * as lang from "./lang/index.ts";
 import { suggesting } from "./review/mode.ts";
@@ -409,6 +410,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
         ...(complete ? [completion(complete, latexFile)] : []),
         ...(options.hover && (!mono || latexFile) ? [hover(options.hover)] : []),
         ...(options.diagnostics && (!mono || latexFile) ? [diagnostics(options.diagnostics)] : []),
+        finding,
         theme(mono),
         EditorView.lineWrapping,
         // WebKit's own spell checking is off: the editor draws the misses of the system's checker itself (spelling.ts)

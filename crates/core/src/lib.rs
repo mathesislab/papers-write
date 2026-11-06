@@ -9,10 +9,12 @@
 //! - [`exchange`]: the Word side of a review (pandoc): the .docx with tracked changes out, a .docx read back in.
 //! - [`colour`]: the colours of a project, by name (papers-review's).
 //! - [`project`]: a folder with `write.toml`, and the project a document belongs to.
+//! - [`files`]: the files of a project as a tree (papers-review's).
 
 pub mod bib;
 pub mod colour;
 pub mod exchange;
+pub mod files;
 pub mod frontmatter;
 pub mod latex;
 pub mod project;

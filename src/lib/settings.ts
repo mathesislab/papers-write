@@ -24,6 +24,7 @@ export type Settings = {
   pandoc_path: string;
   tabs: boolean;
   menu_bar: boolean;
+  project_colour_bar: boolean;
 };
 
 /** The settings now, and again with each change (in this or another window): `apply` is called with them at once. The

@@ -24,7 +24,7 @@
   //
   // A document of a project (a folder above it has write.toml) shows the project bar at the left (ProjectBar of
   // papers-write/project: a tile per project, the main document's words and open suggestions; a click opens the
-  // project's main document, a right-click its menu) and a thin bar in the project's colour at the top. Project
+  // project's main document, a right-click its menu) and, when Settings ▸ Window says so, a thin bar in the project's colour at the top. Project
   // Info… (⌘I, `project-info`) is a card over the window (ProjectCard); so is the card of a new project, asked for
   // when File ▸ Open Project… chose a folder without write.toml (`asking-project`). The bar is asked again on
   // `projects-changed`, when the window gets the focus, and a moment after the file or its review changes.
@@ -189,7 +189,9 @@
   /** the folder opened as a project that has no write.toml yet, whose card asks what to write in one */
   let asking = $state<string | null>(null);
   let barTimer: ReturnType<typeof setTimeout> | undefined;
-  const barColour = $derived(bar.current ? cssOf(bar.current.colour) : null);
+  /** the thin bar in the project's colour at the top (Settings ▸ Window) */
+  let colourBar = $state(false);
+  const barColour = $derived(bar.current && colourBar ? cssOf(bar.current.colour) : null);
 
   async function loadBar() {
     clearTimeout(barTimer);
@@ -516,6 +518,7 @@
   function apply(s: Settings) {
     prefs = applyEditor(s);
     spelling = s.spelling;
+    colourBar = s.project_colour_bar;
     symbols = s.symbols;
     colour = s.review_colour;
     follows = s.preview_follow;

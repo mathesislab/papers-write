@@ -71,6 +71,8 @@ pub struct Settings {
     pub tabs: bool,
     /// the app stays in the menu bar when its last window closes; off: it quits
     pub menu_bar: bool,
+    /// a thin bar in the project's colour along the top of its windows
+    pub project_colour_bar: bool,
 }
 
 impl Default for Settings {
@@ -92,6 +94,7 @@ impl Default for Settings {
             pandoc_path: String::new(),
             tabs: true,
             menu_bar: true,
+            project_colour_bar: false,
         }
     }
 }
@@ -264,7 +267,7 @@ mod tests {
         assert_eq!((s.editor_font, s.editor_size, s.indent), (EditorFont::System, 13.5, Indent::Two));
         assert!(s.readable_width && !s.line_numbers && s.spelling && s.symbols.is_empty());
         assert!((s.review_name.as_str(), s.review_email.as_str(), s.review_colour) == ("", "", None));
-        assert!(s.preview_follow && s.tabs && s.menu_bar);
+        assert!(s.preview_follow && s.tabs && s.menu_bar && !s.project_colour_bar);
         assert!(["texmark", "latexmk", "pandoc"].iter().all(|t| s.tool(t).is_none()));
         // a file with nothing in it is the defaults
         assert_eq!(serde_json::from_str::<Settings>("{}").unwrap(), s);
@@ -304,6 +307,7 @@ mod tests {
             pandoc_path: "/opt/bin/pandoc".into(),
             tabs: false,
             menu_bar: false,
+            project_colour_bar: true,
         };
         settings.save(&dir);
         assert_eq!(Settings::load(&dir), settings);

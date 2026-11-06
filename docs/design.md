@@ -120,11 +120,14 @@ One app later is then a matter of windows, not code.
 - Opens any text file: Open With and the Dock, `⌘O`, `⌘N` for a blank one,
   a command (`pw paper.md`, not yet), files dropped. A new window is untitled
   text kept in its tab, saved with `⌘S` (a file is saved as typed).
-  A window per project, a tab per file (`tabs.rs`): each tab is a page of its
+  A window per project, a tab per file: each tab is a page of its
   own, a child of the window, shown in front or hidden but alive (text, undo,
   scroll, find kept), so the backend's per-document state stays per page.
-  The pages draw the strip of tabs themselves (TabStrip of
-  papers-write/project, shared with papers-review). macOS's own tabs are not
+  The windows and their tabs are the crate papers-tabs (`crates/tabs`), shared
+  with papers-review: a model of the sets of tabs tested without windows, and
+  the windows driven from it; the app says what its pages are (a `Host`:
+  `tabs.rs` here). The pages draw the strip of tabs themselves (Tabs and
+  TabStrip of papers-write/project, shared with papers-review). macOS's own tabs are not
   used: on recent macOS their bar cannot be hidden, and they are macOS only;
   this works the same on Linux and Windows.
   Opens in well under a second: the library, pandoc and git are loaded when

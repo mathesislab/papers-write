@@ -217,7 +217,8 @@ them) are proposed upstream; until they are released,
   Listing, lsts: Listings}` (a plural left out is the singular; empty is bare).
   Drag the split to resize; its width is kept for the window.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
-  project's tile) has three tabs. Files: the project's folder as a tree (the
+  project's tile) has three tabs; shown or not, its width and its tab are the same in all the
+  project's tabs, and kept for the next time. Files: the project's folder as a tree (the
   document's folder outside a project); a click opens a text file or PDF in a
   tab, anything else in its default app; a right-click makes a Markdown file,
   shows it in Finder, opens it in its default app or moves it to the Trash.

@@ -393,6 +393,15 @@ pub fn select(app: &AppHandle, page: &str) {
     changed(app, &window_label);
 }
 
+/// A window titled again after its tab in front (its project renamed, say).
+pub fn retitle(app: &AppHandle, window: &str) {
+    if let Some(page) = front_of(app, window)
+        && let Some(window) = app.get_window(window)
+    {
+        let _ = window.set_title(&window_title(app, &page));
+    }
+}
+
 /// A page shows another file (an untitled one saved, a blank one taking a file): its window's title and tabs. A set
 /// of loose files with this tab alone becomes the set of the file's project, unless a window holds that one already.
 pub fn renamed(app: &AppHandle, page: &str) {

@@ -44,7 +44,7 @@
   import { ensureSyntaxTree } from "@codemirror/language";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
-  import { ProjectBar, Tabs, cssOf } from "papers-write/project";
+  import { ProjectBar, ProjectSidebar, Tabs, cssOf } from "papers-write/project";
   import ProjectCard from "$lib/ProjectCard.svelte";
   import type { Bar } from "$lib/projects";
   import Preview from "$lib/Preview.svelte";
@@ -152,39 +152,24 @@
   })();
   let width = $state(stored >= 240 ? stored : 0);
   let panes = $state<HTMLElement>();
-  // The sidebar at the left (Sidebar): shown or not, its tab and its width, kept for the next window.
-  const kept = (key: string) => {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  };
-  const keep = (key: string, value: string) => {
-    try {
-      localStorage.setItem(key, value);
-    } catch {}
-  };
-  let siding = $state(kept("sidebar") === "1");
-  let sideTab = $state<Tab>((kept("sidebar-tab") as Tab | null) ?? "files");
-  let sideWidth = $state(Math.max(180, Number(kept("sidebar-width")) || 240));
+  // The sidebar at the left (Sidebar): shown or not, its tab and its width, the same in all the project's pages and
+  // kept for the next time (ProjectSidebar).
+  const side = new ProjectSidebar();
+  const sideTab = $derived((side.tab ?? "files") as Tab);
   let sidebar = $state<Sidebar>();
-  $effect(() => keep("sidebar", siding ? "1" : "0"));
-  $effect(() => keep("sidebar-tab", sideTab));
   /** the headings of the document and the one the cursor is under, for the outline */
   let headings = $state.raw<Heading[]>([]);
   let here = $state(-1);
 
   function toggleSidebar() {
-    siding = !siding;
-    if (!siding) editor?.focus();
+    side.set({ shown: !side.shown });
+    if (!side.shown) editor?.focus();
   }
 
   /** View ▸ Show Outline: the sidebar on its outline, or hidden when it shows it. */
   function toggleOutline() {
-    if (siding && sideTab === "outline") return toggleSidebar();
-    siding = true;
-    sideTab = "outline";
+    if (side.shown && sideTab === "outline") return toggleSidebar();
+    side.set({ shown: true, tab: "outline" });
   }
 
   /** The sidebar's right edge dragged: its width. */
@@ -192,11 +177,11 @@
     const edge = e.currentTarget as HTMLElement;
     edge.setPointerCapture(e.pointerId);
     const left = (edge.parentElement as HTMLElement).getBoundingClientRect().left;
-    const move = (m: PointerEvent) => (sideWidth = Math.round(Math.min(Math.max(m.clientX - left, 180), 520)));
+    const move = (m: PointerEvent) => side.set({ width: Math.round(Math.min(Math.max(m.clientX - left, 180), 520)) }, false);
     const stop = () => {
       edge.removeEventListener("pointermove", move);
       edge.removeEventListener("pointerup", stop);
-      keep("sidebar-width", String(sideWidth));
+      side.keep();
     };
     edge.addEventListener("pointermove", move);
     edge.addEventListener("pointerup", stop);
@@ -538,7 +523,7 @@
   function findCommand(what: string) {
     if (what === "find-project") {
       if (!sideRoot) return say("Save the document first, to search its folder");
-      siding = true;
+      side.set({ shown: true });
       return queueMicrotask(() => sidebar?.find());
     }
     editor?.find(what === "find-replace" ? "replace" : (what.replace(/^find-?/, "") || "find") as FindCommand);
@@ -609,6 +594,8 @@
     });
   });
 
+  onMount(() => side.start());
+
   onMount(() => {
     const stop = watchSettings(apply);
     ask();
@@ -659,11 +646,11 @@
 {#if bar.current && bar.tiles.length}
   <ProjectBar items={bar.tiles} onswitch={switchProject} onmenu={tileMenu} onadd={() => invoke("choose_project")} addTitle="Open Project… (⇧⌘O)" />
 {/if}
-{#if siding && sideRoot}
-  <div class="side" style:width="{sideWidth}px">
+{#if side.shown && sideRoot}
+  <div class="side" style:width="{side.width}px">
     <Sidebar
       bind:this={sidebar}
-      bind:tab={sideTab}
+      bind:tab={() => sideTab, (tab) => side.set({ tab })}
       root={sideRoot}
       front={path ?? null}
       {headings}

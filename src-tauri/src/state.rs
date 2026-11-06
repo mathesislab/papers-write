@@ -25,10 +25,14 @@ pub struct Saved {
     pub layouts: BTreeMap<PathBuf, Layout>,
     /// the windows open as the app quit, to open again at the next start
     pub windows: Vec<SavedWindow>,
+    /// the sidebar of each project
+    pub sidebars: BTreeMap<PathBuf, Sidebar>,
+    /// the sidebar of the pages of no project, and of a project shown for the first time: the last one changed
+    pub sidebar: Sidebar,
 }
 
-/// A project's tabs, and a window's projects, as papers-tabs saves them.
-pub use crate::tabs::{Layout, SavedWindow};
+/// A project's tabs and sidebar, and a window's projects, as papers-tabs saves them.
+pub use crate::tabs::{Layout, SavedWindow, Sidebar};
 
 impl Saved {
     /// What `dir` keeps; nothing when the file is missing or broken.

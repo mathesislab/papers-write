@@ -12,7 +12,9 @@
 //!
 //! The pages draw the tabs of their set themselves (`tab_strip`; `Tabs.svelte` of `papers-write/project`), told
 //! `tabs-changed` when a tab comes, goes or is renamed, and `tab-shown` (true or false) when theirs comes to the front
-//! or leaves it. Which window is in front is AppKit's to say (its key window), else the last focused.
+//! or leaves it. Which window is in front is AppKit's to say (its key window), else the last focused. A project's
+//! sidebar (shown, its width, its tab) is the same in all its pages: asked with `sidebar`, changed with
+//! `set_sidebar`, the others told `sidebar-changed` (`ProjectSidebar` of `papers-write/project`).
 //!
 //! What the pages are is the app's: it gives a `Host` (`Tabs::new`), which makes them, names them, says what file
 //! each shows and keeps what is saved; and it registers the commands `tab_strip`, `select_tab`, `close_tab`.
@@ -45,6 +47,21 @@ pub struct Layout {
 #[serde(default)]
 pub struct SavedWindow {
     pub projects: Vec<PathBuf>,
+}
+
+/// A project's sidebar, as all its pages show it: shown or not, its width (points), the tab it shows (the app's).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Sidebar {
+    pub shown: bool,
+    pub width: f64,
+    pub tab: Option<String>,
+}
+
+impl Default for Sidebar {
+    fn default() -> Sidebar {
+        Sidebar { shown: true, width: 240.0, tab: None }
+    }
 }
 
 /// How pages share windows.
@@ -127,6 +144,12 @@ pub trait Host: Send + Sync + 'static {
 
     /// The windows open now, to open again at the next start.
     fn save_windows(&self, app: &AppHandle, windows: Vec<SavedWindow>);
+
+    /// A project's sidebar as kept (none: the pages of no project).
+    fn sidebar(&self, app: &AppHandle, root: Option<&Path>) -> Sidebar;
+
+    /// A project's sidebar as it is now, to keep.
+    fn set_sidebar(&self, app: &AppHandle, root: Option<&Path>, sidebar: Sidebar);
 }
 
 /// The windows' tabs, by window label, and the app's `Host`: managed by the app (`app.manage(Tabs::new(host))`).
@@ -209,6 +232,13 @@ pub fn pages_of_project(app: &AppHandle, root: &Path) -> Vec<String> {
 /// The projects with tabs in a window.
 pub fn projects(app: &AppHandle) -> Vec<PathBuf> {
     with_tabs(app, |w| w.values().flat_map(|win| win.sets.iter().filter_map(|s| s.project.clone())).collect())
+}
+
+/// The pages of the tabs of a project, in every window (none: the pages of no project).
+fn pages_of_set(app: &AppHandle, root: Option<&Path>) -> Vec<String> {
+    with_tabs(app, |w| {
+        w.values().flat_map(|win| win.sets.iter()).filter(|s| s.project.as_deref() == root).flat_map(|s| s.pages.clone()).collect()
+    })
 }
 
 /// The windows of tabs, by label.
@@ -715,9 +745,9 @@ fn save_windows(app: &AppHandle) {
 // --- the pages' commands, registered by the app: `papers_tabs::commands::tab_strip` and so on
 
 pub mod commands {
-    use tauri::{AppHandle, Manager, Webview};
+    use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 
-    use super::{Tab, host, title_of, with_tabs};
+    use super::{Sidebar, Tab, host, pages_of_set, project_of_page, title_of, with_tabs};
 
     /// The tabs of the asking page's set, in order.
     #[tauri::command]
@@ -746,5 +776,26 @@ pub mod commands {
     #[tauri::command]
     pub fn close_tab(app: AppHandle, label: String) {
         super::close(&app, &label);
+    }
+
+    /// The sidebar of the asking page's project.
+    #[tauri::command]
+    pub fn sidebar(page: Webview) -> Sidebar {
+        let app = page.app_handle();
+        host(app).sidebar(app, project_of_page(app, page.label()).as_deref())
+    }
+
+    /// The sidebar of the asking page's project changed: kept, and the project's other pages told
+    /// (`sidebar-changed`).
+    #[tauri::command]
+    pub fn set_sidebar(page: Webview, sidebar: Sidebar) {
+        let app = page.app_handle();
+        let root = project_of_page(app, page.label());
+        host(app).set_sidebar(app, root.as_deref(), sidebar.clone());
+        for other in pages_of_set(app, root.as_deref()) {
+            if other != page.label() {
+                let _ = app.emit_to(EventTarget::webview(&other), "sidebar-changed", &sidebar);
+            }
+        }
     }
 }

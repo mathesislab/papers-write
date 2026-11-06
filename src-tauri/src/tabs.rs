@@ -78,4 +78,12 @@ impl Host for Write {
     fn save_windows(&self, app: &AppHandle, windows: Vec<SavedWindow>) {
         crate::projects::save_windows(app, windows);
     }
+
+    fn sidebar(&self, app: &AppHandle, root: Option<&Path>) -> Sidebar {
+        crate::projects::sidebar(app, root)
+    }
+
+    fn set_sidebar(&self, app: &AppHandle, root: Option<&Path>, sidebar: Sidebar) {
+        crate::projects::set_sidebar(app, root, sidebar);
+    }
 }

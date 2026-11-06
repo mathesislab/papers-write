@@ -8,3 +8,4 @@ export { default as Tabs } from "./Tabs.svelte";
 export { SHORT, initials, label } from "./bar";
 export { COLOURS, cssOf } from "./colour";
 export type { Colour, Kind, Node } from "./types";
+export { ProjectSidebar, type SidebarState } from "./sidebar.svelte";

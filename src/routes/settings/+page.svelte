@@ -326,13 +326,6 @@
         </label>
         <label class="row">
           <span>
-            <span class="label">Stay in the menu bar</span>
-            <span class="hint">When the last window closes; off: the app quits</span>
-          </span>
-          <input type="checkbox" class="switch" bind:checked={settings.menu_bar} onchange={save} />
-        </label>
-        <label class="row">
-          <span>
             <span class="label">Project colour bar</span>
             <span class="hint">A thin bar in the project's colour along the top of its windows</span>
           </span>

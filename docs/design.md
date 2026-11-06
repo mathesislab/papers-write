@@ -136,8 +136,8 @@ One app later is then a matter of windows, not code.
   used: on recent macOS their bar cannot be hidden, and they are macOS only;
   this works the same on Linux and Windows.
   Opens in well under a second: the library, pandoc and git are loaded when
-  first needed. It stays in the menu bar when the last window closes, as
-  Papers Desktop does, so the next window is there at once.
+  first needed. It stays in the Dock when the last window closes, as
+  papers-review does, so the next window is there at once.
 - A file alone already has most of it: its front matter says the
   bibliography and the journal, the papers library is found as papers-review
   finds it, the preview and the build work.

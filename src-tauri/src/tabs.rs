@@ -59,10 +59,6 @@ impl Host for Write {
         crate::spelling::closed(app, page);
     }
 
-    fn none_left(&self, app: &AppHandle) {
-        crate::documents::regular(app, false);
-    }
-
     fn layout(&self, app: &AppHandle, root: &Path) -> Layout {
         crate::projects::layout(app, root)
     }

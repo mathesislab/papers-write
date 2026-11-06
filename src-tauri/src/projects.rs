@@ -349,8 +349,6 @@ pub fn choose_project(app: AppHandle) {
 
 /// Open Project…: the folder to choose.
 pub fn choose(app: &AppHandle) {
-    // from the menu bar, with no window: the dialog is in front only for an app with a Dock icon
-    documents::regular(app, true);
     let handle = app.clone();
     app.dialog().file().set_title("Open Project").pick_folder(move |folder| {
         let Some(root) = folder.and_then(|f| f.into_path().ok()) else { return };

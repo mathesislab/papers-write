@@ -69,8 +69,6 @@ pub struct Settings {
 
     /// the files open as tabs of one window; off: each in a window of its own
     pub tabs: bool,
-    /// the app stays in the menu bar when its last window closes; off: it quits
-    pub menu_bar: bool,
     /// a thin bar in the project's colour along the top of its windows
     pub project_colour_bar: bool,
 }
@@ -93,7 +91,6 @@ impl Default for Settings {
             latexmk_path: String::new(),
             pandoc_path: String::new(),
             tabs: true,
-            menu_bar: true,
             project_colour_bar: false,
         }
     }
@@ -212,8 +209,6 @@ pub fn show(app: &AppHandle) {
         let _ = window.set_focus();
         return;
     }
-    // from the menu bar, with no window: in front only for an app with a Dock icon
-    crate::documents::regular(app, true);
     let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("/settings".into()))
         .title("Settings")
         .inner_size(600.0, 680.0)
@@ -267,7 +262,7 @@ mod tests {
         assert_eq!((s.editor_font, s.editor_size, s.indent), (EditorFont::System, 13.5, Indent::Two));
         assert!(s.readable_width && !s.line_numbers && s.spelling && s.symbols.is_empty());
         assert!((s.review_name.as_str(), s.review_email.as_str(), s.review_colour) == ("", "", None));
-        assert!(s.preview_follow && s.tabs && s.menu_bar && !s.project_colour_bar);
+        assert!(s.preview_follow && s.tabs && !s.project_colour_bar);
         assert!(["texmark", "latexmk", "pandoc"].iter().all(|t| s.tool(t).is_none()));
         // a file with nothing in it is the defaults
         assert_eq!(serde_json::from_str::<Settings>("{}").unwrap(), s);
@@ -276,14 +271,15 @@ mod tests {
     #[test]
     fn a_missing_key_keeps_its_default() {
         let s: Settings = serde_json::from_str(r#"{"tabs": false, "indent": "tab"}"#).unwrap();
-        assert!(!s.tabs && s.menu_bar && s.preview_follow);
+        assert!(!s.tabs && s.preview_follow);
         assert_eq!(s.indent, Indent::Tab);
     }
 
     #[test]
     fn keys_this_version_does_not_know_are_tolerated() {
-        let s: Settings = serde_json::from_str(r#"{"menu_bar": false, "theme": "dark", "later": {"a": 1}}"#).unwrap();
-        assert!(!s.menu_bar);
+        // menu_bar: the app stayed in the menu bar, before it stayed in the Dock
+        let s: Settings = serde_json::from_str(r#"{"menu_bar": false, "tabs": false, "later": {"a": 1}}"#).unwrap();
+        assert!(!s.tabs);
     }
 
     #[test]
@@ -306,7 +302,6 @@ mod tests {
             latexmk_path: "/opt/bin/latexmk".into(),
             pandoc_path: "/opt/bin/pandoc".into(),
             tabs: false,
-            menu_bar: false,
             project_colour_bar: true,
         };
         settings.save(&dir);

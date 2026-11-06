@@ -23,7 +23,6 @@ export type Settings = {
   latexmk_path: string;
   pandoc_path: string;
   tabs: boolean;
-  menu_bar: boolean;
   project_colour_bar: boolean;
 };
 

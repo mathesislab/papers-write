@@ -19,7 +19,6 @@ mod spelling;
 mod state;
 mod tabs;
 mod trash;
-mod tray;
 
 use tauri::{DragDropEvent, Manager, RunEvent, WebviewEvent, WindowEvent};
 
@@ -44,7 +43,6 @@ pub fn run() {
             settings::init(app.handle());
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
-            tray::build(app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -170,11 +168,10 @@ pub fn run() {
             } if documents::confirm_quit(app) => {
                 api.prevent_exit();
             }
-            // the last window closed: the app stays in the menu bar (unless the settings say it quits); Quit (⌘Q, the
-            // menu bar icon) ends it with a code
+            // the last window closed: the app stays in the Dock; Quit (⌘Q, the Dock icon's menu) ends it with a code
             RunEvent::ExitRequested {
                 code: None, api, ..
-            } if app.windows().is_empty() && settings::get().menu_bar => {
+            } if app.windows().is_empty() => {
                 api.prevent_exit();
             }
             // quitting: the windows close now, but stay saved as open for the next start

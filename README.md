@@ -145,8 +145,8 @@ them) are proposed upstream; until they are released,
   not guessed. Only the text comes back: Word's formatting is dropped, and a
   change that takes in a citation, math or markup is placed on the words
   around it.
-- The app stays in the menu bar when the last window closes (New, Open…,
-  Quit); ⌘Q quits (from the menu bar icon or the Dock too). If untitled windows have
+- The app stays in the Dock when the last window closes (a click on its icon
+  opens a new window); ⌘Q quits (from the Dock too). If untitled windows have
   text that was never saved, it asks once: "2 windows have text that was never
   saved": Quit and discard, or Cancel.
 - Projects: a project is a folder with a `write.toml` (below). File ▸ Open
@@ -320,7 +320,7 @@ them) are proposed upstream; until they are released,
     back as suggestions"); commit when you like (Git ▸ Commit…).
   - Who made what comes from `git blame`, by line: two commits that changed the
     same line both count as the later one.
-- Settings (⌘, in the app menu and the menu bar icon; one window, every change
+- Settings (⌘, in the app menu; one window, every change
   saved at once in `settings.json` of the app's data folder, every window told).
   Editor: font (system, serif, monospace) and size, what Tab inserts, readable
   line length, line numbers, spelling,
@@ -333,8 +333,8 @@ them) are proposed upstream; until they are released,
   it), so that they see your suggestions in it. Build: the path of texmark, latexmk and
   pandoc (empty: found as usual, which the window shows as "Found: …"; a path
   that is not a file is an error where the tool is used). Window: files open as
-  tabs (off: a window each, for the files opened from then on) and the app
-  stays in the menu bar when its last window closes (off: it quits).
+  tabs (off: a window each, for the files opened from then on) and the thin
+  bar in the project's colour at the top.
 
 ## Command line
 

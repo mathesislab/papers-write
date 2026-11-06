@@ -77,17 +77,6 @@ pub(crate) fn title(path: Option<&Path>) -> String {
         .unwrap_or_else(|| "Untitled".into())
 }
 
-/// The app in the Dock and ⌘Tab while a window is open; in the menu bar only otherwise (macOS).
-pub(crate) fn regular(app: &AppHandle, regular: bool) {
-    #[cfg(target_os = "macos")]
-    {
-        use tauri::ActivationPolicy::{Accessory, Regular};
-        let _ = app.set_activation_policy(if regular { Regular } else { Accessory });
-    }
-    #[cfg(not(target_os = "macos"))]
-    let _ = (app, regular);
-}
-
 /// Whether the file is a PDF (by its extension): its window is the page of PDFs, not the editor's.
 pub fn is_pdf(path: &Path) -> bool {
     path.extension()
@@ -107,7 +96,6 @@ pub fn make(app: &AppHandle, path: Option<PathBuf>) -> tauri::Result<String> {
     if path.is_none() {
         state.blank.lock().unwrap().insert(label.clone());
     }
-    regular(app, true);
     let url = if path.as_deref().is_some_and(is_pdf) { "/pdf" } else { "/" };
     if let Err(e) = crate::tabs::add(app, &label, url, path.as_deref().and_then(write_core::project::find).as_deref()) {
         closed(app, &label);
@@ -274,8 +262,6 @@ pub fn open_files(app: &AppHandle, paths: &[PathBuf]) {
 
 /// Open…: the files to choose.
 pub fn choose(app: &AppHandle) {
-    // from the menu bar, with no window: the dialog is in front only for an app with a Dock icon
-    regular(app, true);
     let handle = app.clone();
     app.dialog()
         .file()

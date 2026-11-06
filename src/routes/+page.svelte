@@ -23,30 +23,20 @@
   //
   // File ▸ Exchange (`exchange`) is Exchange: Compare as Suggestions… and the Word round trip.
   //
-  // A document of a project (a folder above it has write.toml) shows the project bar at the left (ProjectBar of
-  // papers-write/project: a tile per project, the main document's words and open suggestions; a click opens the
-  // project's main document, or for the current project shows or hides the sidebar; a right-click its menu) and, when Settings ▸ Window says so, a thin bar in the project's colour at the top. Project
-  // Info… (⌘I, `project-info`) is a card over the window (ProjectCard); so is the card of a new project, asked for
-  // when File ▸ Open Project… chose a folder without write.toml (`asking-project`). The bar is asked again on
-  // `projects-changed`, when the window gets the focus, and a moment after the file or its review changes.
+  // The project bar, the sidebar and the strip of tabs around the text are those of every tab (Frame).
   //
   // View ▸ Show Preview (⇧⌘P, `preview`) toggles the pane at the right of a Markdown document: pandoc's HTML of the text
   // as typed (`preview`), asked 300 ms after the typing stops, and scrolled to the block the cursor is in.
-  // The sidebar at the left (Sidebar: the files of the project or the document's folder, the outline, the search of
-  // the project) is shown and hidden by a click on the project's tile and View ▸ Show Sidebar (⌥⌘S, `sidebar`); View ▸
-  // Show Outline (⌥⌘O, `outline`) shows it on the outline, Edit ▸ Find ▸ Find in Project… (⇧⌘F) on the search. A
-  // match opened comes as `go-to` (or `pending_go_to` for a window made for it), Replace All of the search as
-  // `replace-all` to the windows of the files it changes.
+  // Edit ▸ Find ▸ Find in Project… (⇧⌘F) shows the sidebar on its search (Frame). A match opened comes as `go-to` (or
+  // `pending_go_to` for a window made for it), Replace All of the search as `replace-all` to the windows of the files
+  // it changes.
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
   import { ensureSyntaxTree } from "@codemirror/language";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { Menu, MenuItem } from "@tauri-apps/api/menu";
-  import { ProjectBar, ProjectSidebar, Tabs, cssOf, part, ready } from "papers-write/project";
-  import ProjectCard from "$lib/ProjectCard.svelte";
-  import type { Bar } from "$lib/projects";
+  import { part, ready } from "papers-write/project";
   import Preview from "$lib/Preview.svelte";
   import CommentBox from "$lib/CommentBox.svelte";
   import ReviewPanel from "$lib/ReviewPanel.svelte";
@@ -79,7 +69,7 @@
   import Git from "$lib/Git.svelte";
   import GitBar from "$lib/GitBar.svelte";
   import ModeControl from "$lib/ModeControl.svelte";
-  import Sidebar, { type Tab } from "$lib/Sidebar.svelte";
+  import Frame from "$lib/Frame.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Settings } from "$lib/settings";
@@ -152,40 +142,11 @@
   })();
   let width = $state(stored >= 240 ? stored : 0);
   let panes = $state<HTMLElement>();
-  // The sidebar at the left (Sidebar): shown or not, its tab and its width, the same in all the project's pages and
-  // kept for the next time (ProjectSidebar).
-  const side = new ProjectSidebar();
-  const sideTab = $derived((side.tab ?? "files") as Tab);
-  let sidebar = $state<Sidebar>();
+  /** the project bar and the sidebar around the text (Frame) */
+  let frame = $state<Frame>();
   /** the headings of the document and the one the cursor is under, for the outline */
   let headings = $state.raw<Heading[]>([]);
   let here = $state(-1);
-
-  function toggleSidebar() {
-    side.set({ shown: !side.shown });
-    if (!side.shown) editor?.focus();
-  }
-
-  /** View ▸ Show Outline: the sidebar on its outline, or hidden when it shows it. */
-  function toggleOutline() {
-    if (side.shown && sideTab === "outline") return toggleSidebar();
-    side.set({ shown: true, tab: "outline" });
-  }
-
-  /** The sidebar's right edge dragged: its width. */
-  function resizeSide(e: PointerEvent) {
-    const edge = e.currentTarget as HTMLElement;
-    edge.setPointerCapture(e.pointerId);
-    const left = (edge.parentElement as HTMLElement).getBoundingClientRect().left;
-    const move = (m: PointerEvent) => side.set({ width: Math.round(Math.min(Math.max(m.clientX - left, 180), 520)) }, false);
-    const stop = () => {
-      edge.removeEventListener("pointermove", move);
-      edge.removeEventListener("pointerup", stop);
-      side.keep();
-    };
-    edge.addEventListener("pointermove", move);
-    edge.addEventListener("pointerup", stop);
-  }
   const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), log: (e) => log.push(e), colours: (m) => setColours(withOwn(m)) });
   /** the review panel at the right: shown (the preview is not while it is) */
   let panel = $state(false);
@@ -198,7 +159,6 @@
   async function ask() {
     log = [];
     path = (await invoke<{ path: string | null }>("document")).path;
-    await loadBar();
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
     const going = await invoke<{ at: number; end: number } | null>("pending_go_to").catch(() => null);
@@ -212,66 +172,6 @@
     } catch {}
   }
 
-  /** the project bar: the project of the document (none: no bar) and its tiles */
-  let bar = $state<Bar>({ current: null, tiles: [] });
-  /** the folder of the project whose info card is shown */
-  let carding = $state<string | null>(null);
-  /** the folder opened as a project that has no write.toml yet, whose card asks what to write in one */
-  let asking = $state<string | null>(null);
-  let barTimer: ReturnType<typeof setTimeout> | undefined;
-  /** the thin bar in the project's colour at the top (Settings ▸ Window) */
-  let colourBar = $state(false);
-  /** the folder the sidebar shows: the project's, else the document's */
-  const sideRoot = $derived(bar.current?.root ?? (path ? path.slice(0, path.lastIndexOf("/")) : null));
-  const barColour = $derived(bar.current && colourBar ? cssOf(bar.current.colour) : null);
-
-  async function loadBar() {
-    clearTimeout(barTimer);
-    try {
-      bar = await invoke<Bar>("project_bar");
-    } catch (e) {
-      problem = String(e);
-    }
-  }
-
-  /** The bar asked again a moment later (the words and suggestions of a file being written). */
-  function loadBarLater(ms: number) {
-    clearTimeout(barTimer);
-    barTimer = setTimeout(loadBar, ms);
-  }
-
-  async function askProject() {
-    asking = await invoke<string | null>("asking_project");
-  }
-
-  /** A click on a tile: the current project's shows or hides the sidebar, another's switches the window to it (or
-   *  brings forward the window that shows it). */
-  function switchProject(root: string) {
-    if (root === bar.current?.root) return toggleSidebar();
-    invoke("switch_project", { root }).catch((e) => (problem = String(e)));
-  }
-
-  /** A right-click on a tile. */
-  async function tileMenu(root: string) {
-    const items = await Promise.all([
-      MenuItem.new({ text: "Open in New Window", action: () => void invoke("open_project_in_new_window", { root }).catch((e) => (problem = String(e))) }),
-      MenuItem.new({ text: "Open Project Folder in Finder", action: () => void invoke("reveal", { path: root }).catch((e) => (problem = String(e))) }),
-      MenuItem.new({ text: "Project Info…", action: () => (carding = root) }),
-      MenuItem.new({ text: "Remove from Bar", action: () => void invoke("remove_from_bar", { root }) }),
-    ]);
-    await (await Menu.new({ items })).popup();
-  }
-
-  function projectInfo() {
-    if (bar.current) carding = bar.current.root;
-    else say("Not in a project: File ▸ Open Project… makes a folder one");
-  }
-
-  function closeCard() {
-    carding = null;
-    asking = null;
-    editor?.focus();
-  }
 
   function changed(text: string) {
     typed = text;
@@ -522,9 +422,7 @@
   /** Edit ▸ Find: in the text (the editor's bar), or in the project (the sidebar's search). */
   function findCommand(what: string) {
     if (what === "find-project") {
-      if (!sideRoot) return say("Save the document first, to search its folder");
-      side.set({ shown: true });
-      return queueMicrotask(() => sidebar?.find());
+      return frame?.findInProject();
     }
     editor?.find(what === "find-replace" ? "replace" : (what.replace(/^find-?/, "") || "find") as FindCommand);
   }
@@ -564,7 +462,6 @@
   function apply(s: Settings) {
     prefs = applyEditor(s);
     spelling = s.spelling;
-    colourBar = s.project_colour_bar;
     symbols = s.symbols;
     colour = s.review_colour;
     follows = s.preview_follow;
@@ -594,41 +491,32 @@
     });
   });
 
-  onMount(() => side.start());
-
   /** the text read the first time, for the tab to be shown (`ready`) */
   const textIn = part();
 
   onMount(() => {
     const stop = watchSettings(apply);
-    ready(ask(), textIn.promise);
-    askProject();
-    window.addEventListener("focus", loadBar);
+    ready(ask(), textIn.promise, frame?.loaded() ?? Promise.resolve());
     const unlisten = [
       listen("opened", ask),
       listen("file-changed", () => {
         editor?.changedOnDisk();
         session.reload(300);
         gitbar?.refresh(1000);
-        loadBarLater(2000);
+        frame?.loadBarLater(2000);
       }),
-      listen("projects-changed", loadBar),
-      listen("asking-project", askProject),
-      listen("project-info", projectInfo),
       listen<string>("review-menu", (e) => reviewMenu(e.payload)),
       listen("review-received", takeReceived),
       listen("review-changed", () => {
         session.reload(100);
         gitbar?.refresh(500);
-        loadBarLater(1000);
+        frame?.loadBarLater(1000);
       }),
       listen<string>("menu", (e) => (e.payload === "save" ? save() : builds?.run(e.payload))),
       listen<string>("edit", (e) => edit(e.payload)),
       listen<string>("git-menu", (e) => git?.run(e.payload)),
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", togglePreview),
-      listen("outline", toggleOutline),
-      listen("sidebar", () => (sideRoot ? toggleSidebar() : say("Save the document first, to see its folder"))),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number }>("go-to", (e) => editor?.select(e.payload.at, e.payload.end)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -637,40 +525,24 @@
     ];
     return () => {
       stop();
-      window.removeEventListener("focus", loadBar);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });
 </script>
 
-<!-- the project's colour, at the top, to tell its windows apart among others -->
-{#if barColour}<div class="colour" style:background={barColour}></div>{/if}
-<div class="window" class:coloured={barColour}>
-{#if bar.current && bar.tiles.length}
-  <ProjectBar items={bar.tiles} onswitch={switchProject} onmenu={tileMenu} onadd={() => invoke("choose_project")} addTitle="Open Project… (⇧⌘O)" />
-{/if}
-{#if side.shown && sideRoot}
-  <div class="side" style:width="{side.width}px">
-    <Sidebar
-      bind:this={sidebar}
-      bind:tab={() => sideTab, (tab) => side.set({ tab })}
-      bind:folders={() => side.folders, (folders) => side.setFolders(folders)}
-      root={sideRoot}
-      front={path ?? null}
-      {headings}
-      {here}
-      outlined={markdown || latex}
-      onheading={(h) => editor?.goToHeading(h)}
-      onsay={say}
-    />
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="edge" onpointerdown={resizeSide}></div>
-  </div>
-{/if}
-<main style:--bar={reviewing ? "28px" : "0px"}>
-  <!-- the top of the text: the tabs of the window, the review's mode at the right -->
-  <div class="top">
-    <div class="tabs"><Tabs /></div>
+<Frame
+  bind:this={frame}
+  {path}
+  {headings}
+  {here}
+  outlined={markdown || latex}
+  offset={reviewing ? 28 : 0}
+  onheading={(h) => editor?.goToHeading(h)}
+  onsay={say}
+  onproblem={(e) => (problem = e)}
+  onfocus={() => editor?.focus()}
+>
+  {#snippet top()}
     <ModeControl
       mode={session.mode}
       view={session.view}
@@ -682,7 +554,8 @@
       onmode={(m) => m !== session.mode && session.toggleMode()}
       onview={(v) => session.setView(v)}
     />
-  </div>
+  {/snippet}
+  <div class="body">
   <div class="panes" bind:this={panes}>
   <div class="text">
   {#if path !== undefined}
@@ -793,60 +666,22 @@
     {:else if note}<span class="said" title={note}>{note}</span>{:else}<span class="said"></span>{/if}
     <GitBar bind:this={gitbar} {path} bind:state={repo} onopen={() => git?.run("git-commit")} />
   </footer>
-</main>
-</div>
-{#if asking}
-  {#key asking}<ProjectCard root={asking} onclose={closeCard} />{/key}
-{:else if carding}
-  {#key carding}<ProjectCard root={carding} onclose={closeCard} />{/key}
-{/if}
+  </div>
+</Frame>
 
 <style>
-  /* absolute, not fixed: WebKit tints the title bar with what is fixed at the top of the page */
-  .colour {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 50;
-    height: 6px;
-  }
-  .window {
-    display: flex;
-    height: 100vh;
-    box-sizing: border-box;
-    /* the tiles' detail: words and open suggestions, on two lines */
-    --tile-detail-size: 10.5px;
-  }
-  .window.coloured {
-    padding-top: 6px;
-  }
-  main {
-    flex: 1;
-    min-width: 0;
-    height: 100%;
-    position: relative;
+  /* not a box: the panes and the foot are the frame's; what is placed absolutely is placed in its content */
+  .body {
+    display: contents;
     --foot: 26px;
-    --top: 32px;
-  }
-  .top {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    height: var(--top);
-    box-sizing: border-box;
-    margin-top: var(--bar, 0px);
-    padding: 0 10px 0 8px;
-  }
-  .tabs {
-    flex: 1;
-    min-width: 0;
   }
   .panes {
+    flex: 1;
+    min-height: 0;
     display: flex;
-    height: calc(100% - var(--bar, 0px) - var(--top) - var(--foot));
   }
   footer {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -873,20 +708,6 @@
     flex: 1;
     min-width: 0;
     height: 100%;
-  }
-  .side {
-    position: relative;
-    flex: none;
-    height: 100%;
-  }
-  .edge {
-    position: absolute;
-    top: 0;
-    right: -3px;
-    width: 6px;
-    height: 100%;
-    cursor: col-resize;
-    z-index: 3;
   }
   .split {
     flex: none;

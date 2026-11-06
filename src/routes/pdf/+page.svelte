@@ -1,5 +1,6 @@
 <script lang="ts">
-  // The page of a window that shows a PDF (PDFKit): its tools are the page in view (and the field to go to one), the
+  // The page of a tab that shows a PDF (PDFKit), in the project bar and sidebar of every tab (Frame): its tools are the
+  // page in view (and the field to go to one), the
   // zoom (⌘= ⌘- ⌘0, the PDF menu) and Find (⌘F, ⌘G; the menu says them as `pdf`). The PDF is read again, at the same
   // page, when it changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last).
 
@@ -7,7 +8,8 @@
   import { onMount, tick } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
   import { listen } from "$lib/events";
-  import { Tabs, part, ready } from "papers-write/project";
+  import { part, ready } from "papers-write/project";
+  import Frame from "$lib/Frame.svelte";
   import "$lib/theme.css";
 
   let path = $state<string | null | undefined>();
@@ -30,6 +32,18 @@
 
   /** the PDF opened the first time, for the tab to be shown (`ready`) */
   const opened = part();
+  let frame = $state<Frame>();
+  /** a card of the frame over the page: the PDF makes way */
+  let carded = $state(false);
+  /** what was just done or went wrong, for a moment */
+  let note = $state("");
+  let noteTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function say(what: string) {
+    note = what;
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => (note = ""), 4000);
+  }
 
   async function ask() {
     path = (await invoke<{ path: string | null }>("document")).path;
@@ -88,21 +102,20 @@
   }
 
   onMount(() => {
-    ready(opened.promise);
+    ready(opened.promise, frame?.loaded() ?? Promise.resolve());
     ask();
     const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload))];
     return () => {
       clearTimeout(timer);
+      clearTimeout(noteTimer);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });
 </script>
 
-<main>
-  <!-- the tabs of the window (nothing for a tab alone) -->
-  <div class="tabrow"><Tabs /></div>
+<Frame bind:this={frame} bind:covering={carded} {path} onsay={say} onfocus={() => view?.focus()}>
   <div class="tools">
-    <span class="name" title={path ?? ""}>{name}</span>
+    <span class="name" class:said={note} title={note || path || ""}>{note || name}</span>
     {#if typing !== null}
       <!-- svelte-ignore a11y_autofocus -->
       <input
@@ -152,7 +165,7 @@
           bind:this={view}
           {path}
           page={current}
-          covered={!front}
+          covered={!front || carded}
           onpage={(p) => (current = p)}
           onopen={(c) => {
             count = c;
@@ -163,23 +176,9 @@
       {/key}
     {/if}
   </div>
-</main>
+</Frame>
 
 <style>
-  main {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    background: var(--viewer);
-  }
-  .tabrow {
-    padding: 5px 8px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--line);
-  }
-  .tabrow:empty {
-    display: none;
-  }
   .tools {
     display: flex;
     align-items: center;
@@ -196,6 +195,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--muted);
+  }
+  .name.said {
+    color: var(--fg);
   }
   .page {
     color: var(--muted);
@@ -233,6 +235,7 @@
     border-color: var(--error);
   }
   .viewer {
+    background: var(--viewer);
     flex: 1;
     position: relative;
     min-height: 0;

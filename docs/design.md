@@ -127,7 +127,12 @@ One app later is then a matter of windows, not code.
   with papers-review: a model of the sets of tabs tested without windows, and
   the windows driven from it; the app says what its pages are (a `Host`:
   `tabs.rs` here). The pages draw the strip of tabs themselves (Tabs and
-  TabStrip of papers-write/project, shared with papers-review). macOS's own tabs are not
+  TabStrip of papers-write/project, shared with papers-review). A tab's page is
+  shown once it says it is drawn, the page before staying in view till then,
+  so no tab shows an empty page. Every tab of a project, a text, a PDF or a
+  history, has the same frame (ProjectFrame of papers-write/project, also
+  papers-review's): the project bar, the project's sidebar, the strip of
+  tabs; only the content under the strip changes from tab to tab. macOS's own tabs are not
   used: on recent macOS their bar cannot be hidden, and they are macOS only;
   this works the same on Linux and Windows.
   Opens in well under a second: the library, pandoc and git are loaded when
@@ -145,13 +150,14 @@ One app later is then a matter of windows, not code.
   saved, else its main document), Open in New Window gives a project a window
   of its own. The other projects' tabs stay alive, hidden. Each project's tabs
   and the windows open as the app quits are kept in `state.json` and opened
-  again at the next start. papers-review may later move to a page per tab
-  too.
+  again at the next start. The sidebar is the project's, the same in all its
+  tabs and kept (shown, its width, its tab); so are the folders open in its
+  tree, which are not kept: a project opens with its folders closed.
 - What differs from papers-review is what a project says. No due date: the
   tile shows the main document's words and its open suggestions (whether the
   last build passed, later). The info card asks for the name, short name,
   colour, main file, build folder and library, not a manuscript ID; the
-  journal and the bib stay in the front matter. No files panel yet.
+  journal and the bib stay in the front matter.
 
 ## The project
 

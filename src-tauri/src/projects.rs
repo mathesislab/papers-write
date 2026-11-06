@@ -185,11 +185,11 @@ fn tile(root: &Path, current: bool) -> Tile {
     }
 }
 
-/// The project bar of the window: its document's project, and the tiles of the bar (that project's at the end when
-/// it is not in the bar).
+/// The project bar of a tab: its project (papers-tabs: a text's, a PDF's, a history's), and the tiles of the bar
+/// (that project's at the end when it is not in the bar).
 #[tauri::command]
 pub async fn project_bar(app: AppHandle, window: Webview) -> Bar {
-    let project = documents::path_of(&app, window.label()).and_then(|path| Project::of(&path).ok().flatten());
+    let project = crate::tabs::project_of_page(&app, window.label()).and_then(|root| Project::read(&root).ok());
     let Some(project) = project else {
         return Bar { current: None, tiles: Vec::new() };
     };

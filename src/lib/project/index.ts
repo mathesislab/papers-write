@@ -10,3 +10,4 @@ export { COLOURS, cssOf } from "./colour";
 export type { Colour, Kind, Node } from "./types";
 export { ProjectSidebar, type SidebarState } from "./sidebar.svelte";
 export { part, ready } from "./ready";
+export { default as ProjectFrame } from "./ProjectFrame.svelte";

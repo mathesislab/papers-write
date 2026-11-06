@@ -9,7 +9,8 @@
   import { EditorState } from "@codemirror/state";
   import { FileEditor, PREFS, type EditorPrefs, type ReviewHandlers, type ReviewItem } from "papers-write/editor";
   import { applyEditor, watchSettings } from "$lib/settings";
-  import { Tabs, ready } from "papers-write/project";
+  import { ready } from "papers-write/project";
+  import Frame from "$lib/Frame.svelte";
   import "$lib/theme.css";
 
   type History = { title: string; text: string; items: ReviewItem[]; markdown: boolean };
@@ -22,6 +23,9 @@
   /** nothing is suggested or withdrawn in a read-only text */
   const handlers: ReviewHandlers = { me: "history", suggest: async () => "", withdraw: async () => {} };
   const readOnly = [EditorState.readOnly.of(true)];
+
+  /** the project bar and the sidebar around the history (Frame) */
+  let frame = $state<Frame>();
 
   async function ask() {
     try {
@@ -36,7 +40,7 @@
 
   onMount(() => {
     const stop = watchSettings((s) => (prefs = applyEditor(s)));
-    ready(ask());
+    ready(ask(), frame?.loaded() ?? Promise.resolve());
     // the document written (or changed by a pull) since the tab was opened: compared again as it gets the keys
     window.addEventListener("focus", ask);
     return () => {
@@ -46,9 +50,7 @@
   });
 </script>
 
-<main>
-  <!-- the tabs of the window -->
-  <div class="tabrow"><Tabs /></div>
+<Frame bind:this={frame} path={null} onsay={(what) => (error = what)}>
   {#if shown}
     <div class="bar">{shown.title}: {shown.items.length} change{shown.items.length === 1 ? "" : "s"} since, read only</div>
     {#key shown.text}
@@ -66,22 +68,9 @@
     {/key}
   {/if}
   {#if error}<p class="error">{error}</p>{/if}
-</main>
+</Frame>
 
 <style>
-  main {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-  }
-  .tabrow {
-    padding: 5px 8px;
-    border-bottom: 1px solid var(--line);
-  }
-  .tabrow:empty {
-    display: none;
-  }
   .bar {
     flex: none;
     padding: 4px 14px;

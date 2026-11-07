@@ -287,10 +287,16 @@ export const prefsFrom = (s: EditorSettings): EditorPrefs => ({
   lineNumbers: s.line_numbers ?? PREFS.lineNumbers,
 });
 
+/** The width of the column of text when it is readable, and the room the line numbers take beside it. */
+const COLUMN = "46em";
+const GUTTER = "3.5em";
+
 /** The numbers of the lines, quiet, on the page's background. */
 const numbered = [
   lineNumbers(),
   EditorView.theme({
+    // the room the numbers take beside a readable column, the line of its margin beyond them
+    "&": { "--aside": GUTTER },
     ".cm-gutters": { background: "transparent", border: "none", color: "var(--muted)" },
     ".cm-lineNumbers .cm-gutterElement": { padding: "0 4px 0 10px", fontSize: "0.85em", fontVariantNumeric: "tabular-nums" },
   }),
@@ -298,20 +304,24 @@ const numbered = [
 
 const INDENTS: Record<Indent, string> = { two: "  ", four: "    ", tab: "\t" };
 
-/** The width of the column of text when it is readable, and the room the line numbers take beside it. */
-const COLUMN = "46em";
-const GUTTER = "3.5em";
 /** The text as a column of `COLUMN` at most, in the middle, as Obsidian has it: the room left is a margin on each
  *  side (of the lines, so that a click there still goes into the text), down to the usual padding in a narrow window.
  *  With the line numbers, they stand beside the column. */
-/** The margin on each side of the column, shaded (`--editor-margin`, else a touch of the text's colour in the
- *  background's) so that the width of the text shows; none in a window too narrow for one. */
-const MARGIN = `max(0px, calc((100cqw - ${COLUMN}) / 2))`;
+/** The room between the text and the thin line down each side of the column (`--editor-margin`, else the border colour)
+ *  that shows the width of the text; with the line numbers, the left one beyond them. No lines in a window too
+ *  narrow for that room: they lie outside it. */
+const ROOM = "24px";
+const MARGIN = `calc((100cqw - ${COLUMN}) / 2)`;
+const LEFT = `calc(${MARGIN} - var(--aside, 0px) - ${ROOM})`;
+const RIGHT = `calc(100% - ${MARGIN} + ${ROOM})`;
 const readable = EditorView.theme({
   "&": { containerType: "inline-size" },
   ".cm-scroller": {
-    backgroundImage: `linear-gradient(to right, var(--shade) ${MARGIN}, transparent ${MARGIN}, transparent calc(100% - ${MARGIN}), var(--shade) calc(100% - ${MARGIN}))`,
-    "--shade": "var(--editor-margin, color-mix(in srgb, var(--fg, #000) 3.5%, var(--bg, #fff)))",
+    backgroundImage: [
+      `linear-gradient(to right, transparent ${LEFT}, var(--rule) ${LEFT}, var(--rule) calc(${LEFT} + 1px), transparent calc(${LEFT} + 1px))`,
+      `linear-gradient(to right, transparent calc(${RIGHT} - 1px), var(--rule) calc(${RIGHT} - 1px), var(--rule) ${RIGHT}, transparent ${RIGHT})`,
+    ].join(", "),
+    "--rule": "var(--editor-margin, var(--border, rgba(0, 0, 0, 0.14)))",
   },
   // more specific than the theme's padding of the lines, which it overrides
   ".cm-content .cm-line": { paddingInline: `max(18px, calc((100cqw - ${COLUMN}) / 2))` },

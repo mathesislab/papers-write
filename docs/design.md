@@ -228,8 +228,8 @@ and `library` are kept but not yet used by the build and the references.
   frame without scripts. Cross-references stay as pandoc leaves them.
   A 9,400-word paper with 60 display equations takes 0.22 s, fast enough to
   run a moment after the typing stops. It follows the cursor.
-- Build: texmark with `--pdf` into `build/` beside the document (⌘B; ⇧⌘B
-  shows the PDF in a tab, PDFKit, which reloads by itself when the file
+- Build: texmark with `--pdf` into `build/` beside the document (⇧⌘B, ⌘B
+  being Bold; ⌥⇧⌘B shows the PDF in a tab, PDFKit, which reloads by itself when the file
   changes), one build per document at a time, the status only told to the
   page. Failures list the `!` errors of `build/name.log` with their `.tex`
   lines. A `.tex` document is built by latexmk itself in its folder

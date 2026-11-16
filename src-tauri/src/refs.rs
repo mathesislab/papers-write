@@ -119,6 +119,12 @@ pub async fn closest_references(window: Webview, selected: String, limit: usize,
     Ok(refs.closest(&selected, limit))
 }
 
+/// What the references' `.bib` files have that could not be read and was left out, one line each.
+#[tauri::command]
+pub async fn references_left_out(window: Webview, text: String) -> Vec<String> {
+    references_of(&window, &text).dropped()
+}
+
 /// The `.bib` files the references are read from.
 #[tauri::command]
 pub async fn reference_sources(window: Webview, text: String) -> Vec<String> {

@@ -151,6 +151,7 @@ pub fn run() {
             refs::references,
             refs::closest_references,
             refs::reference_sources,
+            refs::references_left_out,
             refs::cite_key,
             refs::bib_check,
             refs::cite_options,

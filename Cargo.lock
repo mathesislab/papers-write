@@ -1074,7 +1074,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2887,8 +2887,8 @@ dependencies = [
 
 [[package]]
 name = "papers-core"
-version = "0.9.0"
-source = "git+https://github.com/mathesislab/papers-desktop?tag=v0.9.0#ae8565503a69442bdccc931c74d16a3ad4bc1105"
+version = "0.10.1"
+source = "git+https://github.com/mathesislab/papers-desktop?tag=v0.10.1#be12495fd87ed6b9e4e4600780d9b9f4f3b22a8b"
 dependencies = [
  "any_ascii",
  "biblatex",
@@ -3517,7 +3517,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3573,7 +3573,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4634,7 +4634,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5394,7 +5394,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

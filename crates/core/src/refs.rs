@@ -48,6 +48,11 @@ impl References {
         self.library.as_ref().err().map(String::as_str)
     }
 
+    /// What the files have that could not be read, and was left out (a field of an entry, or an entry), said.
+    pub fn dropped(&self) -> Vec<String> {
+        self.library().map(|l| l.dropped().iter().map(|d| d.to_string()).collect()).unwrap_or_default()
+    }
+
     /// The library, if the files were read.
     pub fn library(&self) -> Option<&Library> {
         self.library.as_ref().ok()

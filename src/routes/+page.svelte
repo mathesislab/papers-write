@@ -276,6 +276,7 @@
   const search = (query: string, limit: number) => invoke<Found>("references", { query, limit, text: current() });
   const closest = (selected: string, limit: number) => invoke<Found>("closest_references", { selected, limit, text: current() });
   const sources = () => invoke<string[]>("reference_sources", { text: current() });
+  const leftOut = () => invoke<string[]>("references_left_out", { text: current() });
 
   /** The completion of citations as typed (`[@`, `@`, `\cite{`): the references matching what is typed, those of the
    *  document's own bibliography marked as such, a key in both once; a key taken is added to the bibliography. */
@@ -621,7 +622,7 @@
   </div>
   {#if listing}
     {#key version}
-      <RefList bind:this={refs} enter="pandoc" {search} {closest} {sources} oninsert={inserted} onopen={openPdf} onclose={closeList} />
+      <RefList bind:this={refs} enter="pandoc" {search} {closest} {sources} dropped={leftOut} oninsert={inserted} onopen={openPdf} onclose={closeList} />
     {/key}
   {/if}
   {#if checking}

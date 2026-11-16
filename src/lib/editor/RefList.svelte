@@ -4,7 +4,8 @@
   // opened with a reference selected in the PDF, it lists the papers closest to that text until something is typed.
   // The key on the one marked: ↵ puts a citation in at the cursor, ⇧↵ the full reference, ⌘. [@key], ⌘L \cite{key};
   // ⌘↵ opens its PDF in a tab of the project. Esc closes the list. Where the references come from is the app's:
-  // `search`, `closest` and `sources`.
+  // `search`, `closest` and `sources`; `dropped`, what of the .bib files could not be read and was left out, is said
+  // above the foot.
 
   import { onMount } from "svelte";
   import { citation, fullReference, latex, pandoc } from "./refs";
@@ -16,6 +17,7 @@
     search: find,
     closest: findClosest,
     sources: findSources,
+    dropped: findDropped,
     oninsert,
     onopen,
     onclose,
@@ -31,6 +33,8 @@
     closest: (text: string, limit: number) => Promise<Found>;
     /** the .bib files of the references */
     sources: () => Promise<string[]>;
+    /** what the .bib files have that could not be read and was left out, one line each (none: not said) */
+    dropped?: () => Promise<string[]>;
     /** the text to put in at the cursor */
     oninsert: (text: string) => void;
     /** the PDF of a paper, to open in a tab of the project */
@@ -49,6 +53,8 @@
   let marked = $state(0);
   /** the .bib files of the references */
   let bibs = $state<string[]>([]);
+  /** what of them was left out */
+  let leftOut = $state<string[]>([]);
   let input: HTMLInputElement;
   let list: HTMLElement;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -131,6 +137,9 @@
     findSources()
       .then((s) => (bibs = s))
       .catch(() => {});
+    findDropped?.()
+      .then((d) => (leftOut = d))
+      .catch(() => {});
     return () => clearTimeout(timer);
   });
 </script>
@@ -167,6 +176,11 @@
       <li class="none" class:error>{error || (found ? "Nothing found" : "")}</li>
     {/each}
   </ul>
+  {#if leftOut.length}
+    <p class="left-out" title={leftOut.join("\n")}>
+      Left out of the .bib: {leftOut[0]}{#if leftOut.length > 1}<span> and {leftOut.length - 1} more</span>{/if}
+    </p>
+  {/if}
   <footer>
     <span class="keys">{enter === "pandoc" ? "↵ [@key]" : "↵ cite · ⌘. [@key]"} · ⇧↵ reference · ⌘L \cite · {hit?.item.files.length ? "⌘↵ PDF · " : ""}esc</span>
     <span class="sources" title={bibs.join("\n")}>
@@ -284,6 +298,19 @@
     font-size: 11.5px;
     border-top: 1px solid var(--line);
     white-space: nowrap;
+  }
+  .left-out {
+    margin: 0;
+    padding: 4px 10px;
+    border-top: 1px solid var(--line);
+    color: var(--warning, #b7791f);
+    font-size: 11.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .left-out span {
+    color: var(--muted);
   }
   .sources {
     min-width: 0;

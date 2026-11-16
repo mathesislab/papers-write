@@ -1,6 +1,6 @@
 <script lang="ts">
   // The builds of a document, over its editor: Build (⇧⌘B), Build and Show PDF (⌥⇧⌘B) and Marked-up PDF… of the Build
-  // menu come to `run`. The document is written first (`flush`), then the backend runs texmark (and for the marked-up
+  // menu come to `run`. The document is written first (`flush`), then the backend runs texmark or Quarto (and for the marked-up
   // PDF latexdiff and latexmk; for a .tex document latexmk, and latexdiff) and tells only the status: `build-status`, shown in the foot of the window, where it stays: a split button
   // (Build, Building…, Built 14:02, Build failed) whose click builds and shows the PDF, its ▾ the builds to choose
   // from (Build, Build and Show PDF, Marked-up PDF…, Show PDF), and a button for the errors when there are some. A failure, or LaTeX errors in a PDF that was made, are listed in a sheet with the log's

@@ -229,6 +229,13 @@ and `library` are kept but not yet used by the build and the references.
   frame without scripts. Cross-references stay as pandoc leaves them.
   A 9,400-word paper with 60 display equations takes 0.22 s, fast enough to
   run a moment after the typing stops. It follows the cursor.
+- Build with Quarto: a `.qmd`, or the Markdown of a project whose `write.toml`
+  says `engine = "quarto"`: `quarto render --to pdf` into the build folder,
+  `keep-tex` (the `.tex` maps errors to Markdown lines, as texmark's) and
+  `latex-auto-install: false` (a build never runs tlmgr). Quarto writes
+  `name.tex` beside the document whatever the output folder: moved into the
+  build folder after, and one already there that is not Quarto's stops the
+  build rather than be written over.
 - Build: texmark with `--pdf` into `build/` beside the document (⇧⌘B, ⌘B
   being Bold; ⌥⇧⌘B shows the PDF in a tab, PDFKit, which reloads by itself when the file
   changes), one build per document at a time, the status only told to the

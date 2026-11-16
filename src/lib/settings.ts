@@ -20,6 +20,7 @@ export type Settings = {
   review_colour: number | null;
   preview_follow: boolean;
   texmark_path: string;
+  quarto_path: string;
   latexmk_path: string;
   pandoc_path: string;
   tabs: boolean;

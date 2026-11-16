@@ -64,6 +64,7 @@ pub struct Settings {
 
     /// the tools, each the file to run; empty: found as usual (PATH and the folders the app looks in)
     pub texmark_path: String,
+    pub quarto_path: String,
     pub latexmk_path: String,
     pub pandoc_path: String,
 
@@ -88,6 +89,7 @@ impl Default for Settings {
             review_colour: None,
             preview_follow: true,
             texmark_path: String::new(),
+            quarto_path: String::new(),
             latexmk_path: String::new(),
             pandoc_path: String::new(),
             tabs: true,
@@ -120,7 +122,7 @@ impl Settings {
 
     /// The settings with what cannot be used put right: texts trimmed, the size and the colour in their ranges.
     pub fn normalised(mut self) -> Settings {
-        for text in [&mut self.review_name, &mut self.review_email, &mut self.texmark_path, &mut self.latexmk_path, &mut self.pandoc_path] {
+        for text in [&mut self.review_name, &mut self.review_email, &mut self.texmark_path, &mut self.quarto_path, &mut self.latexmk_path, &mut self.pandoc_path] {
             *text = text.trim().to_string();
         }
         self.editor_size = if self.editor_size.is_finite() { self.editor_size.clamp(9.0, 32.0) } else { Settings::default().editor_size };
@@ -128,10 +130,11 @@ impl Settings {
         self
     }
 
-    /// The file set for the tool `name` (texmark, latexmk, pandoc); none when it is to be found as usual.
+    /// The file set for the tool `name` (texmark, quarto, latexmk, pandoc); none when it is to be found as usual.
     pub fn tool(&self, name: &str) -> Option<PathBuf> {
         let set = match name {
             "texmark" => &self.texmark_path,
+            "quarto" => &self.quarto_path,
             "latexmk" => &self.latexmk_path,
             "pandoc" => &self.pandoc_path,
             _ => return None,
@@ -227,6 +230,7 @@ pub fn show(app: &AppHandle) {
 #[derive(Serialize)]
 pub struct Found {
     texmark: Option<String>,
+    quarto: Option<String>,
     latexmk: Option<String>,
     pandoc: Option<String>,
 }
@@ -234,7 +238,7 @@ pub struct Found {
 #[tauri::command]
 pub fn tools_found() -> Found {
     let found = |name| crate::build::found_tool(name).ok().map(|p| p.to_string_lossy().into_owned());
-    Found { texmark: found("texmark"), latexmk: found("latexmk"), pandoc: found("pandoc") }
+    Found { texmark: found("texmark"), quarto: found("quarto"), latexmk: found("latexmk"), pandoc: found("pandoc") }
 }
 
 /// A file chosen for the tool `name`; none when the dialog was cancelled.
@@ -263,7 +267,7 @@ mod tests {
         assert!(s.readable_width && !s.line_numbers && s.spelling && s.symbols.is_empty());
         assert!((s.review_name.as_str(), s.review_email.as_str(), s.review_colour) == ("", "", None));
         assert!(s.preview_follow && s.tabs && !s.project_colour_bar);
-        assert!(["texmark", "latexmk", "pandoc"].iter().all(|t| s.tool(t).is_none()));
+        assert!(["texmark", "quarto", "latexmk", "pandoc"].iter().all(|t| s.tool(t).is_none()));
         // a file with nothing in it is the defaults
         assert_eq!(serde_json::from_str::<Settings>("{}").unwrap(), s);
     }
@@ -299,6 +303,7 @@ mod tests {
             review_colour: Some(3),
             preview_follow: false,
             texmark_path: "/opt/bin/texmark".into(),
+            quarto_path: "/opt/bin/quarto".into(),
             latexmk_path: "/opt/bin/latexmk".into(),
             pandoc_path: "/opt/bin/pandoc".into(),
             tabs: false,

@@ -2,6 +2,12 @@
 //! version (Marked-up PDF…): the earlier text and the current one each converted to LaTeX by texmark, compared by
 //! latexdiff, compiled by latexmk.
 //!
+//! A Markdown document of a project whose `write.toml` says `engine = "quarto"`, and any `.qmd`, is built by Quarto
+//! instead (`quarto render --to pdf`, the LaTeX kept, no TeX package installed or updated by a build). Quarto writes
+//! `name.tex` (and, when LaTeX fails, `name.log`) beside the document: they are moved into the build folder, and a
+//! `name.tex` that is there before the build (not Quarto's) stops it. Code cells run as Quarto runs them, without a
+//! time limit; caching them is the document's (`execute: freeze: auto`).
+//!
 //! A LaTeX document (`name.tex`) is built by latexmk itself, in its folder, with `-outdir` the build folder (as texmark's, so
 //! `build/name.pdf` and `build/name.log`) and `-file-line-error`, so that the log's errors are `file:line:` and
 //! the ones in the document are lines of the editor's text. Its marked-up PDF is latexdiff of the earlier `.tex` and
@@ -66,19 +72,24 @@ pub enum Earlier {
     File { path: String },
 }
 
-/// What a document is built from.
+/// What a document is built by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
-    /// Markdown (`.md`, `.markdown`, `.qmd`): by texmark
-    Markdown,
-    /// LaTeX (`.tex`): by latexmk
+    /// Markdown (`.md`, `.markdown`) by texmark
+    Texmark,
+    /// Markdown by Quarto: a `.qmd`, or the project's `engine = "quarto"`
+    Quarto,
+    /// LaTeX (`.tex`) by latexmk
     Latex,
 }
 
-/// The kind of document of `path` by its extension, none for one that cannot be built.
+/// What builds the document `path`, by its extension and its project; none for one that cannot be built.
 pub fn kind_of(path: &Path) -> Option<Kind> {
     if write_core::files::is_markdown(path) {
-        return Some(Kind::Markdown);
+        return Some(match project::engine_of(path) {
+            project::Engine::Texmark => Kind::Texmark,
+            project::Engine::Quarto => Kind::Quarto,
+        });
     }
     path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tex")).then_some(Kind::Latex)
 }
@@ -128,6 +139,7 @@ fn extra_dirs() -> Vec<PathBuf> {
         "/opt/homebrew/bin",
         "/opt/homebrew/Caskroom/miniforge/base/bin",
         "/usr/local/bin",
+        "/Applications/quarto/bin",
     ]
     .iter()
     .map(PathBuf::from)
@@ -186,6 +198,7 @@ pub(crate) fn found_tool(name: &str) -> Result<PathBuf, String> {
         "texmark" => "texmark is not installed (pip install texmark); it was not found on PATH, in /opt/homebrew/Caskroom/miniforge/base/bin or ~/.local/bin".to_string(),
         "latexmk" | "latexdiff" | "pdflatex" => format!("{name} was not found: install MacTeX (https://tug.org/mactex/), which has it in /Library/TeX/texbin"),
         "pandoc" => "pandoc is not installed: brew install pandoc".to_string(),
+        "quarto" => "Quarto is not installed: https://quarto.org/docs/get-started/ (or brew install --cask quarto)".to_string(),
         _ => format!("{name} was not found"),
     })
 }
@@ -203,6 +216,15 @@ fn texmark_args(input: &str, build: &str, tex: Option<&str>, pdf: bool) -> Vec<S
         args.push("--pdf".to_string());
     }
     args
+}
+
+/// The arguments of `quarto render`: `input` (relative to where it runs) to `to` (`pdf`, `latex`) in `outdir`, the
+/// LaTeX kept, and no TeX package installed or updated by the build (Quarto's default is to run tlmgr).
+fn quarto_args(input: &str, to: &str, outdir: &str) -> Vec<String> {
+    ["render", input, "--to", to, "--output-dir", outdir, "-M", "keep-tex:true", "-M", "latex-auto-install:false"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 /// The arguments of latexmk for `diff.tex`, the job named `job` (so that the PDF is `<job>.pdf`). `-f` goes on after
@@ -340,6 +362,8 @@ fn run(program: &Path, args: &[String], cwd: &Path) -> Result<std::process::Outp
         .args(args)
         .current_dir(cwd)
         .env("PATH", search_path(program.parent()))
+        // what is said is read, not shown in a terminal (Quarto colours it otherwise)
+        .env("NO_COLOR", "1")
         .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("{}: {e}", program.display()))
@@ -466,11 +490,63 @@ fn mark_here(status: &mut Status, name: &str) {
     }
 }
 
-/// `file` (a Markdown document) into `build/` beside it by texmark, to LaTeX and a PDF.
+/// `file` built into its build folder: see the module.
 pub fn run_build(file: &Path) -> Status {
-    if kind_of(file) == Some(Kind::Latex) {
-        return run_latex_build(file);
+    match kind_of(file) {
+        Some(Kind::Latex) => run_latex_build(file),
+        Some(Kind::Quarto) => run_quarto_build(file),
+        _ => run_texmark_build(file),
     }
+}
+
+/// `file` (a Markdown document) into its build folder by Quarto, to a PDF; its LaTeX, and the log of a failure, moved
+/// there from beside the document.
+fn run_quarto_build(file: &Path) -> Status {
+    let (Some(folder), Some(name), Some(stem)) = (file.parent(), file.file_name(), file.file_stem()) else {
+        return failed("build", format!("{}: not a file", file.display()));
+    };
+    let (name, stem) = (name.to_string_lossy(), stem.to_string_lossy());
+    let quarto = match find_tool("quarto") {
+        Ok(t) => t,
+        Err(e) => return failed("build", e),
+    };
+    // what Quarto writes beside the document
+    let (tex_here, log_here, aux_here) = (folder.join(format!("{stem}.tex")), folder.join(format!("{stem}.log")), folder.join(format!("{stem}.aux")));
+    if tex_here.exists() {
+        return failed(
+            "build",
+            format!("{}: Quarto writes this file as it builds {name}, over the one there: rename or move it", tex_here.display()),
+        );
+    }
+    let build = project::build_dir_of(file);
+    let (start, clock) = (SystemTime::now() - Duration::from_secs(1), Instant::now());
+    let out = run(&quarto, &quarto_args(&name, "pdf", &s(&build)), folder);
+    let took = clock.elapsed();
+    let (tex, log, pdf) = (build.join(format!("{stem}.tex")), build.join(format!("{stem}.log")), build.join(format!("{stem}.pdf")));
+    for (here, there) in [(&tex_here, &tex), (&log_here, &log)] {
+        if modified_since(here, start) {
+            let _ = fs::create_dir_all(&build).and_then(|()| fs::rename(here, there));
+        }
+    }
+    if modified_since(&aux_here, start) {
+        let _ = fs::remove_file(&aux_here);
+    }
+    match out {
+        Ok(out) => {
+            let mut status = finish("build", out.status.success(), &log, &pdf, start, took, Some(format!("quarto failed:\n{}", tail(&out.stderr, &out.stdout))));
+            if !status.errors.is_empty()
+                && let (Ok(markdown), Ok(tex)) = (fs::read_to_string(file), fs::read_to_string(&tex))
+            {
+                mark_markdown_lines(&mut status.errors, &markdown, &tex);
+            }
+            status
+        }
+        Err(e) => failed("build", e),
+    }
+}
+
+/// `file` (a Markdown document) into its build folder by texmark, to LaTeX and a PDF.
+fn run_texmark_build(file: &Path) -> Status {
     let (Some(folder), Some(name), Some(stem)) =
         (file.parent(), file.file_name(), file.file_stem())
     else {
@@ -581,8 +657,10 @@ fn run_latex_diff(file: &Path, earlier: &Earlier) -> Status {
 
 /// The marked-up PDF of `file` against `earlier`; see the module.
 pub fn run_diff(file: &Path, earlier: &Earlier) -> Status {
-    if kind_of(file) == Some(Kind::Latex) {
-        return run_latex_diff(file, earlier);
+    match kind_of(file) {
+        Some(Kind::Latex) => return run_latex_diff(file, earlier),
+        Some(Kind::Quarto) => return failed("diff", "The marked-up PDF of a document built by Quarto is not made yet".into()),
+        _ => {}
     }
     let (clock, start) = (Instant::now(), SystemTime::now() - Duration::from_secs(1));
     let (Some(folder), Some(name), Some(stem)) =
@@ -741,14 +819,14 @@ fn request(app: &AppHandle, window: &Webview, file: PathBuf, job: Job) {
     });
 }
 
-/// The document of the window, to build: Markdown (texmark) or LaTeX (latexmk).
+/// The document of the window, to build: Markdown (texmark or Quarto) or LaTeX (latexmk).
 fn document_of(window: &Webview) -> Result<PathBuf, String> {
     let path = documents::path_of(window.app_handle(), window.label())
         .ok_or("Save the document first (⌘S): a file is built")?;
     if kind_of(&path).is_some() {
         Ok(path)
     } else {
-        Err("Build is for Markdown (.md, by texmark) and LaTeX (.tex, by latexmk) documents".into())
+        Err("Build is for Markdown (.md, by texmark or Quarto; .qmd, by Quarto) and LaTeX (.tex, by latexmk) documents".into())
     }
 }
 
@@ -884,9 +962,18 @@ mod tests {
 
     #[test]
     fn kinds_of_documents() {
-        assert_eq!(kind_of(Path::new("a/p.md")), Some(Kind::Markdown));
+        assert_eq!(kind_of(Path::new("/nowhere/a/p.md")), Some(Kind::Texmark));
+        assert_eq!(kind_of(Path::new("/nowhere/a/p.qmd")), Some(Kind::Quarto));
         assert_eq!(kind_of(Path::new("p.TEX")), Some(Kind::Latex));
         assert_eq!(kind_of(Path::new("p.txt")), None);
+    }
+
+    #[test]
+    fn quarto_renders_into_the_build_folder_and_installs_nothing() {
+        assert_eq!(
+            quarto_args("paper.qmd", "pdf", "build"),
+            ["render", "paper.qmd", "--to", "pdf", "--output-dir", "build", "-M", "keep-tex:true", "-M", "latex-auto-install:false"]
+        );
     }
 
     #[test]
@@ -1120,5 +1207,34 @@ mod tests {
         assert_eq!(built.errors.len(), 2, "{:?}", built.errors);
         assert_eq!(built.errors[0].md_line, Some(10));
         assert_eq!(built.errors[1].md_line, Some(12));
+    }
+
+    #[test]
+    #[ignore]
+    fn real_quarto_build_and_errors_at_their_line() {
+        let dir = std::env::temp_dir().join(format!("pw-real-quarto-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let paper = dir.join("p.qmd");
+        fs::write(&paper, "---\ntitle: Sample\n---\n\n# Intro {#sec-intro}\n\nSee @eq-a in @sec-intro.\n\n$$\na = b\n$$ {#eq-a}\n").unwrap();
+        let built = run_build(&paper);
+        assert_eq!(built.state, "done", "{built:?}");
+        assert_eq!(built.pdf.as_deref(), Some(s(&dir.join("build/p.pdf")).as_str()));
+        // the LaTeX kept in the build folder, nothing left beside the document
+        assert!(dir.join("build/p.tex").is_file());
+        assert!(!dir.join("p.tex").exists() && !dir.join("p.log").exists() && !dir.join("p.aux").exists());
+
+        fs::write(&paper, "---\ntitle: Sample\n---\n\n# Intro\n\nSome text.\n\nThis paragraph has an \\undefinedmacro problem in it.\n").unwrap();
+        let built = run_build(&paper);
+        assert_eq!(built.state, "failed", "{built:?}");
+        assert_eq!(built.errors.first().and_then(|e| e.md_line), Some(9), "{:?}", built.errors);
+        assert!(dir.join("build/p.log").is_file() && !dir.join("p.tex").exists() && !dir.join("p.log").exists());
+
+        // a .tex of the user's beside it: not written over
+        fs::write(dir.join("p.tex"), "mine").unwrap();
+        let built = run_build(&paper);
+        assert!(built.message.as_deref().is_some_and(|m| m.contains("rename or move it")), "{built:?}");
+        assert_eq!(fs::read_to_string(dir.join("p.tex")).unwrap(), "mine");
+        let _ = fs::remove_dir_all(&dir);
     }
 }

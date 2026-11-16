@@ -3,7 +3,7 @@
   // the line at its foot. Editor: the font and size, what Tab puts in, the readable line length, line numbers, spelling,
   // the preview following the cursor, the symbols typed (the defaults each turned off if not wanted, and the user's own).
   // Review: the user's name, e-mail and colour (empty: from the git configuration, as before). Build: where texmark,
-  // latexmk and pandoc are (empty: found as usual, which the hint says). Window: files as tabs, the menu bar icon.
+  // Quarto, latexmk and pandoc are (empty: found as usual, which the hint says). Window: files as tabs, the menu bar icon.
   // Every change is kept at once (settings.json of the app's data folder); the windows are told as it changes.
 
   import { invoke } from "@tauri-apps/api/core";
@@ -33,9 +33,10 @@
     ["four", "4 spaces"],
     ["tab", "A tab"],
   ];
-  type Tool = "texmark" | "latexmk" | "pandoc";
-  const TOOLS: { name: Tool; field: "texmark_path" | "latexmk_path" | "pandoc_path"; hint: string }[] = [
+  type Tool = "texmark" | "quarto" | "latexmk" | "pandoc";
+  const TOOLS: { name: Tool; field: "texmark_path" | "quarto_path" | "latexmk_path" | "pandoc_path"; hint: string }[] = [
     { name: "texmark", field: "texmark_path", hint: "Markdown to LaTeX and PDF (Build)" },
+    { name: "quarto", field: "quarto_path", hint: "Markdown to PDF where the project says so, and .qmd (Build)" },
     { name: "latexmk", field: "latexmk_path", hint: "LaTeX documents and the marked-up PDF" },
     { name: "pandoc", field: "pandoc_path", hint: "The preview and the Word exchange" },
   ];

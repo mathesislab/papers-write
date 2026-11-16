@@ -76,6 +76,17 @@ them) are proposed upstream; until they are released,
   time; one asked meanwhile runs after it. texmark is found on PATH, in
   `/opt/homebrew/Caskroom/miniforge/base/bin` or `~/.local/bin` (`pip install
   texmark`); the LaTeX engine in `/Library/TeX/texbin`.
+- Quarto builds instead of texmark a `.qmd`, and the Markdown of a project whose
+  `write.toml` says `engine = "quarto"` (Project Info ▸ Build with): `quarto
+  render <file> --to pdf --output-dir build -M keep-tex:true -M
+  latex-auto-install:false` in its folder, so a build never installs or updates
+  TeX packages. Quarto writes `name.tex` (and, when LaTeX fails, `name.log`)
+  beside the document: they are moved into `build/`, and the errors come with
+  their Markdown lines as for texmark. A `name.tex` of your own beside the
+  document stops the build (Quarto would write over it). Code cells run as
+  Quarto runs them, with no time limit; to cache them, `execute: freeze: auto`
+  in the front matter. Quarto is found on PATH, in `/usr/local/bin` or
+  `/Applications/quarto/bin`, or where Settings ▸ Build says.
 - Build ▸ Marked-up PDF… makes the marked-up manuscript for a revision: choose
   the earlier version, a tag or one of the last 30 commits that touched the
   file (when it is in a git repository), or another file. Each is converted

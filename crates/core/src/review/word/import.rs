@@ -18,22 +18,13 @@
 use serde_json::Value;
 use super::places::{CONTEXT, Index, words};
 use crate::review::diff::{Hunk, hunks};
+use crate::review::Imported;
 use crate::review::ops::NewRecord;
-use crate::review::text::utf16_of;
+use crate::review::text::{say_change, short, utf16_of};
 use std::ops::Range;
 
 /// The author of a tracked change that the document does not name.
 pub const WORD: &str = "Word";
-
-/// What a Word review comes to.
-#[derive(Clone, Debug, Default)]
-pub struct Imported {
-    /// the author, and the suggestion (positions in UTF-16 units of the Markdown)
-    pub suggestions: Vec<(String, NewRecord)>,
-    pub comments: Vec<(String, NewRecord)>,
-    /// what could not be placed, one line each
-    pub unplaced: Vec<String>,
-}
 
 /// A tracked insertion or deletion of the JSON.
 struct Tracked {
@@ -193,19 +184,6 @@ fn collapse(s: &str) -> String {
         }
     }
     out
-}
-
-fn short(s: &str) -> String {
-    let flat = s.split_whitespace().collect::<Vec<_>>().join(" ");
-    if flat.chars().count() > 50 { format!("{}…", flat.chars().take(50).collect::<String>()) } else { flat }
-}
-
-fn say_change(old: &str, new: &str) -> String {
-    match (old.trim().is_empty(), new.trim().is_empty()) {
-        (true, _) => format!("insert “{}”", short(new)),
-        (_, true) => format!("delete “{}”", short(old)),
-        _ => format!("replace “{}” with “{}”", short(old), short(new)),
-    }
 }
 
 fn pieces<'a>(text: &'a str, ws: &[Range<usize>]) -> Vec<&'a str> {

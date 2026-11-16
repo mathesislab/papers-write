@@ -1,4 +1,5 @@
-//! Small text helpers of the review: git's blob hash, UTF-16 positions, names to file slugs, RFC 3339 times.
+//! Small text helpers of the review: git's blob hash, UTF-16 positions, names to file slugs, RFC 3339 times, a change
+//! said in a few words.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -93,6 +94,21 @@ pub(crate) fn before(text: &str, at: usize, n: usize) -> &str {
 pub(crate) fn after(text: &str, at: usize, n: usize) -> &str {
     let end = text[at..].char_indices().nth(n).map_or(text.len(), |(i, _)| at + i);
     &text[at..end]
+}
+
+/// `s` on one line, cut at 50 characters: a quote in a note of what could not be done.
+pub fn short(s: &str) -> String {
+    let flat = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() > 50 { format!("{}…", flat.chars().take(50).collect::<String>()) } else { flat }
+}
+
+/// A change in a few words: insert “..”, delete “..”, or replace “..” with “..”.
+pub fn say_change(old: &str, new: &str) -> String {
+    match (old.trim().is_empty(), new.trim().is_empty()) {
+        (true, _) => format!("insert “{}”", short(new)),
+        (_, true) => format!("delete “{}”", short(old)),
+        _ => format!("replace “{}” with “{}”", short(old), short(new)),
+    }
 }
 
 #[cfg(test)]

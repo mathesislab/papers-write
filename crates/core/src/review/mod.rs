@@ -4,7 +4,7 @@
 //! - [`diff`]: the word-level difference between two versions, and positions carried through it.
 //! - [`anchor`]: a record carried onto the current text (three-way merge, the quote when the base is lost).
 //! - [`fold`]: all the records folded into items.
-//! - [`critic`]: the document with the open suggestions and comments as CriticMarkup.
+//! - [`critic`]: the CriticMarkup round trip (suggestions and comments as marks in the Markdown, out and back in).
 //! - [`compare`]: an edited copy as suggestions.
 //! - [`history`]: a co-author's commits as suggestions, from where they started, each under the commit's author.
 //! - [`ops`]: add, reply, decide, supersede and counter-suggest (appending); apply a suggestion.
@@ -45,6 +45,16 @@ use std::sync::Mutex;
 pub struct LoadError {
     pub file: PathBuf,
     pub message: String,
+}
+
+/// What a review that comes from elsewhere (Word, CriticMarkup) comes to, before it is written.
+#[derive(Clone, Debug, Default)]
+pub struct Imported {
+    /// the author, and the suggestion (positions in UTF-16 units of the Markdown)
+    pub suggestions: Vec<(String, NewRecord)>,
+    pub comments: Vec<(String, NewRecord)>,
+    /// what could not be placed, one line each
+    pub unplaced: Vec<String>,
 }
 
 /// The records of one person's file.

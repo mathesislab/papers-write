@@ -1,10 +1,9 @@
-//! The Markdown with the open suggestions and comments of a review as CriticMarkup (criticmarkup.com): `{++new++}`,
-//! `{--old--}`, `{~~old~>new~~}`, and `{>>author: comment<<}` after the text it is on. For a reader without the app
-//! (or Word); nothing reads it back.
+//! The Markdown with the open suggestions and comments of a review as CriticMarkup: `{++new++}`, `{--old--}`,
+//! `{~~old~>new~~}`, and `{>>author: comment<<}` after the text it is on.
 
-use super::Status;
-use super::fold::{Item, State};
-use super::record::Kind;
+use crate::review::Status;
+use crate::review::fold::{Item, State};
+use crate::review::record::Kind;
 use std::ops::Range;
 
 /// `current` with the open suggestions and comments of `items` (the review folded onto `current`) as CriticMarkup,

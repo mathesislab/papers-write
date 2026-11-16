@@ -45,6 +45,10 @@ them) are proposed upstream; until they are released,
 - A file is saved as typed, half a second after the typing stops. If it
   changes on disk (another editor, a sync client), it is read again, or the
   bar asks which to keep.
+- The toolbar above the text: bold, italic, code and link, then heading,
+  bulleted and numbered list and quote (Format menu, below); Add Comment;
+  Find and Find and Replace; at the right the review panel, with the number
+  of open suggestions and comments, and the mode, Editing or Suggesting.
 - A PDF opens in a tab like the text files (PDFKit, as Preview shows it): the
   page in view (click it to go to a page), zoom in, out and to fit the width
   (⌘= ⌘- ⌘0, PDF menu), Find (Edit ▸ Find: ⌘F, next ⌘G, previous ⇧⌘G). A PDF that changes on
@@ -265,10 +269,11 @@ them) are proposed upstream; until they are released,
 - Review menu: suggestions and comments kept in files beside the document
   (`.papers-write/review/<file>/`, one file per person, only appended to).
   Suggest Changes (⇧⌘E) makes typing a suggestion of yours instead of an edit
-  (the mode at the top right of the text, per window: Editing, or Suggesting
-  in your colour, with the open items; a click shows the review panel, its ▾
-  the modes and views). Add Comment… (⌥⌘M)
-  comments on the selection (⌘↵ posts). Show Review Panel (⌥⌘R) lists the
+  (the mode at the right of the toolbar, per window: Editing or Suggesting, a
+  click on either switches, Suggesting in your colour; its ▾ the views).
+  Add Comment… (⌥⌘M, or the toolbar's speech bubble)
+  comments on the selection (⌘↵ posts). Show Review Panel (⌥⌘R, or the
+  toolbar's panel button with the number of open items) lists the
   open ones in text order at the right, in place of the preview: who and when,
   what changes, the thread, and Accept, Reject, Reply, Resolve, Suggest
   Instead (a counter-suggestion), Withdraw (your own); filter by person and by

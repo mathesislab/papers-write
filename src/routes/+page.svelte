@@ -68,14 +68,17 @@
   import Exchange from "$lib/Exchange.svelte";
   import Git from "$lib/Git.svelte";
   import GitBar from "$lib/GitBar.svelte";
-  import ModeControl from "$lib/ModeControl.svelte";
+  import Toolbar from "$lib/Toolbar.svelte";
   import Frame from "$lib/Frame.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Settings } from "$lib/settings";
   import "$lib/theme.css";
 
-  // The review (Review menu, `review-menu`): suggesting or editing (ModeControl, at the top right of the text), the
+  // The toolbar above the text (Toolbar): the formats (also Format ▸, `format`), Add Comment…, Find and Find and
+  // Replace, the review panel and the mode.
+  //
+  // The review (Review menu, `review-menu`): suggesting or editing (ModeControl, at the right of the toolbar), the
   // suggestions and comments of the review files carried onto the text as typed (`review_items`, asked again 500 ms
   // after the typing stops, after each write of the user's, on `review-changed` and when the file changes on disk),
   // given to the editor with `setReview`. Review ▸ Show Review Panel (⌥⌘R) shows them in a column at the right
@@ -542,20 +545,22 @@
   onproblem={(e) => (problem = e)}
   onfocus={() => editor?.focus()}
 >
-  {#snippet top()}
-    <ModeControl
-      mode={session.mode}
-      view={session.view}
-      open={session.items.filter((item) => item.state === "open").length}
-      colour={userColour}
-      {panel}
-      reviewing={!!session.me}
-      onpanel={togglePanel}
-      onmode={(m) => m !== session.mode && session.toggleMode()}
-      onview={(v) => session.setView(v)}
-    />
-  {/snippet}
   <div class="body">
+  <Toolbar
+    kind={markdown ? "markdown" : latex ? "latex" : "text"}
+    mode={session.mode}
+    view={session.view}
+    open={session.items.filter((item) => item.state === "open").length}
+    colour={userColour}
+    {panel}
+    reviewing={!!session.me}
+    onformat={(what) => editor?.format(what)}
+    oncomment={comment}
+    onfind={(what) => findCommand(what === "replace" ? "find-replace" : "find")}
+    onpanel={togglePanel}
+    onmode={(m) => m !== session.mode && session.toggleMode()}
+    onview={(v) => session.setView(v)}
+  />
   <div class="panes" bind:this={panes}>
   <div class="text">
   {#if path !== undefined}

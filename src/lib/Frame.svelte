@@ -115,6 +115,12 @@
     if (!side.shown) onfocus?.();
   }
 
+  /** The sidebar hidden, the keys back to the page's content. */
+  function hideSidebar() {
+    side.set({ shown: false });
+    onfocus?.();
+  }
+
   /** View ▸ Show Outline: the sidebar on its outline, or hidden when it shows it. */
   export function toggleOutline() {
     if (side.shown && sideTab === "outline") return toggleSidebar();
@@ -203,6 +209,7 @@
     {outlined}
     onheading={(h) => onheading?.(h)}
     {onsay}
+    onclose={hideSidebar}
   />
 {/snippet}
 {#snippet folder()}{#if sideRoot}{@render files(sideRoot)}{/if}{/snippet}

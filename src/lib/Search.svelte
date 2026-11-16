@@ -1,19 +1,25 @@
 <script lang="ts">
   // The search of the project, a tab of the sidebar (⇧⌘F): the text to find (case, whole word, regular expression),
   // the matches in the project's text files (`search_project`) asked 250 ms after the typing stops, grouped by file;
-  // a click opens the file at the match (`open_at`). Replace All asks first how many, in how many files, then replaces
-  // (`replace_in_project`): in a file open in a window its editor does it (undo, suggestions), others are written.
+  // a click opens the file at the match (`open_at`). The replace field is shown by the arrow at the left of the find
+  // field, hidden again by it; × at its right closes the search (the sidebar hidden). Replace All asks first how many,
+  // in how many files, then replaces (`replace_in_project`): in a file open in a window its editor does it (undo,
+  // suggestions), others are written.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { tick } from "svelte";
 
   type Query = { text: string; case: boolean; word: boolean; regex: boolean };
   type Hit = { line: number; from: number; to: number; text: string; at: number; end: number };
   type FileHits = { path: string; hits: Hit[] };
 
-  let { root, onerror }: { root: string; onerror: (what: string) => void } = $props();
+  let { root, onerror, onclose }: { root: string; onerror: (what: string) => void; onclose: () => void } = $props();
 
   let text = $state("");
   let replacement = $state("");
+  /** the replace field shown */
+  let replacing = $state(false);
+  let replaceField = $state<HTMLInputElement>();
   let options = $state({ case: false, word: false, regex: false });
   let results = $state.raw<FileHits[]>([]);
   let problem = $state("");
@@ -73,6 +79,14 @@
     later(0);
   }
 
+  /** The replace field shown or hidden, the keys to the field shown. */
+  async function toggleReplace() {
+    replacing = !replacing;
+    confirming = false;
+    await tick();
+    (replacing ? replaceField : field)?.focus();
+  }
+
   function fold(path: string) {
     const next = new Set(closed);
     if (!next.delete(path)) next.add(path);
@@ -109,6 +123,16 @@
 <div class="search">
   <div class="fields">
     <div class="row">
+      <button
+        class="expand"
+        class:open={replacing}
+        onclick={toggleReplace}
+        title={replacing ? "Hide Replace" : "Show Replace"}
+        aria-label={replacing ? "Hide Replace" : "Show Replace"}
+        aria-expanded={replacing}
+      >
+        <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+      </button>
       <input
         bind:this={field}
         bind:value={text}
@@ -120,17 +144,21 @@
         spellcheck="false"
         autocomplete="off"
       />
+      <button class="close" onclick={onclose} title="Close (hides the sidebar)" aria-label="Close">
+        <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+      </button>
     </div>
-    <div class="row toggles">
+    <div class="row toggles indent">
       <button class:on={options.case} onclick={() => toggle("case")} title="Match case">Aa</button>
       <button class:on={options.word} onclick={() => toggle("word")} title="Whole words">W</button>
       <button class:on={options.regex} onclick={() => toggle("regex")} title="Regular expression">.*</button>
       <span class="count">{busy ? "…" : text ? (problem ? "" : `${count} in ${results.length} file${results.length === 1 ? "" : "s"}`) : ""}</span>
     </div>
-    <div class="row">
-      <input bind:value={replacement} oninput={() => (confirming = false)} placeholder="Replace" aria-label="Replace" spellcheck="false" autocomplete="off" />
+    {#if replacing}
+    <div class="row indent">
+      <input bind:this={replaceField} bind:value={replacement} oninput={() => (confirming = false)} placeholder="Replace" aria-label="Replace" spellcheck="false" autocomplete="off" />
     </div>
-    <div class="row">
+    <div class="row indent">
       {#if confirming}
         <span class="ask">Replace {count} in {results.length} file{results.length === 1 ? "" : "s"}?</span>
         <button class="push" onclick={replaceAll}>Replace</button>
@@ -139,6 +167,7 @@
         <button class="push" disabled={!count} onclick={() => (confirming = true)}>Replace All…</button>
       {/if}
     </div>
+    {/if}
     {#if problem}<p class="problem">{problem}</p>{/if}
   </div>
   <div class="results">
@@ -216,6 +245,24 @@
   button:hover:not(:disabled) {
     color: var(--fg);
     background: var(--chip);
+  }
+  .indent {
+    padding-left: 23px;
+  }
+  .expand,
+  .close {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 4px;
+  }
+  .close {
+    color: var(--fg);
+  }
+  .expand svg {
+    transition: transform 0.12s;
+  }
+  .expand.open svg {
+    transform: rotate(90deg);
   }
   .toggles button {
     font-family: ui-monospace, Menlo, monospace;

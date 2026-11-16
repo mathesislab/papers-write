@@ -26,6 +26,7 @@
     outlined,
     onheading,
     onsay,
+    onclose,
   }: {
     /** the folder shown: the project's, or the document's */
     root: string;
@@ -41,6 +42,8 @@
     onheading: (heading: Heading) => void;
     /** what was done or went wrong, for the foot of the window */
     onsay: (what: string) => void;
+    /** the sidebar hidden (× of the search) */
+    onclose: () => void;
   } = $props();
 
   let files = $state.raw<Node[]>([]);
@@ -143,7 +146,7 @@
     {/if}
   </div>
   <div class="body search" class:hidden={tab !== "search"}>
-    <Search bind:this={search} {root} onerror={onsay} />
+    <Search bind:this={search} {root} onerror={onsay} {onclose} />
   </div>
 </aside>
 

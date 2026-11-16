@@ -227,9 +227,11 @@ them) are proposed upstream; until they are released,
   there. Search (Edit ▸ Find ▸ Find in Project…, ⇧⌘F): the project's text
   files (`.md`, `.tex`, `.bib`, `.txt`, …; not hidden folders or `build/`),
   with case, whole word and regular expression; the matches by file, a click
-  opens the file at the match; Replace All… asks first how many, in how many
+  opens the file at the match; the arrow at the left of the field shows the
+  replace field and Replace All…, which asks first how many, in how many
   files (a file open in a window is changed by its editor, so undo and suggest
-  mode apply). Shown or hidden, the tab and the width are kept.
+  mode apply); × at its right hides the sidebar. Shown or hidden, the tab and
+  the width are kept.
 - Edit ▸ Find: Find… (⌘F) opens a bar above the text: the matches counted,
   case, whole word, regular expression, previous and next (⇧⌘G ⌘G, ⇧↵ ↵), ×
   at the right to close it (or Esc). Find and Replace… (⌥⌘F) opens it with

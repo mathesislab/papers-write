@@ -526,6 +526,12 @@
       listen("cite-key", () => listing && refs?.cite("pandoc")),
       listen<string>("find", (e) => findCommand(e.payload)),
       listen<Format>("format", (e) => editor?.format(e.payload)),
+      // Go ▸ Back and Forward have ⌘[ and ⌘]: in the text, the lines indented less and more
+      listen<string>("go", (e) => {
+        if (!editor?.hasFocus()) return;
+        if (e.payload === "back") editor.outdent();
+        else if (e.payload === "forward") editor.indent();
+      }),
       listen("references-changed", () => version++),
     ];
     return () => {

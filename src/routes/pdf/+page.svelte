@@ -1,8 +1,9 @@
 <script lang="ts">
-  // The page of a tab that shows a PDF (PDFKit), in the project bar and sidebar of every tab (Frame): its tools are the
-  // page in view (and the field to go to one), the
-  // zoom (⌘= ⌘- ⌘0, the PDF menu) and Find (⌘F, ⌘G; the menu says them as `pdf`). The PDF is read again, at the same
-  // page, when it changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last).
+  // The page of a tab that shows a PDF (PDFKit), in the project bar and sidebar of every tab (Frame): its tools are
+  // Back and Forward (the page a link or a jump left: ⌘[ ⌘]), the page in view (and the field to go to one), the zoom
+  // (⌘= ⌘- ⌘0, the PDF menu) and Find (⌘F, ⌘G; the menu says them as `pdf`). The Go menu comes as `go`: Back, Forward,
+  // the previous, next, first and last page, Go to Page… (⌥⌘G). The PDF is read again, at the same page, when it
+  // changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last).
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
@@ -16,6 +17,8 @@
   let view = $state<PdfView>();
   let count = $state(0);
   let current = $state(1);
+  /** whether there is a page to go back to, or forward */
+  let history = $state({ back: false, forward: false });
   /** the page typed in the field, while it is */
   let typing = $state<string | null>(null);
   let finding = $state(false);
@@ -53,6 +56,7 @@
     clearTimeout(timer);
     timer = setTimeout(() => {
       count = 0;
+      history = { back: false, forward: false };
       reads++;
     }, 500);
   }
@@ -101,10 +105,30 @@
     }
   }
 
+  /** A choice of the Go menu. */
+  function go(what: string) {
+    switch (what) {
+      case "back":
+        return view?.back();
+      case "forward":
+        return view?.forward();
+      case "previous-page":
+        return view?.turn("previous");
+      case "next-page":
+        return view?.turn("next");
+      case "first-page":
+        return view?.turn("first");
+      case "last-page":
+        return view?.turn("last");
+      case "go-to-page":
+        if (count) typing = String(current);
+    }
+  }
+
   onMount(() => {
     ready(opened.promise, frame?.loaded() ?? Promise.resolve());
     ask();
-    const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload))];
+    const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
     return () => {
       clearTimeout(timer);
       clearTimeout(noteTimer);
@@ -115,6 +139,8 @@
 
 <Frame bind:this={frame} bind:covering={carded} {path} onsay={say} onfocus={() => view?.focus()}>
   <div class="tools">
+    <button class="icon" disabled={!history.back} onclick={() => view?.back()} title="Back (⌘[)" aria-label="Back">‹</button>
+    <button class="icon" disabled={!history.forward} onclick={() => view?.forward()} title="Forward (⌘])" aria-label="Forward">›</button>
     <span class="name" class:said={note} title={note || path || ""}>{note || name}</span>
     {#if typing !== null}
       <!-- svelte-ignore a11y_autofocus -->
@@ -133,7 +159,7 @@
       />
       <span class="page">of {count}</span>
     {:else if count}
-      <button class="page" onclick={() => (typing = String(current))} title="Go to Page">Page {current} of {count}</button>
+      <button class="page" onclick={() => (typing = String(current))} title="Go to Page… (⌥⌘G)">Page {current} of {count}</button>
     {/if}
     <button onclick={() => view?.zoom(-1)} title="Zoom Out (⌘-)">−</button>
     <button onclick={() => view?.zoom(0)} title="Fit Width (⌘0)">Fit</button>
@@ -167,6 +193,7 @@
           page={current}
           covered={!front || carded}
           onpage={(p) => (current = p)}
+          onhistory={(h) => (history = h)}
           onopen={(c) => {
             count = c;
             current = Math.min(current, c);
@@ -211,8 +238,17 @@
     border-radius: 5px;
     padding: 1px 7px;
   }
-  button:hover {
+  button:hover:not(:disabled) {
     background: var(--chip);
+  }
+  button:disabled {
+    opacity: 0.4;
+  }
+  button.icon {
+    min-width: 24px;
+    padding: 0 6px;
+    font-size: 15px;
+    line-height: 17px;
   }
   button.page {
     border-color: transparent;

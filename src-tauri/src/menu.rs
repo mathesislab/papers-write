@@ -2,7 +2,8 @@
 //! front (event `edit`, the id of the item), File ▸ Exchange to its page (event `exchange`), Cite as [@key] to the list of references (event `cite-key`), Project Info… to its page (event `project-info`), and Save to its page (event `menu`).
 //! The Review menu goes to the page of the window in front as `review-menu` with the id of the item, the Git menu as `git-menu`, the Format menu as `format` with the format (`bold`, `heading`, …).
 //! Edit ▸ Find goes to the page in front as `find` (the text's bar, a PDF's search, the sidebar's search of the
-//! project); View ▸ Show Preview, Show Sidebar and Show Outline as `preview`, `sidebar` and `outline`.
+//! project); View ▸ Show Preview, Show Sidebar and Show Outline as `preview`, `sidebar` and `outline`; the Go menu as
+//! `go` (a PDF's Back, Forward and pages; in a text Back and Forward are ⌘[ and ⌘], indent less and more).
 
 use tauri::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use std::path::{Path, PathBuf};
@@ -165,6 +166,23 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
         ],
     )?;
+    // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
+    let go = Submenu::with_items(
+        app,
+        "Go",
+        true,
+        &[
+            &item("back", "Back", Some("CmdOrCtrl+["))?,
+            &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
+            &separator()?,
+            &item("previous-page", "Previous Page", None)?,
+            &item("next-page", "Next Page", None)?,
+            &item("first-page", "First Page", None)?,
+            &item("last-page", "Last Page", None)?,
+            &separator()?,
+            &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
+        ],
+    )?;
     let build = Submenu::with_items(
         app,
         "Build",
@@ -245,7 +263,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
-    Menu::with_items(app, &[&app_menu, &file, &edit, &format, &view, &review, &git, &build, &pdf, &window])
+    Menu::with_items(app, &[&app_menu, &file, &edit, &format, &view, &go, &review, &git, &build, &pdf, &window])
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
@@ -296,6 +314,11 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "preview" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
+            }
+        }
+        "back" | "forward" | "previous-page" | "next-page" | "first-page" | "last-page" | "go-to-page" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "go", id);
             }
         }
         "zoom-in" | "zoom-out" | "zoom-fit" => {

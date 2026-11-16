@@ -58,7 +58,11 @@ them) are proposed upstream; until they are released,
   `quote` around the lines. In suggest mode a format is a suggestion.
 - A PDF opens in a tab like the text files (PDFKit, as Preview shows it): the
   page in view (click it to go to a page), zoom in, out and to fit the width
-  (⌘= ⌘- ⌘0, PDF menu), Find (Edit ▸ Find: ⌘F, next ⌘G, previous ⇧⌘G). A PDF that changes on
+  (⌘= ⌘- ⌘0, PDF menu), Find (Edit ▸ Find: ⌘F, next ⌘G, previous ⇧⌘G). Back
+  and Forward (‹ ›, Go ▸ Back ⌘[ and Forward ⌘]) return to the page a link
+  or a jump left and come again; the Go menu also has the previous, next,
+  first and last page and Go to Page… (⌥⌘G). In a text ⌘[ and ⌘] indent the
+  lines less and more. A PDF that changes on
   disk, a build rewriting it, is read again at the same page.
 - Build ▸ Build (⇧⌘B) writes the document and runs `texmark <file> --pdf` in its
   folder, into `build/` beside it (`build/name.tex`, `name.pdf`, `name.log`;

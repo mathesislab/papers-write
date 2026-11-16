@@ -1,17 +1,19 @@
 <script lang="ts">
   // A PDF in PDFKit, as Preview shows it (tauri-plugin-pdfkit, as papers-review has it): a native view over the area
-  // of this element, kept in place as the area changes; the page in view told back (`onpage`). The commands go to the
-  // view in order: a search typed letter by letter must not land after the next one.
+  // of this element, kept in place as the area changes; the page in view and the history (Back, Forward) told back
+  // (`onpage`, `onhistory`). The commands go to the view in order: a search typed letter by letter must not land after
+  // the next one.
 
   import { onMount } from "svelte";
   import * as pdfkit from "tauri-plugin-pdfkit-api";
-  import type { Turn } from "tauri-plugin-pdfkit-api";
+  import type { History, Turn } from "tauri-plugin-pdfkit-api";
 
   let {
     path,
     page = 1,
     covered = false,
     onpage,
+    onhistory,
     onopen,
   }: {
     path: string;
@@ -21,6 +23,8 @@
     covered?: boolean;
     /** the page in view */
     onpage: (page: number) => void;
+    /** whether there is a page to go back to (the one a link or a jump left) or forward */
+    onhistory?: (history: History) => void;
     /** the PDF open: its page count */
     onopen: (count: number) => void;
   } = $props();
@@ -45,6 +49,15 @@
   /** The keys to the PDF, unless a card covers it. */
   export function focus() {
     if (!covered) send(() => pdfkit.cover(id, false));
+  }
+
+  /** Back to the page the last link or jump left, and forward again. */
+  export function back() {
+    send(() => pdfkit.back());
+  }
+
+  export function forward() {
+    send(() => pdfkit.forward());
   }
 
   /** To a page (from 1). */
@@ -79,6 +92,7 @@
     });
     resize.observe(area);
     const unlisten = pdfkit.onPage((p) => onpage(p));
+    const unlistenHistory = pdfkit.onHistory((h) => onhistory?.(h));
     send(() => pdfkit.open(id, shown, page, pdfkit.frameOf(area), covered))
       .then(({ count }) => {
         opened = true;
@@ -88,6 +102,7 @@
     return () => {
       resize.disconnect();
       unlisten.then((f) => f());
+      unlistenHistory.then((f) => f());
       send(() => pdfkit.close(id));
     };
   });

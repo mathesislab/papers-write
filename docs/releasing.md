@@ -49,7 +49,13 @@ under xvfb must stay up without a panic (`scripts/ci/smoke-linux.sh`).
 
 The same app, but what is macOS's is not there: the PDF tab is pdf.js (not
 PDFKit), the spell checker and the windows' native tabs are macOS's only. The
-tools a build runs (texmark, Quarto, latexmk, pandoc) are found on PATH.
+files to open are the command's arguments (a desktop file's `%F`), each start
+a window of its own; the Trash is the desktop's (`gio trash`). `.review` files
+are plain zips on both (the `zip` crate). The tools a build runs (texmark,
+Quarto, latexmk, pandoc) are found on PATH.
+
+GitHub's macOS arm64 runners are sometimes short: a job "not acquired by
+Runner" is re-run (`gh run rerun <id> --failed`), not a failure of the code.
 
 ## The website
 

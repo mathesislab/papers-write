@@ -1,8 +1,10 @@
 // Citations (pandoc): `[@key]`, `[-@key]`, `[see @a, p. 3; @b]` and `@key` in the text; cross-references (pandoc-crossref
-// and texmark): `@fig:x`, `@eq:x`, `@tbl:x`, `@sec:x`, `@lst:x`; labels in attributes `{#fig:x}`. The key of a citation
-// is a node of its own (CitationKey), so is that of a reference (CrossRefKey) and a label (LabelName). `\cite{a,b}`,
-// `\label{x}`, `\ref{x}` give the same nodes (see tokens.ts).
+// and texmark): `@fig:x`, `@eq:x`, `@tbl:x`, `@sec:x`, `@lst:x`, and Quarto's `@fig-x`...; labels in attributes `{#fig:x}`
+// (`{#fig-x}`). The key of a citation is a node of its own (CitationKey), so is that of a reference (CrossRefKey) and a
+// label (LabelName). `\cite{a,b}`, `\label{x}`, `\ref{x}` give the same nodes (see tokens.ts). Quarto's code cells label
+// what they make with a `#| label: fig-x` line: those are read from the text of the fenced code (`cellLabels`).
 
+import type { Tree } from "@lezer/common";
 import type { Element, InlineParser } from "@lezer/markdown";
 import type { Elt } from "./tokens.ts";
 import { citationKey, citeMark, crossRefKey, labelName } from "./tags.ts";
@@ -11,8 +13,46 @@ export { citationKey, citeMark, crossRefKey, labelName };
 
 /** The key after the `@`: letters, digits, `_`, and inside it `:.#$%&-+?<>~/` followed by a letter or digit. */
 const KEY = /[\p{L}\p{N}_]+(?:[:.#$%&\-+?<>~/][\p{L}\p{N}_]+)*/uy;
-/** The keys of cross-references begin with their kind. */
-const REF = /^(?:fig|eq|tbl|sec|lst):/;
+/** The kinds of cross-references, by which their keys begin: `fig:` (pandoc-crossref, texmark) or `fig-` (Quarto). */
+export const REF_KINDS = ["fig", "eq", "tbl", "sec", "lst"] as const;
+const REF = new RegExp(`^(?:${REF_KINDS.join("|")})[:-]`);
+
+/** The kind of the cross-reference or label `key` (`fig` of `fig:a` and of `fig-a`), if it has one. */
+export function refKindOf(key: string): string | undefined {
+  const m = /^([a-z]+)[:-]/.exec(key);
+  return m && (REF_KINDS as readonly string[]).includes(m[1]) ? m[1] : undefined;
+}
+
+/** A label of a code cell: where it is, and the caption the cell gives (`#| fig-cap:`, `#| tbl-cap:`). */
+export type CellLabel = { key: string; from: number; to: number; caption?: string };
+
+const CELL_OPTION = /^#\|\s*([\w-]+):\s*(.*?)\s*$/;
+const unquoted = (v: string) => v.replace(/^(["'])(.*)\1$/, "$2");
+
+/** The labels of Quarto's code cells in `text` (whose tree is `tree`): `#| label: fig-x` lines in fenced code. */
+export function cellLabels(tree: Tree, text: string): CellLabel[] {
+  const found: CellLabel[] = [];
+  tree.iterate({
+    enter(n) {
+      if (n.name !== "FencedCode") return;
+      let at = n.from;
+      let label: CellLabel | null = null;
+      let caption: string | undefined;
+      for (const line of text.slice(n.from, n.to).split("\n")) {
+        const m = CELL_OPTION.exec(line);
+        if (m?.[1] === "label" && m[2]) {
+          const key = unquoted(m[2]);
+          const from = at + line.indexOf(key);
+          label = { key, from, to: from + key.length };
+        } else if (m && /^(?:fig|tbl)-cap$/.test(m[1])) caption = unquoted(m[2]);
+        at += line.length + 1;
+      }
+      if (label) found.push(caption === undefined ? label : { ...label, caption });
+      return false;
+    },
+  });
+  return found;
+}
 const WORD = /[\p{L}\p{N}_]/u;
 
 const keyNode = (key: string) => (REF.test(key) ? "CrossRefKey" : "CitationKey");

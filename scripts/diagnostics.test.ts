@@ -24,6 +24,15 @@ test("a reference to a label the document does not define", () => {
   assert.deepEqual(texts("# A {#sec:a}\n\nSee @sec:a.\n"), []);
 });
 
+test("Quarto's references and the labels of code cells", () => {
+  const doc = "![Loop](l.png){#fig-loop}\n\n```{julia}\n#| label: fig-run\nplot(x)\n```\n\nSee @fig-loop, @fig-run and @fig-nope.\n";
+  assert.deepEqual(texts(doc), [["fig-nope", "no label fig-nope in the document"]]);
+  assert.deepEqual(texts("```{r}\n#| label: fig-a\n```\n\n![A](a.png){#fig-a}\n"), [
+    ["fig-a", "label fig-a is defined more than once"],
+    ["fig-a", "label fig-a is defined more than once"],
+  ]);
+});
+
 test("labels in math environments and in LaTeX", () => {
   assert.deepEqual(texts("\\begin{equation}\n x \\label{eq:x}\n\\end{equation}\n\nSee \\ref{eq:x} and \\eqref{eq:y}.\n"), [["eq:y", "no label eq:y in the document"]]);
   assert.deepEqual(texts("\\label{a}\n\\ref{a} \\ref{b,a} % \\ref{c}\n", true), [["b", "no label b in the document"]]);

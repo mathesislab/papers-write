@@ -289,7 +289,10 @@ them) are proposed upstream; until they are released,
   as MathML (cached); over a citation key its reference (authors, year, title,
   journal); over an image path (`![..](path)`, `\includegraphics{path}`) a
   thumbnail; over a cross-reference (`@fig:x`, `\ref{x}`) what the label is
-  on: "Figure: The hysteresis loop", "Equation: …".
+  on: "Figure: The hysteresis loop", "Equation: …". Quarto's references
+  (`@fig-x`, `{#fig-x}`) are read as well, and a code cell's `#| label:
+  fig-x` (with its `#| fig-cap:`) counts as a label: completed after `@fig-`,
+  shown on hover, checked.
 - Underlines: a citation key found neither in the document's `.bib` files nor
   in the library (checked 800 ms after the typing stops, and when the
   references change), a reference to a label the document does not define

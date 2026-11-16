@@ -96,6 +96,14 @@ test("what a label stands for, Markdown", () => {
   assert.equal(labelTarget(state, "fig:none"), null);
 });
 
+test("what a Quarto label stands for, a code cell's too", () => {
+  const state = md("# Introduction {#sec-intro}\n\n![The loop](l.png){#fig-loop}\n\n```{julia}\n#| label: fig-run\n#| fig-cap: \"The model run\"\nplot(x)\n```\n");
+  assert.equal(labelTarget(state, "sec-intro"), "Section: Introduction");
+  assert.equal(labelTarget(state, "fig-loop"), "Figure: The loop");
+  assert.equal(labelTarget(state, "fig-run"), "Figure: The model run");
+  assert.equal(labelTarget(state, "fig-none"), null);
+});
+
 const TEX = `\\section{Method}\\label{sec:method}
 
 \\begin{figure}

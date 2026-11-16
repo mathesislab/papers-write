@@ -6,6 +6,7 @@
 import { language, syntaxTree } from "@codemirror/language";
 import type { EditorState, Extension } from "@codemirror/state";
 import { EditorView, hoverTooltip, type Tooltip } from "@codemirror/view";
+import { cellLabels, refKindOf } from "./lang/cite.ts";
 import { latexMathAt } from "./lang/tex-math.ts";
 import { headingTitle } from "./outline.ts";
 import type { HoverSources } from "./types.ts";
@@ -160,9 +161,17 @@ export function labelTarget(state: EditorState, key: string): string | null {
       return !node;
     },
   });
-  if (!node) return null;
+  const kindOf = (fallback?: string) => fallback ?? KINDS[refKindOf(key) ?? ""];
+  if (!node) {
+    // a code cell's label: what its caption says
+    const cell = cellLabels(syntaxTree(state), state.doc.toString()).find((c) => c.key === key);
+    if (!cell) return null;
+    const kind = kindOf();
+    const text = short(cell.caption ?? "a code cell");
+    return kind ? `${kind}: ${text}` : text;
+  }
   const at = isTex(state) ? texTarget(state, node.from) : markdownTarget(state, node);
-  const kind = at.kind ?? KINDS[key.split(":")[0]];
+  const kind = kindOf(at.kind);
   const text = short(at.text);
   return kind ? `${kind}: ${text}` : text;
 }

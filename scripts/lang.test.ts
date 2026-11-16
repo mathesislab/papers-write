@@ -148,6 +148,17 @@ test("cross-references are no citations", () => {
   assert.deepEqual(nodes("see [@fig:x; @a]", "CrossRefKey", "CitationKey"), ["CrossRefKey:fig:x", "CitationKey:a"]);
 });
 
+test("Quarto's cross-references, with a hyphen", () => {
+  assert.deepEqual(nodes("in @fig-x and [@eq-y; @a], @sec-intro.", "CrossRefKey", "CitationKey"), [
+    "CrossRefKey:fig-x",
+    "CrossRefKey:eq-y",
+    "CitationKey:a",
+    "CrossRefKey:sec-intro",
+  ]);
+  // a key that only looks like one is a citation
+  assert.deepEqual(nodes("@figure-2020 says", "CitationKey", "CrossRefKey"), ["CitationKey:figure-2020"]);
+});
+
 test("labels in attributes and in LaTeX", () => {
   assert.deepEqual(nodes("![caption](f.png){#fig:x width=50%}", "Attributes", "LabelName"), ["Attributes:{#fig:x width=50%}", "LabelName:fig:x"]);
   assert.deepEqual(nodes("## Methods {#sec:methods .unnumbered}", "LabelName"), ["LabelName:sec:methods"]);

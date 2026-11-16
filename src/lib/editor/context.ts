@@ -3,6 +3,7 @@
 
 import type { syntaxTree } from "@codemirror/language";
 import { MATH_NAMES, TEXT_NAMES, TEX_NAMES, type LatexName } from "./lang/latex-names.ts";
+import { REF_KINDS, cellLabels } from "./lang/cite.ts";
 
 type Tree = ReturnType<typeof syntaxTree>;
 
@@ -57,18 +58,26 @@ export function literalAt(tree: Tree, pos: number, before: string): Literal | nu
 /** What the completion offers at the cursor, and what of the text it replaces (from `from` to the cursor). */
 export type Context =
   | { kind: "citation"; from: number; prefix: string }
-  | { kind: "ref"; from: number; prefix: string; /** `fig`, `eq`... of `@fig:` */ refKind?: string }
+  | {
+      kind: "ref";
+      from: number;
+      prefix: string;
+      /** `fig`, `eq`... of `@fig:` and `@fig-` */
+      refKind?: string;
+      /** what follows the kind: `:` (pandoc-crossref) or `-` (Quarto) */
+      refSep?: ":" | "-";
+    }
   | { kind: "latex"; from: number; prefix: string; names: LatexName[] }
   | { kind: "path"; from: number; prefix: string };
 
-const KINDS = "fig|eq|tbl|sec|lst";
+const KINDS = REF_KINDS.join("|");
 const KEYCHARS = "[\\p{L}\\p{N}_:.#$%&\\-+?<>~/]*";
 /** The key being typed in `\cite{a, sc`, after the keys before it. */
 const CITE_COMMAND = new RegExp(String.raw`\\cite[A-Za-z]*\*?(?:\[[^\]]*\]){0,2}\{(?:[^}]*,\s*)?([^},\s]*)$`);
 const REF_COMMAND = new RegExp(String.raw`\\(?:eqref|ref|autoref|pageref|cref)\{(?:[^}]*,\s*)?([^},\s]*)$`);
 const PATH_COMMAND = /\\(?:includegraphics|input|include)\*?(?:\[[^\]]*\])?\{([^}]*)$/;
 const PATH_IMAGE = /!\[[^\]]*\]\(([^)\s]*)$/;
-const REF_PANDOC = new RegExp(`(?:^|[^${WORD}])-?@(${KINDS}):([^\\s\\[\\]{};,@]*)$`, "u");
+const REF_PANDOC = new RegExp(`(?:^|[^${WORD}])-?@(${KINDS})([:-])([^\\s\\[\\]{};,@]*)$`, "u");
 const CITE_PANDOC = new RegExp(`(?:^|[^${WORD}])@(${KEYCHARS})$`, "u");
 const NAME = /(?:^|[^\\])\\([A-Za-z]*)$/;
 
@@ -87,30 +96,34 @@ export function contextAt(tree: Tree, pos: number, before: string, code = false)
     if ((m = hit(NAME))) return { kind: "latex", from: pos - m[1].length - 1, prefix: m[1], names: MATH_NAMES };
     return null;
   }
-  if ((m = hit(REF_PANDOC))) return { kind: "ref", from: pos - m[2].length, prefix: m[2], refKind: m[1] };
+  if ((m = hit(REF_PANDOC))) return { kind: "ref", from: pos - m[3].length, prefix: m[3], refKind: m[1], refSep: m[2] as ":" | "-" };
   if ((m = hit(CITE_PANDOC))) return { kind: "citation", from: pos - m[1].length, prefix: m[1] };
   if ((m = hit(NAME))) return { kind: "latex", from: pos - m[1].length - 1, prefix: m[1], names: TEXT_NAMES };
   return null;
 }
 
-/** The labels defined in the text (`{#fig:x}`, `\label{x}`), in order, each once. */
+/** The labels defined in the text (`{#fig:x}`, `\label{x}`, a code cell's `#| label: fig-x`), in order, each once. */
 export function labelsOf(tree: Tree, text: string): string[] {
-  const labels = new Set<string>();
+  const found: { key: string; from: number }[] = cellLabels(tree, text);
   tree.iterate({
     enter(n) {
-      if (n.name === "LabelName") labels.add(text.slice(n.from, n.to));
+      if (n.name === "LabelName") found.push({ key: text.slice(n.from, n.to), from: n.from });
     },
   });
-  return [...labels];
+  return [...new Set(found.sort((a, b) => a.from - b.from).map((l) => l.key))];
 }
 
-/** The labels that `context` (a reference) can be: for `@fig:` those of the kind, with what follows the colon as the
- *  text to insert; the others whole. */
-export function refOptions(labels: string[], context: { prefix: string; refKind?: string }): { label: string; insert: string }[] {
+/** The labels that `context` (a reference) can be: for `@fig:` (`@fig-`) those of the kind written so, with what
+ *  follows the kind as the text to insert; the others whole. */
+export function refOptions(
+  labels: string[],
+  context: { prefix: string; refKind?: string; refSep?: ":" | "-" },
+): { label: string; insert: string }[] {
   const { prefix, refKind } = context;
+  const head = refKind ? `${refKind}${context.refSep ?? ":"}` : "";
   return labels
-    .filter((l) => (refKind ? l.startsWith(`${refKind}:`) : true))
-    .map((l) => ({ label: l, insert: refKind ? l.slice(refKind.length + 1) : l }))
+    .filter((l) => l.startsWith(head))
+    .map((l) => ({ label: l, insert: l.slice(head.length) }))
     .filter((o) => o.insert.startsWith(prefix));
 }
 

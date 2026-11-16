@@ -85,6 +85,18 @@ test("cross-references", () => {
   assert.deepEqual(refOptions(labels, { prefix: "e" }).map((o) => o.label), ["eq:b"]);
 });
 
+test("Quarto's cross-references: @fig- offers the fig- labels, a code cell's among them", () => {
+  assert.deepEqual(context("in @fig-|"), { kind: "ref", prefix: "", refKind: "fig" });
+  const text = "![c](f.png){#fig-a}\n\n```{julia}\n#| label: fig-plot\n#| fig-cap: \"The run\"\nplot(x)\n```\n\n![d](g.png){#fig:z}\n";
+  const labels = labelsOf(parser.parse(text), text);
+  assert.deepEqual(labels, ["fig-a", "fig-plot", "fig:z"]);
+  assert.deepEqual(refOptions(labels, { prefix: "", refKind: "fig", refSep: "-" }), [
+    { label: "fig-a", insert: "a" },
+    { label: "fig-plot", insert: "plot" },
+  ]);
+  assert.deepEqual(refOptions(labels, { prefix: "", refKind: "fig", refSep: ":" }).map((o) => o.label), ["fig:z"]);
+});
+
 test("LaTeX names: all in math, the structural ones in the text", () => {
   const names = (marked: string) => {
     const { tree, pos, before } = at(marked);

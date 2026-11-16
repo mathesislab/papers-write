@@ -6,6 +6,7 @@
 import { syntaxTree } from "@codemirror/language";
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, hoverTooltip, type DecorationSet, type PluginValue, type Tooltip, type ViewUpdate } from "@codemirror/view";
+import { cellLabels } from "./lang/cite.ts";
 import type { Diagnostics } from "./types.ts";
 
 /** A key underlined: where, why, and how bad (an `error` is a reference that goes nowhere, a `warning` a citation not found). */
@@ -22,11 +23,11 @@ function keysOf(state: EditorState, name: string): { key: string; from: number; 
   return found;
 }
 
-/** The cross-references to a label the document does not define (`@fig:x`, `\ref{x}`), and the labels it defines more
- *  than once (`{#fig:x}`, `\label{x}`), each occurrence. In order of position. `included` are the labels the app found
+/** The cross-references to a label the document does not define (`@fig:x`, `@fig-x`, `\ref{x}`), and the labels it
+ *  defines more than once (`{#fig:x}`, `\label{x}`, a code cell's `#| label: fig-x`), each occurrence. In order of position. `included` are the labels the app found
  *  in the files the text includes (`\input`): they count as defined, with those found in the text. */
 export function labelProblems(state: EditorState, included: Iterable<string> = []): Problem[] {
-  const labels = keysOf(state, "LabelName");
+  const labels = [...keysOf(state, "LabelName"), ...cellLabels(syntaxTree(state), state.doc.toString())];
   const count = new Map<string, number>();
   for (const l of labels) count.set(l.key, (count.get(l.key) ?? 0) + 1);
   const problems: Problem[] = [];

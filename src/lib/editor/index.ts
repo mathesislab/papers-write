@@ -4,7 +4,6 @@ export {
   PREFS,
   inCode,
   literalIn,
-  insertQuote,
   insertSymbol,
   makeEditor,
   prefsFrom,
@@ -31,6 +30,7 @@ export { DEFAULTS, LATEX, find as findSymbols, latex, merged, typed, type Entry,
 export { completionSource } from "./completion";
 export { find, finding, replaceEverywhere, type FindCommand, type ProjectQuery } from "./find";
 export { format, formatSpec, type Format } from "./format";
+export { insertQuote, quoteSpec } from "./quote";
 export { citationKeys, diagnostics, labelProblems, recheck, type Problem } from "./diagnostics";
 export { environmentTex, hover, isTex, labelTarget, targetAt, type Target } from "./hover";
 export { contextAt, labelsOf, literalAt, nameOptions, refOptions, texContextAt, texLabelsOf, type Context, type Literal } from "./context";

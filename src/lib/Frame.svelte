@@ -6,7 +6,7 @@
   // tab's project (`project_bar`); a click on a tile switches the window to its project, or for the current one shows
   // or hides the sidebar; a right-click its menu. It is asked again on `projects-changed`, when the window gets the
   // focus, when the tab shows another file and when the page says (`loadBarLater`). When Settings ▸ Window says so, a
-  // thin bar in the project's colour is at the top. Project Info… (⌘I, `project-info`) is a card over the window
+  // thin bar in the project's colour is at the top. Project Info… (⇧⌘I, `project-info`) is a card over the window
   // (ProjectCard); so is the card of a new project, asked for when File ▸ Open Project… chose a folder without
   // write.toml (`asking-project`).
   //

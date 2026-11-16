@@ -49,13 +49,20 @@ them) are proposed upstream; until they are released,
   bulleted and numbered list and quote (Format menu, below); Add Comment;
   Find and Find and Replace; at the right the review panel, with the number
   of open suggestions and comments, and the mode, Editing or Suggesting.
+- Format menu: Bold (⌘B), Italic (⌘I), Code, Link (⌘K) go around the
+  selection, or come off when it is already so (a cursor inside a word takes
+  the word); Heading steps through `#`, `##`, `###` and none; Bulleted List,
+  Numbered List and Quote put `- `, `1. ` or `> ` on the lines selected, or
+  take them off. In a `.tex` file: `\textbf`, `\emph`, `\texttt`, `\href`;
+  `\section`, `\subsection`, `\subsubsection`; `itemize`, `enumerate` and
+  `quote` around the lines. In suggest mode a format is a suggestion.
 - A PDF opens in a tab like the text files (PDFKit, as Preview shows it): the
   page in view (click it to go to a page), zoom in, out and to fit the width
   (⌘= ⌘- ⌘0, PDF menu), Find (Edit ▸ Find: ⌘F, next ⌘G, previous ⇧⌘G). A PDF that changes on
   disk, a build rewriting it, is read again at the same page.
-- Build ▸ Build (⌘B) writes the document and runs `texmark <file> --pdf` in its
+- Build ▸ Build (⇧⌘B) writes the document and runs `texmark <file> --pdf` in its
   folder, into `build/` beside it (`build/name.tex`, `name.pdf`, `name.log`;
-  Markdown documents, saved; LaTeX below). Build and Show PDF (⇧⌘B) then opens the PDF
+  Markdown documents, saved; LaTeX below). Build and Show PDF (⌥⇧⌘B) then opens the PDF
   in a tab, which reloads by itself on each rebuild. The foot of the window
   says Build (a click builds), building, built (the time; a click shows the
   PDF) or failed; a failure lists the first errors
@@ -81,7 +88,7 @@ them) are proposed upstream; until they are released,
   library (an accepted key is added to the first of those `.bib` files, which
   is `references.bib` with its `\bibliography` line put in if the file names
   none), labels after `\ref{` and `\eqref{`, every command name after a
-  backslash, and environments (`\begin{`). Build (⌘B, ⇧⌘B) runs `latexmk -pdf
+  backslash, and environments (`\begin{`). Build (⇧⌘B, ⌥⇧⌘B) runs `latexmk -pdf
   -interaction=nonstopmode -file-line-error -outdir=build` in the file's folder
   (`build/name.pdf`, `build/name.log`, as for texmark); an error at a line of
   the file is listed with it, and a click on it puts the cursor there (errors
@@ -171,7 +178,7 @@ them) are proposed upstream; until they are released,
   project (its tabs as left, else its main document), or brings forward the
   window that shows it; on the current project's tile it shows or hides the
   sidebar; a right-click: Open in New Window, Open Project Folder in Finder, Project Info…,
-  Remove from Bar; `+` is Open Project…. File ▸ Project Info… (⌘I) is a card
+  Remove from Bar; `+` is Open Project…. File ▸ Project Info… (⇧⌘I) is a card
   of the fields of `write.toml`, written on Done (Esc drops it). The bar and
   the projects opened last are kept in the app's `state.json`.
 

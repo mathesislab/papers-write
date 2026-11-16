@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The builds of a document, over its editor: Build (⌘B), Build and Show PDF (⇧⌘B) and Marked-up PDF… of the Build
+  // The builds of a document, over its editor: Build (⇧⌘B), Build and Show PDF (⌥⇧⌘B) and Marked-up PDF… of the Build
   // menu come to `run`. The document is written first (`flush`), then the backend runs texmark (and for the marked-up
   // PDF latexdiff and latexmk; for a .tex document latexmk, and latexdiff) and tells only the status: `build-status`, shown in the foot of the window, where it stays: a split button
   // (Build, Building…, Built 14:02, Build failed) whose click builds and shows the PDF, its ▾ the builds to choose
@@ -62,7 +62,7 @@
           : `${status.what === "diff" ? "Marked-up PDF" : "Build"} failed`,
   );
   const title = $derived(
-    status?.state === "done" ? `Made in ${status.seconds?.toFixed(1)} s. Build and Show PDF (⇧⌘B)` : "Build and Show PDF (⇧⌘B)",
+    status?.state === "done" ? `Made in ${status.seconds?.toFixed(1)} s. Build and Show PDF (⌥⇧⌘B)` : "Build and Show PDF (⌥⇧⌘B)",
   );
 
   /** The ▾ beside the button: the builds to choose from, and the PDF made last. */
@@ -70,8 +70,8 @@
     const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const pdf = status?.state === "done" ? status.pdf : null;
     const items = await Promise.all([
-      MenuItem.new({ text: "Build", accelerator: "CmdOrCtrl+B", action: () => void run("build") }),
-      MenuItem.new({ text: "Build and Show PDF", accelerator: "Shift+CmdOrCtrl+B", action: () => void run("build-show") }),
+      MenuItem.new({ text: "Build", accelerator: "Shift+CmdOrCtrl+B", action: () => void run("build") }),
+      MenuItem.new({ text: "Build and Show PDF", accelerator: "Alt+Shift+CmdOrCtrl+B", action: () => void run("build-show") }),
       PredefinedMenuItem.new({ item: "Separator" }),
       MenuItem.new({ text: "Marked-up PDF…", action: () => void run("marked-up") }),
       ...(pdf ? [MenuItem.new({ text: "Show PDF", action: () => void request("open_document", { path: pdf }) })] : []),

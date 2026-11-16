@@ -754,7 +754,7 @@ fn document_of(window: &Webview) -> Result<PathBuf, String> {
     }
 }
 
-/// Build (⌘B), or with `show` Build and Show PDF (⇧⌘B). The page has written the document.
+/// Build (⇧⌘B), or with `show` Build and Show PDF (⌥⇧⌘B). The page has written the document.
 #[tauri::command]
 pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> {
     let file = document_of(&window)?;

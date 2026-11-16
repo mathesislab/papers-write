@@ -1,6 +1,6 @@
 //! The menu bar. New, Open…, Open Recent (the projects opened before), Open Project…, Save, Close, Build and PDF are the app's (Build to the page of the window in front, as `menu`; PDF to a PDF's page, as `pdf`); Undo, Redo, Symbols…, References… and Check Citations… go to the editor of the window in
 //! front (event `edit`, the id of the item), File ▸ Exchange to its page (event `exchange`), Cite as [@key] to the list of references (event `cite-key`), Project Info… to its page (event `project-info`), and Save to its page (event `menu`).
-//! The Review menu goes to the page of the window in front as `review-menu` with the id of the item, the Git menu as `git-menu`.
+//! The Review menu goes to the page of the window in front as `review-menu` with the id of the item, the Git menu as `git-menu`, the Format menu as `format` with the format (`bold`, `heading`, …).
 //! Edit ▸ Find goes to the page in front as `find` (the text's bar, a PDF's search, the sidebar's search of the
 //! project); View ▸ Show Preview, Show Sidebar and Show Outline as `preview`, `sidebar` and `outline`.
 
@@ -94,7 +94,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("save", "Save", Some("CmdOrCtrl+S"))?,
             &item("close", "Close", Some("CmdOrCtrl+W"))?,
             &separator()?,
-            &item("project-info", "Project Info…", Some("CmdOrCtrl+I"))?,
+            // ⌘I is Italic
+            &item("project-info", "Project Info…", Some("Shift+CmdOrCtrl+I"))?,
             &separator()?,
             &exchange,
         ],
@@ -137,6 +138,23 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("check", "Check Citations…", None)?,
         ],
     )?;
+    // the formats of the toolbar, at the selection of the text in front (Markdown, or LaTeX in a .tex file)
+    let format = Submenu::with_items(
+        app,
+        "Format",
+        true,
+        &[
+            &item("format-bold", "Bold", Some("CmdOrCtrl+B"))?,
+            &item("format-italic", "Italic", Some("CmdOrCtrl+I"))?,
+            &item("format-code", "Code", None)?,
+            &item("format-link", "Link", Some("CmdOrCtrl+K"))?,
+            &separator()?,
+            &item("format-heading", "Heading", None)?,
+            &item("format-bullet", "Bulleted List", None)?,
+            &item("format-numbered", "Numbered List", None)?,
+            &item("format-quote", "Quote", None)?,
+        ],
+    )?;
     let view = Submenu::with_items(
         app,
         "View",
@@ -152,11 +170,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         "Build",
         true,
         &[
-            &item("build", "Build", Some("CmdOrCtrl+B"))?,
+            // ⌘B is Bold
+            &item("build", "Build", Some("Shift+CmdOrCtrl+B"))?,
             &item(
                 "build-show",
                 "Build and Show PDF",
-                Some("Shift+CmdOrCtrl+B"),
+                Some("Alt+Shift+CmdOrCtrl+B"),
             )?,
             &separator()?,
             &item("marked-up", "Marked-up PDF…", None)?,
@@ -226,7 +245,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
-    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &review, &git, &build, &pdf, &window])
+    Menu::with_items(app, &[&app_menu, &file, &edit, &format, &view, &review, &git, &build, &pdf, &window])
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
@@ -293,6 +312,11 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "git-commit" | "git-pull" | "git-push" | "git-compare" | "git-review-branch" | "git-review-commits" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "git-menu", id);
+            }
+        }
+        _ if id.starts_with("format-") => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "format", &id["format-".len()..]);
             }
         }
         "undo" | "redo" | "symbols" | "references" | "check" => {

@@ -63,6 +63,7 @@
     type FindCommand,
     type Heading,
     type ProjectQuery,
+    type Format,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
@@ -75,7 +76,7 @@
   import { applyEditor, watchSettings, type Settings } from "$lib/settings";
   import "$lib/theme.css";
 
-  // The toolbar above the text (Toolbar): the formats (also Format ▸, `format`), Add Comment…, Find and Find and
+  // The toolbar above the text (Toolbar): the formats (also the Format menu, `format`: ⌘B, ⌘I, ⌘K), Add Comment…, Find and Find and
   // Replace, the review panel and the mode.
   //
   // The review (Review menu, `review-menu`): suggesting or editing (ModeControl, at the right of the toolbar), the
@@ -524,6 +525,7 @@
       listen<{ at: number; end: number }>("go-to", (e) => editor?.select(e.payload.at, e.payload.end)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
       listen<string>("find", (e) => findCommand(e.payload)),
+      listen<Format>("format", (e) => editor?.format(e.payload)),
       listen("references-changed", () => version++),
     ];
     return () => {

@@ -185,7 +185,7 @@ fn export_to_markdown_is_critic_markup() {
     assert!(o.status.success(), "{}", err(&o));
     assert_eq!(
         std::fs::read_to_string(&to).unwrap(),
-        "The grounding line retreats {~~rapidly~>slowly~~} when the bed slopes {--inland--}.\nWe show this in Fig. 3{>>Bob Roe: Which one?<<}.\n"
+        "The grounding line retreats {~~rapidly~>slowly~~} when the bed slopes {--inland--}.\nWe show this in {==Fig. 3==}{>>Bob Roe: Which one?<<}.\n"
     );
 }
 

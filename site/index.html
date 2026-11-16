@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Papers Write</title>
+<meta name="description" content="Write papers in plain text: Markdown and LaTeX, cited from your library, built with texmark or Quarto, reviewed by co-authors with suggestions and comments that stay beside the text.">
+<link rel="icon" href="images/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#"><img src="images/logo.svg" alt="" width="28" height="28">Papers Write</a>
+  <nav>
+    <a href="#review">Review</a>
+    <a href="#write">Write</a>
+    <a href="#build">Build</a>
+    <a href="#exchange">Exchange</a>
+    <a href="#download">Download</a>
+    <a href="https://github.com/mathesislab/papers-write">Source</a>
+  </nav>
+</header>
+
+<main>
+<section class="hero">
+  <h1>Write papers in plain text</h1>
+  <p class="lead">Papers Write edits Markdown and LaTeX, cites from your library, builds the journal's PDF with
+    texmark or Quarto, and lets co-authors suggest and comment as in a word processor. Suggestions and comments are
+    files beside the text, in the folder you already have under git.</p>
+  <p class="actions">
+    <a class="button primary" href="https://github.com/mathesislab/papers-write/releases/latest/download/Papers-Write-macos-aarch64.dmg">Download for Mac</a>
+    <a class="button" href="#download">Linux</a>
+    <a class="button" href="https://github.com/mathesislab/papers-write">View source</a>
+  </p>
+  <p class="more">macOS (Apple silicon) and Linux. <a href="https://github.com/mathesislab/papers-write/releases">All releases</a></p>
+
+  <img src="images/main.png" alt="A paper in Markdown with the review panel: suggestions and comments of two co-authors" width="1600" height="1032">
+</section>
+
+<section class="features">
+  <article id="review" class="feature wide">
+    <div>
+      <h2>Suggest and comment, beside the text</h2>
+      <p>Switch to Suggesting and type: what you write is a suggestion in your colour, as in Word or Google Docs.
+        Select text and add a comment. The review panel lists them all, to accept, reject, answer or resolve.</p>
+      <p>The manuscript itself never holds the markup. Each person's suggestions and comments are a file of their own
+        in <code>.papers-write/</code>, written by appending, so git merges two reviewers without a conflict, and a
+        suggestion follows the text as it changes.</p>
+    </div>
+    <img src="images/suggest.png" alt="Suggesting: a sentence typed as a suggestion, in the author's colour" loading="lazy" width="1600" height="1032">
+  </article>
+
+  <article id="write" class="feature wide reverse">
+    <div>
+      <h2>Markdown that knows papers</h2>
+      <p>Citations <code>[@key]</code> and cross-references <code>@fig:x</code> or Quarto's <code>@fig-x</code> are
+        completed, checked and shown on hover; equations render as you point at them. A toolbar and keys for bold,
+        italic, links, headings, lists and quotations, in Markdown or in LaTeX.</p>
+      <p>Code cells of Julia, Python and R are coloured, and a cell's <code>#| label: fig-x</code> counts as a
+        label. Citing a key from your <a href="https://github.com/perrette/papers">papers</a> library adds its entry
+        to the <code>.bib</code>.</p>
+    </div>
+    <img src="images/quarto.png" alt="A Quarto paper: an equation, a Julia code cell with its label, cross-references" loading="lazy" width="1600" height="1032">
+  </article>
+
+  <article id="build" class="feature wide">
+    <div>
+      <h2>Build with texmark or Quarto</h2>
+      <p><kbd>⇧⌘B</kbd> builds the PDF, with <a href="https://github.com/alex-robinson/texmark">texmark</a> into a
+        journal's LaTeX template, or with <a href="https://quarto.org">Quarto</a> for a <code>.qmd</code> or a
+        project that says so. <kbd>⌥⇧⌘B</kbd> shows it in a tab, which reloads as you build again. A LaTeX error
+        takes you to its line of the Markdown.</p>
+      <p>The marked-up PDF a revision asks for is one menu item: latexdiff against a tag, a commit or another file.</p>
+    </div>
+    <img src="images/pdf.png" alt="The PDF built by Quarto, in a tab beside the paper" loading="lazy" width="1600" height="1032">
+  </article>
+
+  <article id="exchange" class="feature">
+    <h2>Exchange with anyone</h2>
+    <p>Not everyone uses the app. Export as Word with tracked changes and comments, and import the Word review that
+      comes back. Export as <a href="https://criticmarkup.com">CriticMarkup</a> for a co-author with any plain-text
+      editor, and read their marks back as suggestions. Send a <code>.review</code> file for someone to review and
+      return, or compare an edited copy, a branch or a commit as suggestions under its author's name.</p>
+  </article>
+
+  <div class="grid">
+    <article class="feature">
+      <h3>Projects</h3>
+      <p>A project is a folder with a <code>write.toml</code>: its name, colour, main document and build folder.
+        The project bar keeps several papers at hand, each with its files, outline and search.</p>
+    </article>
+    <article class="feature">
+      <h3>LaTeX too</h3>
+      <p><code>.tex</code> files with the same completion of citations and labels, built by latexmk, their
+        errors at their lines.</p>
+    </article>
+    <article class="feature">
+      <h3>Git built in</h3>
+      <p>Commit, pull and push from the window; a co-author's commits or branch can come in as suggestions.</p>
+    </article>
+    <article class="feature">
+      <h3>Command line</h3>
+      <p><code>pw review list|accept|reject|export|import</code> works on a review without the app, for scripts
+        and agents.</p>
+    </article>
+    <article class="feature">
+      <h3>Updates built in</h3>
+      <p>The app looks for new versions and installs one when you ask. Signed updates, nothing in the
+        background.</p>
+    </article>
+    <article class="feature">
+      <h3>Open source</h3>
+      <p>Free software under the MIT license, written in Rust with <a href="https://tauri.app">Tauri</a>.</p>
+    </article>
+  </div>
+</section>
+
+<aside class="also" id="desktop">
+  <h2>Also: Papers Desktop and Papers Review</h2>
+  <p><a href="https://mathesislab.github.io/papers-desktop/">Papers Desktop</a> keeps the library: it follows the
+    journals of your field, keeps papers in your <code>.bib</code> files with their PDFs and cites any of them in a
+    keystroke. <a href="https://mathesislab.github.io/papers-review/">Papers Review</a> is for reviewing someone
+    else's manuscript beside its PDF. Papers Write cites from the same library.</p>
+</aside>
+
+<section id="download" class="download">
+  <h2>Download</h2>
+  <div class="platforms">
+    <article class="platform">
+      <h3>macOS</h3>
+      <p>For Macs with Apple silicon.</p>
+      <a class="button primary" href="https://github.com/mathesislab/papers-write/releases/latest/download/Papers-Write-macos-aarch64.dmg">Download for Mac</a>
+      <details>
+        <summary>First start</summary>
+        <p>Papers Write is not notarized by Apple yet, so macOS blocks it the first time. Drag it to Applications
+          and open it; then open System Settings → Privacy &amp; Security and click Open Anyway. Or, in Terminal:</p>
+        <pre><code>xattr -dr com.apple.quarantine "/Applications/Papers Write.app"</code></pre>
+      </details>
+    </article>
+    <article class="platform">
+      <h3>Linux</h3>
+      <p>For x86-64: an AppImage, which updates itself, or a <code>.deb</code>.</p>
+      <a class="button primary" href="https://github.com/mathesislab/papers-write/releases/latest/download/Papers-Write-linux-amd64.AppImage">Download AppImage</a>
+      <a class="button" href="https://github.com/mathesislab/papers-write/releases/latest/download/Papers-Write-linux-amd64.deb">.deb</a>
+      <details>
+        <summary>First start</summary>
+        <p>Make the AppImage executable and run it:</p>
+        <pre><code>chmod +x Papers-Write-linux-amd64.AppImage
+./Papers-Write-linux-amd64.AppImage</code></pre>
+        <p>On Linux the PDF tab is pdf.js; the spell checker is macOS's only.</p>
+      </details>
+    </article>
+  </div>
+  <p class="more">Builds need <a href="https://pandoc.org">pandoc</a>, and texmark or Quarto with a TeX installation.
+    Once installed, the app updates itself (Settings → Updates). All versions are on the
+    <a href="https://github.com/mathesislab/papers-write/releases">releases page</a>. To build it yourself, see the
+    <a href="https://github.com/mathesislab/papers-write#readme">README</a>.</p>
+</section>
+</main>
+
+<footer>
+  <p>Papers Write is free software under the <a href="https://github.com/mathesislab/papers-write/blob/main/LICENSE">MIT
+    license</a>, by Alexander Robinson. <a href="https://github.com/mathesislab/papers-write">GitHub</a></p>
+</footer>
+</body>
+</html>

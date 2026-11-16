@@ -219,6 +219,32 @@ fn word_goes_out_and_comes_back() {
 }
 
 #[test]
+fn critic_markup_goes_out_and_comes_back() {
+    let dir = folder();
+    let doc = dir.join("paper.md");
+    suggest(&doc, "Jane Doe", "rapidly", "slowly");
+    comment(&doc, "Bob Roe", "Fig. 3", "Which one?");
+    let crit = dir.join("paper.crit.md");
+    let o = pw(&["review", "export", path(&doc), "--markdown", path(&crit)]);
+    assert!(o.status.success(), "{}", err(&o));
+    // a co-author marks it further, naming no one
+    let marked = std::fs::read_to_string(&crit).unwrap();
+    assert!(marked.contains("{~~rapidly~>slowly~~}") && marked.contains("{==Fig. 3==}{>>Bob Roe: Which one?<<}"), "{marked}");
+    std::fs::write(&crit, marked.replace("slopes inland", "slopes {~~inland~>seaward~~}")).unwrap();
+
+    // the same document elsewhere, without the review: no one there for the notes to name
+    let other = folder();
+    let doc2 = other.join("paper.md");
+    let o = pw(&["review", "import", path(&doc2), path(&crit), "--author", "Carol Poe"]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(out(&o).trim(), "2 suggestions and 1 comments from Carol Poe");
+    let list = out(&pw(&["review", "list", path(&doc2)]));
+    assert!(list.contains("Carol Poe") && list.contains("\"inland\" → \"seaward\""), "{list}");
+    let o = pw(&["review", "import", path(&doc), path(&crit), "--author"]);
+    assert_eq!(o.status.code(), Some(2), "{}", err(&o));
+}
+
+#[test]
 fn a_review_sent_back_is_merged() {
     let dir = folder();
     let doc = dir.join("paper.md");

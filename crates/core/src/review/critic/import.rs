@@ -150,8 +150,10 @@ fn named(note: Option<&str>, people: &[String], author: &str) -> (String, Option
 
 /// The CriticMarkup of `file` as suggestions and comments on `current` (positions in UTF-16 units of `current`),
 /// each under the name its note begins with when that is one of `people` (the names of the review) or is written
-/// `@Name:`, else `author`'s. With `untracked`, the edits made outside the marks are `author`'s suggestions too.
+/// `@Name:`, else `author`'s ([`CRITIC`] when empty). With `untracked`, the edits made outside the marks are `author`'s
+/// suggestions too.
 pub fn import(current: &str, file: &str, people: &[String], author: &str, untracked: bool) -> Imported {
+    let author = if author.trim().is_empty() { CRITIC } else { author.trim() };
     let marked = read(file);
     let original = marked.original.as_str();
     let mut out = Imported { unplaced: marked.problems, ..Default::default() };

@@ -371,10 +371,16 @@ pw review list paper.md [--json]    # open suggestions and comments: id, line:co
 pw review accept paper.md --all     # or --author NAME, or --id ID...
 pw review reject paper.md --author "Jane Doe"
 pw review export paper.md --word paper.docx      # tracked changes and comments (pandoc)
-pw review export paper.md --markdown paper.crit.md   # CriticMarkup: {++ ++} {-- --} {~~ ~> ~~} {>> <<}
+pw review export paper.md --markdown paper.crit.md   # CriticMarkup: {++ ++} {-- --} {~~ ~> ~~} {== ==}{>> <<}
 pw review import paper.md reviewed.docx          # a Word review (--untracked: also changes made with tracking off)
+pw review import paper.md paper.crit.md --author "Jane Doe"   # CriticMarkup back (--untracked: also edits outside the marks)
 pw review import paper.md back.review            # a review sent back, merged
 ```
+
+A file of CriticMarkup comes back as suggestions and comments: a mark is the
+person's whose name begins its note (`{>>Jane Doe: …<<}`, someone of the review, as
+the export writes it, or `{>>@Jane Doe: …<<}`), else `--author`'s ("CriticMarkup"
+without it). A mark where the document has changed since is listed, not placed.
 
 Accept writes the suggestions into the file (from the end of the text) and appends the decisions to the review
 under the user's name, as the app does (git `user.name` of the document's folder, else the system's full name, else

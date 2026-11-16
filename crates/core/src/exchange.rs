@@ -1,6 +1,7 @@
-//! The Word side of a review, with pandoc (`brew install pandoc`): the document as a .docx with the open suggestions
-//! and comments as tracked changes and comments, and a .docx read back as suggestions and comments. Shared by the
-//! app (Export as Word with Changes, Import Word Review) and the command line (`pw review export|import`).
+//! A review with Word or in CriticMarkup: the document as a .docx with the open suggestions and comments as tracked
+//! changes and comments (pandoc: `brew install pandoc`), and a .docx read back as suggestions and comments; a file of
+//! CriticMarkup read back the same way. Shared by the app (Export as Word with Changes, Import Review) and the command
+//! line (`pw review export|import`).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -206,12 +207,27 @@ pub fn import(doc: &Path, current: &str, docx: &Path, also_untracked: bool, fall
     let rendered = if also_untracked { renderings(current, dir)? } else { Vec::new() };
     let untracked = also_untracked.then(|| review::word::Untracked { author: fallback_author, renderings: &rendered });
     let found = review::word::import(current, &all, &reject, &accept, untracked);
+    record(doc, current, found, &format!("Word review: {}", docx.file_name().unwrap_or_default().to_string_lossy()))
+}
 
-    let round = format!("Word review: {}", docx.file_name().unwrap_or_default().to_string_lossy());
+/// The CriticMarkup of the file `file` written to the review of `doc` as suggestions and comments, each under the
+/// name its note begins with (someone of the review, or `@Name:`), else `author`'s ("CriticMarkup" when empty); with
+/// `also_untracked`, the edits made outside the marks too, as `author`'s. `current` is the text of `doc`.
+pub fn import_critic(doc: &Path, current: &str, file: &Path, also_untracked: bool, author: &str) -> Result<Imported, String> {
+    let bytes = std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let text = String::from_utf8(bytes).map_err(|_| format!("{}: not a UTF-8 text file", file.display()))?;
+    let review = Review::load(doc).map_err(|e| e.to_string())?;
+    let people: Vec<String> = review.files.iter().filter_map(|f| f.person.as_ref().map(|p| p.name.clone())).collect();
+    let found = review::critic::import(current, &text, &people, author, also_untracked);
+    record(doc, current, found, &format!("CriticMarkup review: {}", file.file_name().unwrap_or_default().to_string_lossy()))
+}
+
+/// What an import found written to the review of `doc`, each person's to their own file, all in `round`.
+fn record(doc: &Path, current: &str, found: review::Imported, round: &str) -> Result<Imported, String> {
     let mut made = Imported { suggestions: found.suggestions.len(), comments: found.comments.len(), unplaced: found.unplaced, ..Default::default() };
     for (author, record) in found.suggestions.into_iter().chain(found.comments) {
         let me = Person::new(author.as_str(), "");
-        Review::add(doc, &me, current, record.round(round.clone())).map_err(|e| e.to_string())?;
+        Review::add(doc, &me, current, record.round(round)).map_err(|e| e.to_string())?;
         if !made.authors.contains(&author) {
             made.authors.push(author);
         }
@@ -303,4 +319,5 @@ mod tests {
         let applied = review::apply_all(current, &items);
         assert_eq!(applied.split_whitespace().collect::<Vec<_>>().join(" "), "The *grounding line* retreats slowly [@smith2020] when the bed slopes. The ice shelf thickens.");
     }
+
 }

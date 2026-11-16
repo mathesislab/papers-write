@@ -282,28 +282,38 @@ fn export(doc: &Path, flags: &[String]) -> Result {
 // ---- import
 
 fn import(doc: &Path, flags: &[String]) -> Result {
-    let mut file = None;
-    let mut untracked = false;
-    for f in flags {
+    let (mut file, mut untracked, mut author) = (None, false, String::new());
+    let mut it = flags.iter();
+    while let Some(f) = it.next() {
         match f.as_str() {
             "--untracked" => untracked = true,
+            "--author" => match it.next() {
+                Some(name) => author = name.clone(),
+                None => return misuse("review import: --author needs a name"),
+            },
             other if other.starts_with('-') => return misuse(format!("review import: unknown option {other}")),
             other if file.is_none() => file = Some(PathBuf::from(other)),
             _ => return misuse("review import: one file"),
         }
     }
     let Some(file) = file else {
-        return misuse("review import: a .docx or a .review file");
+        return misuse("review import: a .docx, a CriticMarkup .md or a .review file");
     };
     let text = read(doc)?;
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase());
+    let said = |made: exchange::Imported| {
+        println!("{} suggestions and {} comments from {}", made.suggestions, made.comments, if made.authors.is_empty() { "nobody".into() } else { made.authors.join(", ") });
+        for u in made.unplaced {
+            println!("not placed: {u}");
+        }
+    };
     match ext.as_deref() {
         Some("docx") => {
-            let made = exchange::import(doc, &text, &file, untracked, "Word").or_else(fail)?;
-            println!("{} suggestions and {} comments from {}", made.suggestions, made.comments, if made.authors.is_empty() { "nobody".into() } else { made.authors.join(", ") });
-            for u in made.unplaced {
-                println!("not placed: {u}");
-            }
+            said(exchange::import(doc, &text, &file, untracked, &author).or_else(fail)?);
+            Ok(())
+        }
+        Some("md" | "markdown" | "txt") => {
+            said(exchange::import_critic(doc, &text, &file, untracked, &author).or_else(fail)?);
             Ok(())
         }
         Some(e) if e == package::EXTENSION => {
@@ -315,6 +325,6 @@ fn import(doc: &Path, flags: &[String]) -> Result {
             println!("{} suggestions, {} comments and {} other records from {}", m.suggestions, m.comments, m.others, if m.people.is_empty() { "nobody new".into() } else { m.people.join(", ") });
             Ok(())
         }
-        _ => misuse(format!("{}: a .docx or a .review file", file.display())),
+        _ => misuse(format!("{}: a .docx, a CriticMarkup .md or a .review file", file.display())),
     }
 }

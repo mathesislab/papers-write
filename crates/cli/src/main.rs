@@ -21,9 +21,10 @@ usage:
                                         record the decisions (the file is not changed)
   pw review export <doc> --word out.docx | --markdown out.md
                                         tracked changes and comments in Word; CriticMarkup in Markdown
-  pw review import <doc> <file.docx|file.review> [--untracked]
-                                        a Word review (--untracked: also the changes made with tracking off),
-                                        or a review sent back
+  pw review import <doc> <file.docx|file.md|file.review> [--untracked] [--author NAME]
+                                        a Word review or a file of CriticMarkup (--untracked: also the changes
+                                        made with tracking off, or outside the marks; --author: whose those are,
+                                        and the marks whose note names no one), or a review sent back
 ";
 
 /// What went wrong, and whether the command line was at fault (exit 2: usage; else 1).

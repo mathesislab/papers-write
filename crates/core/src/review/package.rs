@@ -14,7 +14,8 @@
 //! second from that document's review, and [`merge`] joins one to the review of the author's document: bases are
 //! copied if missing, a person's file is copied or has the records its ids lack appended (never rewritten).
 //!
-//! The zip is the system's `ditto` (macOS): the two functions [`zip`] and [`unzip`] are all that knows.
+//! The zip is a plain one (the `zip` crate, deflated; what macOS's `ditto -c -k --keepParent` made before reads the
+//! same): the two functions [`zip`] and [`unzip`] are all that knows.
 
 use super::record::{Decision, Kind, Person, Record};
 use super::store::{self, Error, Result};
@@ -57,24 +58,60 @@ pub struct Manifest {
 
 // ---- the zip
 
-/// The folder `folder` as the zip `to` (the folder itself is the one entry at the top).
+/// The folder `folder` as the zip `to` (the folder itself is the one entry at the top), its files deflated.
 fn zip(folder: &Path, to: &Path) -> Result<()> {
     let _ = fs::remove_file(to);
-    ditto(&["-c", "-k", "--sequesterRsrc", "--keepParent"], folder, to)
-}
-
-/// The zip `file` unpacked into the existing folder `into`.
-fn unzip(file: &Path, into: &Path) -> Result<()> {
-    ditto(&["-x", "-k"], file, into)
-}
-
-fn ditto(flags: &[&str], from: &Path, to: &Path) -> Result<()> {
-    let out = Command::new("ditto").args(flags).arg(from).arg(to).output().map_err(|e| Error::Invalid(format!("ditto did not start: {e}")))?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        Err(Error::Invalid(format!("ditto: {}", String::from_utf8_lossy(&out.stderr).trim())))
+    let bad = |e: zip::result::ZipError| Error::Invalid(format!("{}: {e}", to.display()));
+    let top = folder.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or_else(|| Error::Invalid(format!("{}: no name", folder.display())))?;
+    let mut out = zip::ZipWriter::new(fs::File::create(to).map_err(io(to))?);
+    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    for entry in walkdir::WalkDir::new(folder).sort_by_file_name() {
+        let entry = entry.map_err(|e| Error::Invalid(format!("{}: {e}", folder.display())))?;
+        let inside = entry.path().strip_prefix(folder).unwrap_or(entry.path());
+        let name = std::iter::once(top.clone())
+            .chain(inside.components().map(|c| c.as_os_str().to_string_lossy().into_owned()))
+            .collect::<Vec<_>>()
+            .join("/");
+        if entry.file_type().is_dir() {
+            out.add_directory(format!("{name}/"), options).map_err(bad)?;
+        } else {
+            out.start_file(name, options).map_err(bad)?;
+            let mut file = fs::File::open(entry.path()).map_err(io(entry.path()))?;
+            std::io::copy(&mut file, &mut out).map_err(io(to))?;
+        }
     }
+    out.finish().map_err(bad)?;
+    Ok(())
+}
+
+/// The zip `file` unpacked into the existing folder `into`: nothing outside it, no link, and not the `__MACOSX` folder
+/// macOS's own zips have.
+fn unzip(file: &Path, into: &Path) -> Result<()> {
+    let bad = |e: zip::result::ZipError| Error::Format(file.to_path_buf(), format!("not a review file: {e}"));
+    let mut archive = zip::ZipArchive::new(fs::File::open(file).map_err(io(file))?).map_err(bad)?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(bad)?;
+        let Some(inside) = entry.enclosed_name() else {
+            return Err(Error::Format(file.to_path_buf(), format!("not a review file: {} is outside it", String::from_utf8_lossy(entry.name_raw()))));
+        };
+        if inside.starts_with("__MACOSX") {
+            continue;
+        }
+        if entry.is_symlink() {
+            return Err(Error::Format(file.to_path_buf(), format!("not a review file: {} is a link", String::from_utf8_lossy(entry.name_raw()))));
+        }
+        let path = into.join(inside);
+        if entry.is_dir() {
+            fs::create_dir_all(&path).map_err(io(&path))?;
+        } else {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(io(parent))?;
+            }
+            let mut out = fs::File::create(&path).map_err(io(&path))?;
+            std::io::copy(&mut entry, &mut out).map_err(io(&path))?;
+        }
+    }
+    Ok(())
 }
 
 // ---- folders

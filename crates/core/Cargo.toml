@@ -25,3 +25,5 @@ serde_json = "1"
 # a project searched: its files walked, the text matched
 regex = "1"
 walkdir = "2"
+# a .review file is a zip (as the updater's, in the lock already)
+zip = { version = "9", default-features = false, features = ["deflate"] }

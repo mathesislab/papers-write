@@ -10,6 +10,9 @@
   // Export as Word with Changes…: where to save the .docx (a dialog), then a sheet that says how many tracked changes
   // and comments it has and lists what could not go to Word (suggestions that overlap, in the front matter).
   //
+  // Export as CriticMarkup…: where to save the copy of the Markdown with the open suggestions and comments as marks
+  // (`<name>.crit.md` to begin with), then the same sheet. Import Review… reads the marks a co-author adds back.
+  //
   // Import Review…: a .docx, or a file of CriticMarkup (.md), chosen in a dialog. Word's tracked changes and comments
   // come in under their authors' names; CriticMarkup's marks under the name their note begins with, else the one the
   // sheet asks for. Changes made with Track Changes off (outside the marks) are looked for only when asked (the whole
@@ -51,7 +54,7 @@
 
   type Compare = { typed: string; file: string; name: string; email: string; busy: boolean; done: string };
   let comparing = $state<Compare | null>(null);
-  type Exported = { path: string; suggestions: number; comments: number; skipped: string[]; notes: string[] };
+  type Exported = { path: string; suggestions: number; comments: number; skipped: string[]; notes: string[]; as: "Word" | "CriticMarkup" };
   /** the sheet of an export: what it made */
   let exported = $state<Exported | null>(null);
   type Imported = { suggestions: number; comments: number; already: number; authors: string[]; unplaced: string[] };
@@ -59,9 +62,9 @@
   let importing = $state<{ file: string; untracked: boolean; author: string; busy: boolean; result: Imported | null } | null>(null);
   let problem = $state("");
 
-  /** The menu's items: "send-review", "send-back", "compare", "word-export", "review-import". */
+  /** The menu's items: "send-review", "send-back", "compare", "word-export", "critic-export", "review-import". */
   export async function run(what: string) {
-    if (!["send-review", "send-back", "compare", "word-export", "review-import"].includes(what)) return;
+    if (!["send-review", "send-back", "compare", "word-export", "critic-export", "review-import"].includes(what)) return;
     problem = "";
     await flush();
     if (what === "send-review") {
@@ -74,9 +77,11 @@
       importing = { file: "", untracked: false, author: "", busy: false, result: null };
       return chooseReview();
     }
-    if (what === "word-export") {
+    if (what === "word-export" || what === "critic-export") {
+      const as = what === "word-export" ? "Word" : "CriticMarkup";
       try {
-        exported = (await invoke<Exported | null>("export_word", { path: null })) ?? exported;
+        const made = await invoke<Omit<Exported, "as"> | null>(what === "word-export" ? "export_word" : "export_critic", { path: null });
+        if (made) exported = { ...made, as };
       } catch (e) {
         problem = String(e);
       }
@@ -288,13 +293,14 @@
 {#if exported}
   {@const path = exported.path}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Export as Word" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" aria-label="Export as {exported.as}" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
-      <b>Exported as Word</b>
+      <b>Exported as {exported.as}</b>
       <button onclick={close}>Close</button>
     </header>
     <p>
-      <code title={path}>{nameOf(path)}</code>: {exported.suggestions} tracked change{exported.suggestions === 1 ? "" : "s"} and
+      <code title={path}>{nameOf(path)}</code>: {exported.suggestions}
+      {exported.as === "Word" ? "tracked change" : "suggestion"}{exported.suggestions === 1 ? "" : "s"} and
       {exported.comments} comment{exported.comments === 1 ? "" : "s"}.
     </p>
     {#each exported.notes as note (note)}<p class="where">{note}</p>{/each}

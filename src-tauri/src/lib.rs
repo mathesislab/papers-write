@@ -102,6 +102,7 @@ pub fn run() {
             exchange::compare_as_suggestions,
             exchange::choose_edited_copy,
             exchange::export_word,
+            exchange::export_critic,
             exchange::choose_review_file,
             exchange::import_review,
             package::send_for_review,

@@ -1,7 +1,8 @@
 //! A review that comes in and goes out without the app on the other side (docs/design.md, "Sending a review, without
 //! git"). Compare as Suggestions turns an edited copy of the document, a commit or a branch into suggestions under
 //! the name of whoever made each change. Export as Word with Changes makes a .docx of the document with the open suggestions
-//! and comments as Word's tracked changes and comments (pandoc: `brew install pandoc`). The document is the file of
+//! and comments as Word's tracked changes and comments (pandoc: `brew install pandoc`); Export as CriticMarkup, a copy
+//! of the Markdown with them as marks. The document is the file of
 //! the window: the page has written it before it asks. Import Review reads a .docx back (its tracked changes, the
 //! changes made with tracking off, its comments), or a file of CriticMarkup (its marks, the edits outside them), as
 //! the suggestions and comments of their authors.
@@ -101,33 +102,50 @@ pub async fn choose_edited_copy(app: AppHandle, window: Webview) -> Result<Optio
     Ok(dialog.blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned()))
 }
 
-// ---- Export as Word with Changes
+// ---- Export as Word with Changes, Export as CriticMarkup
+
+/// Where to export the document `doc` to as `kind` (Word, CriticMarkup): `path`, else where a save dialog says
+/// (`<name><suffix>` beside the document to begin with), ending in `.<ext>`. None when the dialog was cancelled.
+fn export_path(app: &AppHandle, doc: &Path, path: Option<String>, kind: &str, ext: &str, suffix: &str) -> Option<PathBuf> {
+    use tauri_plugin_dialog::DialogExt;
+    let to = match path {
+        Some(p) => PathBuf::from(p),
+        None => {
+            let mut dialog = app.dialog().file().set_title(format!("Export as {kind}")).add_filter(kind, &[ext]);
+            if let Some(folder) = doc.parent() {
+                dialog = dialog.set_directory(folder);
+            }
+            if let Some(stem) = doc.file_stem() {
+                dialog = dialog.set_file_name(format!("{}{suffix}", stem.to_string_lossy()));
+            }
+            dialog.blocking_save_file().and_then(|f| f.into_path().ok())?
+        }
+    };
+    Some(if to.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext)) { to } else { to.with_extension(ext) })
+}
 
 /// The window's document as a .docx with its open suggestions and comments as tracked changes and comments, at
 /// `path` (none: where a dialog says, `<name>.docx` beside the document to begin with). None when the dialog was
 /// cancelled.
 #[tauri::command]
 pub async fn export_word(app: AppHandle, window: Webview, path: Option<String>) -> Result<Option<exchange::Exported>, String> {
-    use tauri_plugin_dialog::DialogExt;
     let doc = document_of(&window)?;
-    let to = match path {
-        Some(p) => PathBuf::from(p),
-        None => {
-            let mut dialog = app.dialog().file().set_title("Export as Word").add_filter("Word", &["docx"]);
-            if let Some(folder) = doc.parent() {
-                dialog = dialog.set_directory(folder);
-            }
-            if let Some(stem) = doc.file_stem() {
-                dialog = dialog.set_file_name(format!("{}.docx", stem.to_string_lossy()));
-            }
-            match dialog.blocking_save_file().and_then(|f| f.into_path().ok()) {
-                Some(p) => p,
-                None => return Ok(None),
-            }
-        }
+    let Some(to) = export_path(&app, &doc, path, "Word", "docx", ".docx") else {
+        return Ok(None);
     };
-    let to = if to.extension().is_some_and(|e| e.eq_ignore_ascii_case("docx")) { to } else { to.with_extension("docx") };
     tauri::async_runtime::spawn_blocking(move || exchange::export(&doc, &read(&doc)?, &to).map(Some)).await.map_err(|e| e.to_string())?
+}
+
+/// The window's document as CriticMarkup, its open suggestions and comments as marks, at `path` (none: where a dialog
+/// says, `<name>.crit.md` beside the document to begin with; never the document itself). None when the dialog was
+/// cancelled.
+#[tauri::command]
+pub async fn export_critic(app: AppHandle, window: Webview, path: Option<String>) -> Result<Option<exchange::Exported>, String> {
+    let doc = document_of(&window)?;
+    let Some(to) = export_path(&app, &doc, path, "CriticMarkup", "md", ".crit.md") else {
+        return Ok(None);
+    };
+    tauri::async_runtime::spawn_blocking(move || exchange::export_critic(&doc, &read(&doc)?, &to).map(Some)).await.map_err(|e| e.to_string())?
 }
 
 // ---- Import Review

@@ -76,6 +76,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("compare", "Compare as Suggestions…", None)?,
             &separator()?,
             &item("word-export", "Export as Word with Changes…", None)?,
+            &item("critic-export", "Export as CriticMarkup…", None)?,
             &item("review-import", "Import Review…", None)?,
         ],
     )?;
@@ -296,7 +297,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         // the page of the window asks what is needed (the revisions, a file, a name) and the backend does the rest
-        "send-review" | "send-back" | "compare" | "word-export" | "review-import" => {
+        "send-review" | "send-back" | "compare" | "word-export" | "critic-export" | "review-import" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "exchange", id);
             }

@@ -147,6 +147,12 @@ them) are proposed upstream; until they are released,
   change cannot be put in, is a comment that says what it suggests. A sheet
   lists what was left out (a suggestion that overlaps an earlier one, one in
   the front matter).
+- File ▸ Exchange ▸ Export as CriticMarkup… writes a copy of the Markdown
+  (`<name>.crit.md` beside the document to begin with; never the document
+  itself) with the open suggestions and comments as marks: `{++new++}`,
+  `{--old--}`, `{~~old~>new~~}`, `{==text==}{>>Name: comment<<}`. For a
+  co-author with a plain-text editor (or a CriticMarkup plugin of Obsidian or
+  VS Code); Import Review reads their marks back.
 - File ▸ Exchange ▸ Import Review… reads a `.docx` back (pandoc): its
   tracked changes and comments become suggestions and comments, each under the
   name Word has for its author (their own review file). Each is placed in the

@@ -142,6 +142,18 @@ pub fn export(doc: &Path, current: &str, to: &Path) -> Result<Exported, String> 
     Ok(Exported { path: to.to_string_lossy().into_owned(), suggestions: made.suggestions, comments: made.comments, skipped: made.skipped, notes })
 }
 
+/// The document as CriticMarkup, its open suggestions and comments as marks, written to `to` (not the document
+/// itself).
+pub fn export_critic(doc: &Path, current: &str, to: &Path) -> Result<Exported, String> {
+    if to.canonicalize().ok().zip(doc.canonicalize().ok()).is_some_and(|(a, b)| a == b) {
+        return Err(format!("{}: that is the document itself; choose another name", to.display()));
+    }
+    let items = Review::load(doc).map_err(|e| e.to_string())?.items(current);
+    let made = review::critic::markdown_with_changes(current, &items);
+    std::fs::write(to, &made.markdown).map_err(|e| format!("{}: {e}", to.display()))?;
+    Ok(Exported { path: to.to_string_lossy().into_owned(), suggestions: made.suggestions, comments: made.comments, skipped: made.skipped, notes: Vec::new() })
+}
+
 /// What an import made.
 #[derive(Serialize, Default)]
 pub struct Imported {
@@ -365,7 +377,7 @@ mod tests {
         std::fs::write(&doc, current).unwrap();
         suggest(&doc, current, "The grounding line retreats slowly when the bed slopes.\n\nThe ice shelf thins.\n");
         let items = Review::load(&doc).unwrap().items(current);
-        let (out, _) = review::critic::markdown_with_changes(current, &items);
+        let out = review::critic::markdown_with_changes(current, &items).markdown;
         // a co-author marks it further, and names no one
         let back = dir.join("paper.crit.md");
         std::fs::write(&back, out.replace("ice shelf thins", "ice shelf {~~thins~>thickens~~}{>>surely?<<}")).unwrap();
@@ -379,5 +391,8 @@ mod tests {
         assert_eq!(carol[0].record.round.as_deref(), Some("CriticMarkup review: paper.crit.md"));
         // again: all of it there already
         assert_eq!(import_critic(&doc, current, &back, false, "Carol Poe").unwrap().already, 2);
+        // never over the document
+        assert!(export_critic(&doc, current, &doc).is_err());
+        assert_eq!(std::fs::read_to_string(&doc).unwrap(), current);
     }
 }

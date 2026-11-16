@@ -6,13 +6,24 @@
 use crate::review::Status;
 use crate::review::fold::{Item, State};
 use crate::review::record::Kind;
+use crate::review::text::say_change;
 use std::ops::Range;
 
-/// `current` with the open suggestions and comments of `items` (the review folded onto `current`) as CriticMarkup,
-/// and the ids of the suggestions left out (outdated, orphaned, or overlapping an earlier one).
-pub fn markdown_with_changes(current: &str, items: &[Item]) -> (String, Vec<String>) {
+/// What an export makes.
+#[derive(Debug)]
+pub struct Export {
+    pub markdown: String,
+    /// the suggestions and comments marked
+    pub suggestions: usize,
+    pub comments: usize,
+    /// the suggestions left out (outdated, orphaned, or overlapping an earlier one), one line each
+    pub skipped: Vec<String>,
+}
+
+/// `current` with the open suggestions and comments of `items` (the review folded onto `current`) as CriticMarkup.
+pub fn markdown_with_changes(current: &str, items: &[Item]) -> Export {
     let mut edits: Vec<(Range<usize>, String)> = Vec::new();
-    let mut skipped = Vec::new();
+    let (mut skipped, mut suggestions, mut comments) = (Vec::new(), 0, 0);
     // the text marked so far
     let mut taken: Vec<Range<usize>> = Vec::new();
     let overlaps = |taken: &[Range<usize>], r: &Range<usize>| taken.iter().any(|t| r.start < t.end && t.start < r.end);
@@ -21,7 +32,8 @@ pub fn markdown_with_changes(current: &str, items: &[Item]) -> (String, Vec<Stri
     for item in open().filter(|i| i.kind == Kind::Suggestion) {
         let r = item.range.clone();
         if !fits(&r) || overlaps(&taken, &r) || !matches!(item.status, Status::Exact | Status::Moved) {
-            skipped.push(item.id.clone());
+            let change = say_change(item.record.exact.as_deref().unwrap_or(""), item.replacement.as_deref().unwrap_or(""));
+            skipped.push(format!("{}: {change} (outdated, or overlapping another)", item.author));
             continue;
         }
         let (old, new) = (&current[r.clone()], item.replacement.as_deref().unwrap_or(""));
@@ -36,6 +48,7 @@ pub fn markdown_with_changes(current: &str, items: &[Item]) -> (String, Vec<Stri
         }
         taken.push(r.clone());
         edits.push((r, text));
+        suggestions += 1;
     }
     for item in open().filter(|i| i.kind == Kind::Comment && fits(&i.range)) {
         let r = item.range.clone();
@@ -48,14 +61,15 @@ pub fn markdown_with_changes(current: &str, items: &[Item]) -> (String, Vec<Stri
             taken.push(r.clone());
             edits.push((r.clone(), format!("{{=={}==}}{note}", &current[r])));
         }
+        comments += 1;
     }
     // from the end, so the offsets stay good (nothing overlaps: the marks were checked)
     edits.sort_by_key(|(r, _)| std::cmp::Reverse((r.start, r.end)));
-    let mut out = current.to_string();
+    let mut markdown = current.to_string();
     for (r, text) in edits {
-        out.replace_range(r, &text);
+        markdown.replace_range(r, &text);
     }
-    (out, skipped)
+    Export { markdown, suggestions, comments, skipped }
 }
 
 #[cfg(test)]
@@ -80,10 +94,11 @@ mod tests {
         put(&d, &jane, make("jane-doe-3", Kind::Suggestion, TEXT, "", Some("Note: ")));
         put(&d, &jane, make("jane-doe-4", Kind::Comment, TEXT, "Fig. 3", None));
         let items = Review::load(&d).unwrap().items(TEXT);
-        let (out, skipped) = markdown_with_changes(TEXT, &items);
-        assert!(skipped.is_empty(), "{skipped:?}");
+        let made = markdown_with_changes(TEXT, &items);
+        assert!(made.skipped.is_empty(), "{:?}", made.skipped);
+        assert_eq!((made.suggestions, made.comments), (3, 1));
         assert_eq!(
-            out,
+            made.markdown,
             "{++Note: ++}{--The --}grounding line retreats {~~rapidly~>slowly~~} when the bed slopes.\nWe show this in {==Fig. 3==}{>>Jane Doe: a comment<<}."
         );
     }
@@ -100,8 +115,9 @@ mod tests {
         // on text the suggestion marks: alone, after the text it is on
         put(&d, &ann, make("ann-lee-2", Kind::Comment, TEXT, "rapidly when", None));
         let items = Review::load(&d).unwrap().items(TEXT);
-        let (out, skipped) = markdown_with_changes(TEXT, &items);
-        assert!(skipped.is_empty(), "{skipped:?}");
+        let made = markdown_with_changes(TEXT, &items);
+        assert!(made.skipped.is_empty(), "{:?}", made.skipped);
+        let out = made.markdown;
         assert_eq!(
             out,
             "The grounding line retreats {~~rapidly~>slowly~~}{>>Jane Doe: too strong<<} when{>>Ann Lee: a comment<<} the bed slopes.\n\

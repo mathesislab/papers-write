@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 use write_core::exchange;
-use write_core::review::critic;
 use write_core::review::package::{self, PackageKind};
 use write_core::review::{Decision, Item, Kind, Person, Review, State, Status};
 
@@ -264,13 +263,10 @@ fn export(doc: &Path, flags: &[String]) -> Result {
             Ok(())
         }
         (None, Some(to)) => {
-            let items = items_of(doc, &text)?;
-            let (out, skipped) = critic::markdown_with_changes(&text, &items);
-            std::fs::write(&to, out).or_else(|e| fail(format!("{}: {e}", to.display())))?;
-            let shown = items.iter().filter(|i| i.state == State::Open).count() - skipped.len();
-            println!("{}: {shown} suggestions and comments", to.display());
-            for id in skipped {
-                println!("note: {id} left out (outdated or overlapping)");
+            let made = exchange::export_critic(doc, &text, &to).or_else(fail)?;
+            println!("{}: {} suggestions, {} comments", to.display(), made.suggestions, made.comments);
+            for s in made.skipped {
+                println!("note: {s}");
             }
             Ok(())
         }

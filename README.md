@@ -395,6 +395,19 @@ them) are proposed upstream; until they are released,
   tabs (off: a window each, for the files opened from then on) and the thin
   bar in the project's colour at the top.
 
+## Install and updates
+
+Download the latest release from <https://mathesislab.github.io/papers-write/>
+(or the [releases](https://github.com/mathesislab/papers-write/releases)):
+`Papers-Write-macos-aarch64.dmg` for macOS (Apple silicon),
+`Papers-Write-linux-amd64.AppImage` or `.deb` for Linux. The builds are not
+code-signed: on macOS open the app the first time with right-click ▸ Open. The
+app looks for updates at start and twice a day and installs one only when
+asked (Papers Write ▸ Check for Updates…, Settings ▸ Updates, where the
+automatic look can be turned off). On Linux the PDF tab is pdf.js, and the
+spell checker and native window tabs (macOS's) are not there. How releases are
+made: [docs/releasing.md](docs/releasing.md).
+
 ## Command line
 
 `pw` opens files in the app and works on a document's review without it.

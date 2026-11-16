@@ -22,6 +22,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 notify = "8"
 tauri-plugin-opener = "2"
+# updates of the app, from the latest release (docs/releasing.md)
+tauri-plugin-updater = "2"
 # a PDF in PDFKit, as papers-review shows them
 tauri-plugin-pdfkit = { git = "https://github.com/mathesislab/tauri-plugin-pdfkit", tag = "v0.4.0" }
 papers-write-core = { version = "0.1.0", path = "../crates/core" }

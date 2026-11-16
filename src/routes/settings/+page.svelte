@@ -9,6 +9,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
+  import { listen } from "$lib/events";
+  import { Updates } from "$lib/updates.svelte";
   import "$lib/theme.css";
   import "$lib/settings.css";
   import { DEFAULTS, REVIEW_COLOURS } from "papers-write/editor";
@@ -20,6 +22,7 @@
     { id: "review", name: "Review" },
     { id: "build", name: "Build" },
     { id: "window", name: "Window" },
+    { id: "updates", name: "Updates" },
   ] as const;
   type Tab = (typeof TABS)[number]["id"];
 
@@ -92,9 +95,26 @@
     save();
   }
 
+  const updates = new Updates();
+
+  /** A tab the app names (`settings#updates`, or told as `section`): shown; the updates also looked for, unless one is
+   *  found (Check for Updates… of the menu). */
+  function show(section: string) {
+    const named = TABS.find((t) => t.id === section);
+    if (!named) return;
+    tab = named.id;
+    if (section === "updates") updates.lookFor();
+  }
+
   onMount(() => {
     invoke<Record<Tool, string | null>>("tools_found").then((f) => (found = f));
-    return watchSettings((s) => (settings = s));
+    updates.load().then(() => show(location.hash.slice(1)));
+    const unlisten = listen<string>("section", (e) => show(e.payload));
+    const unwatch = watchSettings((s) => (settings = s));
+    return () => {
+      unlisten.then((f) => f());
+      unwatch();
+    };
   });
 
   /** ⌘1…⌘4 show a tab. Esc with no field in focus closes the window (a field gives up the focus first). */
@@ -331,6 +351,38 @@
             <span class="hint">A thin bar in the project's colour along the top of its windows</span>
           </span>
           <input type="checkbox" class="switch" bind:checked={settings.project_colour_bar} onchange={save} />
+        </label>
+      </section>
+    </div>
+
+    <div class="panel" role="tabpanel" id="panel-updates" aria-labelledby="tab-updates" hidden={tab !== "updates"}>
+      <section>
+        <h2>Updates</h2>
+        <div class="row">
+          <span class="grow">
+            <span class="label">Version {updates.version}</span>
+            <span class="hint" class:error={updates.updating === "failed"}>{updates.status}</span>
+          </span>
+          {#if updates.update}
+            <button class="primary" disabled={updates.updating === "installing"} onclick={updates.install}>
+              Install {updates.update.version} and Restart
+            </button>
+          {:else}
+            <button disabled={updates.updating === "checking"} onclick={updates.check}>Check for Updates Now</button>
+          {/if}
+        </div>
+        {#if updates.updating === "installing"}
+          <progress value={updates.progress.done} max={updates.progress.total ?? undefined}></progress>
+        {/if}
+        {#if updates.installed}
+          <p class="news">Updated from {updates.installed.from}.</p>
+        {/if}
+        <label class="row">
+          <span>
+            <span class="label">Check for updates automatically</span>
+            <span class="hint">At start and twice a day; an update is installed only when you ask</span>
+          </span>
+          <input type="checkbox" class="switch" bind:checked={settings.check_updates} onchange={save} />
         </label>
       </section>
     </div>

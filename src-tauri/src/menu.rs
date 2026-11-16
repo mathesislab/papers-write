@@ -51,6 +51,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &PredefinedMenuItem::about(app, None, None)?,
+            &item("check-updates", "Check for Updates…", None)?,
             &separator()?,
             &item("settings", "Settings…", Some("CmdOrCtrl+,"))?,
             &separator()?,
@@ -285,7 +286,8 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         }
         "recent-clear" => crate::projects::clear_recent(app),
         _ if id.starts_with(RECENT) => crate::projects::open_reporting(app, Path::new(&id[RECENT.len()..])),
-        "settings" => crate::settings::show(app),
+        "settings" => crate::settings::show(app, None),
+        "check-updates" => crate::settings::show(app, Some("updates")),
         "quit" => documents::quit(app),
         "close" => crate::tabs::close_front(app),
         "previous-tab" => crate::tabs::step(app, -1),

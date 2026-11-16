@@ -72,6 +72,8 @@ pub struct Settings {
     pub tabs: bool,
     /// a thin bar in the project's colour along the top of its windows
     pub project_colour_bar: bool,
+    /// look for updates at start and twice a day; they are installed only when asked
+    pub check_updates: bool,
 }
 
 impl Default for Settings {
@@ -94,6 +96,7 @@ impl Default for Settings {
             pandoc_path: String::new(),
             tabs: true,
             project_colour_bar: false,
+            check_updates: true,
         }
     }
 }
@@ -204,15 +207,22 @@ pub async fn set_settings(app: AppHandle, settings: Settings) {
 /// The label of the Settings window: one, not a document.
 pub const WINDOW: &str = "settings";
 
-/// The Settings window: the one open brought forward, else made.
-pub fn show(app: &AppHandle) {
+/// The Settings window: the one open brought forward, else made; at the tab `section` (`updates`) when it is given.
+pub fn show(app: &AppHandle, section: Option<&str>) {
     if let Some(window) = app.get_webview_window(WINDOW) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        if let Some(section) = section {
+            let _ = app.emit_to(WINDOW, "section", section);
+        }
         return;
     }
-    let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("/settings".into()))
+    let url = match section {
+        Some(section) => format!("/settings#{section}"),
+        None => "/settings".to_string(),
+    };
+    let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App(url.into()))
         .title("Settings")
         .inner_size(600.0, 680.0)
         .min_inner_size(480.0, 420.0)
@@ -258,6 +268,13 @@ mod tests {
 
     fn dir(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("papers-write-settings-{name}-{}", std::process::id()))
+    }
+
+    #[test]
+    fn updates_are_looked_for_unless_turned_off() {
+        assert!(Settings::default().check_updates);
+        assert!(serde_json::from_str::<Settings>("{}").unwrap().check_updates);
+        assert!(!serde_json::from_str::<Settings>(r#"{"check_updates": false}"#).unwrap().check_updates);
     }
 
     #[test]
@@ -308,6 +325,7 @@ mod tests {
             pandoc_path: "/opt/bin/pandoc".into(),
             tabs: false,
             project_colour_bar: true,
+            check_updates: false,
         };
         settings.save(&dir);
         assert_eq!(Settings::load(&dir), settings);

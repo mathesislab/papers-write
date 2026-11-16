@@ -19,14 +19,41 @@ mod spelling;
 mod state;
 mod tabs;
 mod trash;
+mod update;
 
-use tauri::{DragDropEvent, Manager, RunEvent, WebviewEvent, WindowEvent};
+use tauri::{AppHandle, DragDropEvent, Manager, RunEvent, State, WebviewEvent, WindowEvent};
+use update::{Available, Installed, Updates};
+
+/// Look for an update now.
+#[tauri::command]
+async fn check_update(app: AppHandle) -> Result<Option<Available>, String> {
+    update::check(&app).await
+}
+
+/// The update found by the last look, if any.
+#[tauri::command]
+fn found_update(updates: State<'_, Updates>) -> Option<Available> {
+    updates.available()
+}
+
+/// The update installed just before this start, if any.
+#[tauri::command]
+fn installed_update(updates: State<'_, Updates>) -> Option<Installed> {
+    updates.installed()
+}
+
+/// Install the update found, and restart.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    update::install(&app).await
+}
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_pdfkit::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // managed before the app launches: macOS may hand over files to open before `setup` has run
         .manage(documents::Documents::default())
         .manage(files::Watched::default())
@@ -41,8 +68,14 @@ pub fn run() {
         .manage(sidebar::GoTos::default())
         .setup(|app| {
             settings::init(app.handle());
+            app.manage(Updates::new(app.handle()));
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);
+            update::watch(app.handle());
+            // after an update, the Settings window tells of it
+            if app.state::<Updates>().installed().is_some() {
+                settings::show(app.handle(), Some("updates"));
+            }
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -153,7 +186,11 @@ pub fn run() {
             sidebar::open_at,
             sidebar::pending_go_to,
             sidebar::new_markdown_file,
-            sidebar::trash_path
+            sidebar::trash_path,
+            check_update,
+            found_update,
+            installed_update,
+            install_update
         ])
         .build(tauri::generate_context!())
         .expect("error while building papers-write")

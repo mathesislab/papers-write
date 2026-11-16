@@ -25,6 +25,8 @@ export type Settings = {
   pandoc_path: string;
   tabs: boolean;
   project_colour_bar: boolean;
+  /** look for updates at start and twice a day; they are installed only when asked */
+  check_updates: boolean;
 };
 
 /** The settings now, and again with each change (in this or another window): `apply` is called with them at once. The

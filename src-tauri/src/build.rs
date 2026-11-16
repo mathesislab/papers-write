@@ -227,10 +227,10 @@ fn quarto_args(input: &str, to: &str, outdir: &str) -> Vec<String> {
         .collect()
 }
 
-/// The arguments of latexmk for `diff.tex`, the job named `job` (so that the PDF is `<job>.pdf`). `-f` goes on after
-/// an error: a PDF with what could be set is better than none.
-fn latexmk_args(job: &str) -> Vec<String> {
-    ["-pdf", "-f", "-interaction=nonstopmode"]
+/// The arguments of latexmk for `diff.tex`, the job named `job` (so that the PDF is `<job>.pdf`), with `engine`
+/// (`-pdf`, `-lualatex`, `-xelatex`). `-f` goes on after an error: a PDF with what could be set is better than none.
+fn latexmk_args(job: &str, engine: &str) -> Vec<String> {
+    [engine, "-f", "-interaction=nonstopmode"]
         .iter()
         .map(|s| s.to_string())
         .chain([format!("-jobname={job}"), "diff.tex".to_string()])
@@ -645,107 +645,106 @@ fn run_latex_diff(file: &Path, earlier: &Earlier) -> Status {
         }
         Ok(())
     })();
-    match result {
-        Ok(()) => finish("diff", true, &log, &pdf, start, clock.elapsed(), None),
-        Err(e) => {
-            let mut status = finish("diff", false, &log, &pdf, start, clock.elapsed(), Some(e));
-            status.pdf = None;
-            status
-        }
-    }
+    diff_status(result, &log, &pdf, start, clock)
 }
 
 /// The marked-up PDF of `file` against `earlier`; see the module.
 pub fn run_diff(file: &Path, earlier: &Earlier) -> Status {
     match kind_of(file) {
-        Some(Kind::Latex) => return run_latex_diff(file, earlier),
-        Some(Kind::Quarto) => return failed("diff", "The marked-up PDF of a document built by Quarto is not made yet".into()),
-        _ => {}
+        Some(Kind::Latex) => run_latex_diff(file, earlier),
+        Some(Kind::Quarto) => run_markdown_diff(file, earlier, Kind::Quarto),
+        _ => run_markdown_diff(file, earlier, Kind::Texmark),
     }
+}
+
+/// latexmk's option for the LaTeX engine Quarto uses for `markdown`: its `pdf-engine` (lualatex, Quarto's default;
+/// xelatex; pdflatex).
+fn quarto_engine(markdown: &str) -> &'static str {
+    match write_core::frontmatter::value(markdown, "pdf-engine").as_deref() {
+        Some("xelatex") => "-xelatex",
+        Some("pdflatex") => "-pdf",
+        _ => "-lualatex",
+    }
+}
+
+/// The marked-up PDF of the Markdown document `file` against `earlier`, by texmark or Quarto (`by`): each version
+/// converted to LaTeX, the earlier one in `build/diff/old`, the current one in `build/diff/new` (texmark builds it, which
+/// brings the journal's class files and the bibliography there; Quarto's LaTeX has its figures copied beside it), then
+/// latexdiff and latexmk there (`mark_up`).
+fn run_markdown_diff(file: &Path, earlier: &Earlier, by: Kind) -> Status {
     let (clock, start) = (Instant::now(), SystemTime::now() - Duration::from_secs(1));
-    let (Some(folder), Some(name), Some(stem)) =
-        (file.parent(), file.file_name(), file.file_stem())
-    else {
+    let (Some(folder), Some(name), Some(stem)) = (file.parent(), file.file_name(), file.file_stem()) else {
         return failed("diff", format!("{}: not a file", file.display()));
     };
-    let (name, stem) = (
-        name.to_string_lossy().into_owned(),
-        stem.to_string_lossy().into_owned(),
-    );
+    let (name, stem) = (name.to_string_lossy().into_owned(), stem.to_string_lossy().into_owned());
+    let ext = file.extension().unwrap_or_default().to_string_lossy().into_owned();
     let job = diff_job(&stem, earlier);
     let diff = project::build_dir_of(file).join("diff");
     let (old_dir, new_dir) = (diff.join("old"), diff.join("new"));
     let log = new_dir.join(format!("{job}.log"));
     let result = (|| -> Result<(), String> {
-        let (texmark, latexdiff, latexmk) = (
-            find_tool("texmark")?,
-            find_tool("latexdiff")?,
-            find_tool("latexmk")?,
-        );
+        let tool = find_tool(if by == Kind::Quarto { "quarto" } else { "texmark" })?;
         fs::create_dir_all(&old_dir).map_err(|e| format!("{}: {e}", old_dir.display()))?;
+        if by == Kind::Quarto && folder.join(format!("{stem}.tex")).exists() {
+            return Err(format!("{}: Quarto writes this file as it builds {name}, over the one there: rename or move it", folder.join(format!("{stem}.tex")).display()));
+        }
         // the earlier text, as a file: beside the document (its figures are found as the document's are) when it comes
         // from git, else where it is
         let _kept;
         let earlier_input = match earlier {
             Earlier::Git { rev, .. } => {
                 let text = git_show(folder, &name, rev)?;
-                let temporary = folder.join(format!(".{stem}.earlier.md"));
+                let temporary = folder.join(format!(".{stem}.earlier.{ext}"));
                 fs::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
                 _kept = Temporary(temporary.clone());
                 s(&temporary)
             }
             Earlier::File { path } => path.clone(),
         };
-        // the earlier text as LaTeX only; the current one built, which brings the journal's class files and the
-        // bibliography into its folder, where latexmk runs
-        let old_tex = old_dir.join("old.tex");
-        let new_tex = new_dir.join("new.tex");
-        run_ok(
-            &texmark,
-            &texmark_args(
-                &earlier_input,
-                &s(&old_dir),
-                Some(&s(&old_tex)),
-                false,
-            ),
-            folder,
-        )
-        .map_err(|e| format!("The earlier version:\n{e}"))?;
-        run_ok(
-            &texmark,
-            &texmark_args(
-                &name,
-                &s(&new_dir),
-                Some(&s(&new_tex)),
-                true,
-            ),
-            folder,
-        )
-        .map_err(|e| format!("The current version:\n{e}"))?;
-        let flatten = needs_flatten(&fs::read_to_string(&new_tex).unwrap_or_default());
-        let marked = run_ok(
-            &latexdiff,
-            &latexdiff_args(&s(&old_tex), &s(&new_tex), flatten),
-            folder,
-        )?;
-        fs::write(new_dir.join("diff.tex"), marked.stdout).map_err(|e| format!("diff.tex: {e}"))?;
-        // latexmk's own result is the PDF's: with `-f` it goes on after errors
-        run(&latexmk, &latexmk_args(&job), &new_dir)?;
-        let made = new_dir.join(format!("{job}.pdf"));
-        if !modified_since(&made, start) {
-            return Err("latexmk made no PDF".into());
-        }
-        // copied (not moved): a PDF window showing it keeps its place
-        fs::copy(&made, diff.join(format!("{job}.pdf")))
-            .map_err(|e| format!("{}: {e}", made.display()))?;
-        Ok(())
+        let (old_tex, new_tex, engine) = if by == Kind::Quarto {
+            run_ok(&tool, &quarto_args(&earlier_input, "latex", &s(&old_dir)), folder).map_err(|e| format!("The earlier version:\n{e}"))?;
+            run_ok(&tool, &quarto_args(&name, "latex", &s(&new_dir)), folder).map_err(|e| format!("The current version:\n{e}"))?;
+            let earlier_stem = Path::new(&earlier_input).file_stem().unwrap_or_default().to_string_lossy().into_owned();
+            let engine = quarto_engine(&fs::read_to_string(file).unwrap_or_default());
+            (old_dir.join(format!("{earlier_stem}.tex")), new_dir.join(format!("{stem}.tex")), engine)
+        } else {
+            let (old_tex, new_tex) = (old_dir.join("old.tex"), new_dir.join("new.tex"));
+            run_ok(&tool, &texmark_args(&earlier_input, &s(&old_dir), Some(&s(&old_tex)), false), folder)
+                .map_err(|e| format!("The earlier version:\n{e}"))?;
+            run_ok(&tool, &texmark_args(&name, &s(&new_dir), Some(&s(&new_tex)), true), folder)
+                .map_err(|e| format!("The current version:\n{e}"))?;
+            (old_tex, new_tex, "-pdf")
+        };
+        mark_up(&old_tex, &new_tex, &new_dir, &diff, &job, engine, folder, start)
     })();
-    let pdf = diff.join(format!("{job}.pdf"));
+    diff_status(result, &log, &diff.join(format!("{job}.pdf")), start, clock)
+}
+
+/// `old_tex` against `new_tex` marked up by latexdiff (run in the document's `folder`) as `diff.tex` in `new_dir`,
+/// compiled there by latexmk with `engine` (`-pdf`, `-lualatex`, `-xelatex`) into `<job>.pdf`, and copied (not moved:
+/// a PDF tab showing it keeps its place) to `diff`.
+#[allow(clippy::too_many_arguments)]
+fn mark_up(old_tex: &Path, new_tex: &Path, new_dir: &Path, diff: &Path, job: &str, engine: &str, folder: &Path, start: SystemTime) -> Result<(), String> {
+    let (latexdiff, latexmk) = (find_tool("latexdiff")?, find_tool("latexmk")?);
+    let flatten = needs_flatten(&fs::read_to_string(new_tex).unwrap_or_default());
+    let marked = run_ok(&latexdiff, &latexdiff_args(&s(old_tex), &s(new_tex), flatten), folder)?;
+    fs::write(new_dir.join("diff.tex"), marked.stdout).map_err(|e| format!("diff.tex: {e}"))?;
+    // latexmk's own result is the PDF's: with `-f` it goes on after errors
+    run(&latexmk, &latexmk_args(job, engine), new_dir)?;
+    let made = new_dir.join(format!("{job}.pdf"));
+    if !modified_since(&made, start) {
+        return Err("latexmk made no PDF".into());
+    }
+    fs::copy(&made, diff.join(format!("{job}.pdf"))).map_err(|e| format!("{}: {e}", made.display()))?;
+    Ok(())
+}
+
+/// The status of a marked-up PDF that was made (`result`), or not: a PDF of an earlier try is not this one's.
+fn diff_status(result: Result<(), String>, log: &Path, pdf: &Path, start: SystemTime, clock: Instant) -> Status {
     match result {
-        Ok(()) => finish("diff", true, &log, &pdf, start, clock.elapsed(), None),
+        Ok(()) => finish("diff", true, log, pdf, start, clock.elapsed(), None),
         Err(e) => {
-            let mut status = finish("diff", false, &log, &pdf, start, clock.elapsed(), Some(e));
-            // a PDF of an earlier try is not this one's
+            let mut status = finish("diff", false, log, pdf, start, clock.elapsed(), Some(e));
             status.pdf = None;
             status
         }
@@ -930,7 +929,7 @@ mod tests {
     #[test]
     fn latexmk_and_latexdiff() {
         assert_eq!(
-            latexmk_args("p-diff-v1"),
+            latexmk_args("p-diff-v1", "-pdf"),
             [
                 "-pdf",
                 "-f",
@@ -1229,6 +1228,15 @@ mod tests {
         assert_eq!(built.state, "failed", "{built:?}");
         assert_eq!(built.errors.first().and_then(|e| e.md_line), Some(9), "{:?}", built.errors);
         assert!(dir.join("build/p.log").is_file() && !dir.join("p.tex").exists() && !dir.join("p.log").exists());
+
+        // marked up against an earlier file
+        fs::write(&paper, "---\ntitle: Sample\n---\n\n# Intro\n\nThe line retreats slowly.\n").unwrap();
+        let earlier = dir.join("earlier.qmd");
+        fs::write(&earlier, "---\ntitle: Sample\n---\n\n# Intro\n\nThe line retreats rapidly.\n").unwrap();
+        let marked = run_diff(&paper, &Earlier::File { path: s(&earlier) });
+        assert_eq!(marked.state, "done", "{marked:?}");
+        assert!(dir.join("build/diff/p-diff-earlier.pdf").is_file());
+        assert!(fs::read_to_string(dir.join("build/diff/new/diff.tex")).unwrap().contains("\\DIFadd"));
 
         // a .tex of the user's beside it: not written over
         fs::write(dir.join("p.tex"), "mine").unwrap();

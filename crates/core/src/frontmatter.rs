@@ -1,5 +1,6 @@
-//! The YAML front matter of a Markdown text (`---` … `---` or `...` at its very start): only its
-//! `bibliography` field is read, by a small line parser, and added without touching the rest of the text.
+//! The YAML front matter of a Markdown text (`---` … `---` or `...` at its very start): its `bibliography` field is
+//! read, by a small line parser, and added without touching the rest of the text; a scalar field is read by its name
+//! at any depth (`value`).
 
 use std::ops::Range;
 
@@ -88,6 +89,18 @@ pub fn bibliography(text: &str) -> Vec<String> {
         }
     }
     names
+}
+
+/// The value of the first field `name` of the front matter of `text`, at any depth (`format: {pdf: {pdf-engine:
+/// xelatex}}` written as nested lines gives `xelatex` for `pdf-engine`), quotes and a comment off; none when there is
+/// no such field or it has no scalar value on its line.
+pub fn value(text: &str, name: &str) -> Option<String> {
+    let block = find(text)?;
+    lines(&text[block.body]).find_map(|(_, line)| {
+        let rest = line.trim_start().strip_prefix(name)?.strip_prefix(':')?;
+        let v = scalar(strip_comment(rest));
+        (!v.is_empty()).then_some(v)
+    })
 }
 
 /// The value after `bibliography:` of a top-level line, if it is that field's line.
@@ -316,5 +329,14 @@ mod tests {
     fn an_existing_field_is_kept() {
         let text = "---\nbibliography: a.bib\n---\n";
         assert_eq!(with_bibliography(text, "b.bib"), text);
+    }
+
+    #[test]
+    fn a_value_by_its_name_at_any_depth() {
+        let text = "---\ntitle: \"A\"\nformat:\n  pdf:\n    pdf-engine: xelatex # the fonts\n---\n\npdf-engine: no\n";
+        assert_eq!(value(text, "pdf-engine").as_deref(), Some("xelatex"));
+        assert_eq!(value(text, "title").as_deref(), Some("A"));
+        assert_eq!(value(text, "format"), None);
+        assert_eq!(value("pdf-engine: x\n", "pdf-engine"), None);
     }
 }

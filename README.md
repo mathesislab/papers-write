@@ -94,6 +94,9 @@ them) are proposed upstream; until they are released,
   `build/diff/name-diff-<version>.pdf`, shown in a tab (the work is in
   `build/diff/old` and `build/diff/new`; the current version is built there in
   full, which takes a few seconds more than Build). Errors show as for a build.
+  A document Quarto builds is converted by `quarto render --to latex` (its
+  figures copied beside the LaTeX), and latexmk uses Quarto's engine: lualatex,
+  or the front matter's `pdf-engine` (xelatex, pdflatex).
 - LaTeX files (`.tex`, also `.sty` and `.cls` for the editing) are edited in
   monospace with the commands, environment names, math (`$…$`, `\(…\)`,
   `\[…\]`, `equation` and `align`...), comments and the keys of `\cite`,

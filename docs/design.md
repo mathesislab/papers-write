@@ -235,7 +235,9 @@ and `library` are kept but not yet used by the build and the references.
   `latex-auto-install: false` (a build never runs tlmgr). Quarto writes
   `name.tex` beside the document whatever the output folder: moved into the
   build folder after, and one already there that is not Quarto's stops the
-  build rather than be written over.
+  build rather than be written over. Its marked-up PDF: both versions by
+  `quarto render --to latex` (figures copied beside), latexdiff, then latexmk
+  with Quarto's engine (lualatex, or `pdf-engine`).
 - Build: texmark with `--pdf` into `build/` beside the document (⇧⌘B, ⌘B
   being Bold; ⌥⇧⌘B shows the PDF in a tab, PDFKit, which reloads by itself when the file
   changes), one build per document at a time, the status only told to the

@@ -10,10 +10,11 @@
   // Export as Word with Changes…: where to save the .docx (a dialog), then a sheet that says how many tracked changes
   // and comments it has and lists what could not go to Word (suggestions that overlap, in the front matter).
   //
-  // Import Word Review…: a .docx (a dialog). The tracked changes and comments come in under their authors' names. Changes
-  // made with Track Changes off are looked for only when asked (the whole text is compared, with the document made
-  // into a .docx as an export does; Word names no one for them, so the sheet asks whose they are). A sheet says how
-  // many came in, and lists what could not be placed in the text.
+  // Import Review…: a .docx, or a file of CriticMarkup (.md), chosen in a dialog. Word's tracked changes and comments
+  // come in under their authors' names; CriticMarkup's marks under the name their note begins with, else the one the
+  // sheet asks for. Changes made with Track Changes off (outside the marks) are looked for only when asked (the whole
+  // text is compared; no one is named for them, so they are that name's too). A sheet says how many came in, how many
+  // the review had already, and lists what could not be placed in the text.
   //
   // Send for Review…: the round (a name, "Draft of <date>" to begin with), then where to save the `.review` file (a
   // dialog); a sheet says what went into it. The document opened from a `.review` has a quiet bar at the top (the
@@ -53,14 +54,14 @@
   type Exported = { path: string; suggestions: number; comments: number; skipped: string[]; notes: string[] };
   /** the sheet of an export: what it made */
   let exported = $state<Exported | null>(null);
-  type Imported = { suggestions: number; comments: number; authors: string[]; unplaced: string[] };
-  /** the sheet of an import: the file, the author of untracked changes, and what came of it */
+  type Imported = { suggestions: number; comments: number; already: number; authors: string[]; unplaced: string[] };
+  /** the sheet of an import: the file, whose the changes are that it names no one for, and what came of it */
   let importing = $state<{ file: string; untracked: boolean; author: string; busy: boolean; result: Imported | null } | null>(null);
   let problem = $state("");
 
-  /** The menu's items: "send-review", "send-back", "compare", "word-export", "word-import". */
+  /** The menu's items: "send-review", "send-back", "compare", "word-export", "review-import". */
   export async function run(what: string) {
-    if (!["send-review", "send-back", "compare", "word-export", "word-import"].includes(what)) return;
+    if (!["send-review", "send-back", "compare", "word-export", "review-import"].includes(what)) return;
     problem = "";
     await flush();
     if (what === "send-review") {
@@ -69,9 +70,9 @@
       return;
     }
     if (what === "send-back") return sendBack();
-    if (what === "word-import") {
+    if (what === "review-import") {
       importing = { file: "", untracked: false, author: "", busy: false, result: null };
-      return chooseWord();
+      return chooseReview();
     }
     if (what === "word-export") {
       try {
@@ -156,22 +157,25 @@
     c.busy = false;
   }
 
-  async function chooseWord() {
+  /** the file to import is CriticMarkup (else Word) */
+  const critic = $derived(!!importing && /\.(md|markdown|txt)$/i.test(importing.file));
+
+  async function chooseReview() {
     try {
-      const file = await invoke<string | null>("choose_word_file");
+      const file = await invoke<string | null>("choose_review_file");
       if (file && importing) importing.file = file;
     } catch (e) {
       problem = String(e);
     }
   }
 
-  async function importWord() {
+  async function importReview() {
     const i = importing;
     if (!i || !i.file || i.busy) return;
     [i.busy, problem] = [true, ""];
     try {
-      i.result = await invoke<Imported>("import_word", { path: i.file, alsoUntracked: i.untracked, fallbackAuthor: i.author.trim() });
-      if (i.result.suggestions + i.result.comments) onlog?.(`import of the Word review ${nameOf(i.file)}`);
+      i.result = await invoke<Imported>("import_review", { path: i.file, alsoUntracked: i.untracked, author: i.author.trim() });
+      if (i.result.suggestions + i.result.comments) onlog?.(`import of the ${critic ? "CriticMarkup" : "Word"} review ${nameOf(i.file)}`);
     } catch (e) {
       problem = String(e);
     }
@@ -303,33 +307,45 @@
 {/if}
 {#if importing}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Import Word Review" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" aria-label="Import Review" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
-      <b>Import Word Review</b>
+      <b>Import Review</b>
       <button onclick={close}>{importing.result ? "Close" : "Cancel"}</button>
     </header>
     <div class="row">
-      <button onclick={chooseWord}>Choose .docx…</button>
+      <button onclick={chooseReview}>Choose File…</button>
       {#if importing.file}<span class="where" title={importing.file}>{nameOf(importing.file)}</span>{/if}
     </div>
     <label class="check">
       <input type="checkbox" bind:checked={importing.untracked} />
-      Also changes made with Track Changes off (compares the whole text; may find differences that are only formatting)
+      {#if critic}
+        Also edits made outside the marks (compares the whole text)
+      {:else}
+        Also changes made with Track Changes off (compares the whole text; may find differences that are only formatting)
+      {/if}
     </label>
-    {#if importing.untracked}
+    {#if critic || importing.untracked}
       <label>
-        Those changes are by
-        <input bind:value={importing.author} placeholder="Word" spellcheck="false" />
+        {critic ? "Marks that name no one" : "Those changes"}{critic && importing.untracked ? ", and those edits," : ""} are by
+        <input bind:value={importing.author} placeholder={critic ? "CriticMarkup" : "Word"} spellcheck="false" />
       </label>
     {/if}
-    <p class="where">Tracked changes and comments come in under the names Word has for them; the text only, not Word's formatting.</p>
-    <div class="buttons"><button class="go" disabled={!importing.file || importing.busy || !!importing.result} onclick={importWord}>Import</button></div>
+    <p class="where">
+      {#if critic}
+        A Word .docx or a file of CriticMarkup: {"{++new++}"}, {"{--old--}"}, {"{~~old~>new~~}"}, {"{==text==}{>>Name: comment<<}"}.
+        A mark is the person's whose name begins its note (someone of the review, or @Name).
+      {:else}
+        A Word .docx or a file of CriticMarkup (.md). Tracked changes and comments come in under the names Word has for them;
+        the text only, not Word's formatting.
+      {/if}
+    </p>
+    <div class="buttons"><button class="go" disabled={!importing.file || importing.busy || !!importing.result} onclick={importReview}>Import</button></div>
     {#if importing.result}
       {@const r = importing.result}
       <p>
         {r.suggestions} suggestion{r.suggestions === 1 ? "" : "s"} and {r.comments} comment{r.comments === 1 ? "" : "s"}{r.authors.length
           ? ` by ${r.authors.join(", ")}`
-          : ""}.
+          : ""}{r.already ? `; ${r.already} already in the review` : ""}.
       </p>
       {#if r.unplaced.length}
         <p class="where">Not placed in the text ({r.unplaced.length}):</p>

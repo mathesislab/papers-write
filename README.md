@@ -147,7 +147,7 @@ them) are proposed upstream; until they are released,
   change cannot be put in, is a comment that says what it suggests. A sheet
   lists what was left out (a suggestion that overlaps an earlier one, one in
   the front matter).
-- File ▸ Exchange ▸ Import Word Review… reads a `.docx` back (pandoc): its
+- File ▸ Exchange ▸ Import Review… reads a `.docx` back (pandoc): its
   tracked changes and comments become suggestions and comments, each under the
   name Word has for its author (their own review file). Each is placed in the
   Markdown by the words it concerns and the words around them, ignoring the
@@ -160,7 +160,13 @@ them) are proposed upstream; until they are released,
   not found, or in two places the words around do not tell apart): those are
   not guessed. Only the text comes back: Word's formatting is dropped, and a
   change that takes in a citation, math or markup is placed on the words
-  around it.
+  around it. It reads a file of CriticMarkup (`.md`) back too: its marks
+  become suggestions and comments, each under the name its note begins with
+  (`{>>Jane Doe: …<<}`, someone of the review, or `{>>@Jane Doe: …<<}`), else
+  the name the sheet asks for ("CriticMarkup" if none); with the box ticked,
+  the edits made outside the marks too. A mark where the document has changed
+  since is listed, not placed. What the review has open already (a file
+  exported from it and sent back) is not added again.
 - The app stays in the Dock when the last window closes (a click on its icon
   opens a new window); ⌘Q quits (from the Dock too). If untitled windows have
   text that was never saved, it asks once: "2 windows have text that was never

@@ -479,7 +479,7 @@ text both show; accepting one leaves the other outdated, to be dealt with.
   package again adds nothing).
 - To someone with Word: Export as Word with Changes writes a `.docx` with
   real tracked changes and comments (pandoc; the math as Word equations).
-  They edit with Track Changes on and send it back; Import Word Review reads
+  They edit with Track Changes on and send it back; Import Review reads
   their changes and comments as theirs, anchored on the text around them.
   Edits made with tracking off are found only if asked (a box in the sheet):
   the whole text is compared with the base made into a .docx by the same
@@ -491,6 +491,15 @@ text both show; accepting one leaves the other outdated, to be dealt with.
   text pandoc reads from the .docx is plain, the document is Markdown); what is
   not found, or stands in two places the words around do not tell apart, is
   listed unplaced, not guessed.
+- To someone with a plain-text editor: CriticMarkup (`pw review export
+  --markdown`), the open suggestions and comments as marks in the Markdown.
+  Their marks come back by Import Review (or `pw review import`): the file
+  with the marks rejected is the text they had, so each mark is placed
+  exactly, or carried through the word-level difference when the document has
+  changed since (a mark in a stretch that changed is listed). Whose: the
+  name a note begins with, else the one asked for. What the review has open
+  already is not added again, so the file exported and sent back adds only
+  what is new.
 - To read only: a single HTML page (the preview, changes coloured, comments
   in the margin), or the marked-up PDF (latexdiff, comments as margin
   notes).

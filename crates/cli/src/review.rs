@@ -309,12 +309,8 @@ fn import(doc: &Path, flags: &[String]) -> Result {
         }
     };
     match ext.as_deref() {
-        Some("docx") => {
-            said(exchange::import(doc, &text, &file, untracked, &author).or_else(fail)?);
-            Ok(())
-        }
-        Some("md" | "markdown" | "txt") => {
-            said(exchange::import_critic(doc, &text, &file, untracked, &author).or_else(fail)?);
+        Some(e) if exchange::REVIEW_FILES.contains(&e) => {
+            said(exchange::import_review(doc, &text, &file, untracked, &author).or_else(fail)?);
             Ok(())
         }
         Some(e) if e == package::EXTENSION => {

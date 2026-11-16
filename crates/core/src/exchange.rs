@@ -224,6 +224,19 @@ pub fn import_critic(doc: &Path, current: &str, file: &Path, also_untracked: boo
     record(doc, current, found, &format!("CriticMarkup review: {}", file.file_name().unwrap_or_default().to_string_lossy()))
 }
 
+/// The file extensions of a review that [`import_review`] reads: Word's, and those of a text of CriticMarkup.
+pub const REVIEW_FILES: [&str; 4] = ["docx", "md", "markdown", "txt"];
+
+/// The review in `file` written to the review of `doc`: a Word .docx ([`import`]) or a file of CriticMarkup
+/// ([`import_critic`]), by its extension. `author`: whose the changes are that the file names no one for.
+pub fn import_review(doc: &Path, current: &str, file: &Path, also_untracked: bool, author: &str) -> Result<Imported, String> {
+    match file.extension().map(|e| e.to_string_lossy().to_lowercase()).as_deref() {
+        Some("docx") => import(doc, current, file, also_untracked, author),
+        Some("md" | "markdown" | "txt") => import_critic(doc, current, file, also_untracked, author),
+        _ => Err(format!("{}: a Word .docx or a CriticMarkup .md", file.display())),
+    }
+}
+
 /// What an import found written to the review of `doc`, each person's to their own file, all in `round`; what the
 /// review has open already (a file exported from it and sent back, its own marks still in it) is not written again,
 /// whoever it is said to be from.

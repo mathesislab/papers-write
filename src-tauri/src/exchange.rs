@@ -2,8 +2,9 @@
 //! git"). Compare as Suggestions turns an edited copy of the document, a commit or a branch into suggestions under
 //! the name of whoever made each change. Export as Word with Changes makes a .docx of the document with the open suggestions
 //! and comments as Word's tracked changes and comments (pandoc: `brew install pandoc`). The document is the file of
-//! the window: the page has written it before it asks. Import Word Review reads a .docx back (its tracked changes,
-//! the changes made with tracking off, its comments) as the suggestions and comments of their authors.
+//! the window: the page has written it before it asks. Import Review reads a .docx back (its tracked changes, the
+//! changes made with tracking off, its comments), or a file of CriticMarkup (its marks, the edits outside them), as
+//! the suggestions and comments of their authors.
 
 use std::path::{Path, PathBuf};
 
@@ -129,13 +130,13 @@ pub async fn export_word(app: AppHandle, window: Webview, path: Option<String>) 
     tauri::async_runtime::spawn_blocking(move || exchange::export(&doc, &read(&doc)?, &to).map(Some)).await.map_err(|e| e.to_string())?
 }
 
-// ---- Import Word Review
+// ---- Import Review
 
-/// The .docx to import, chosen in a dialog; none when it was cancelled.
+/// The review to import (a .docx, or a file of CriticMarkup), chosen in a dialog; none when it was cancelled.
 #[tauri::command]
-pub async fn choose_word_file(app: AppHandle, window: Webview) -> Result<Option<String>, String> {
+pub async fn choose_review_file(app: AppHandle, window: Webview) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let mut dialog = app.dialog().file().set_title("Word review").add_filter("Word", &["docx"]);
+    let mut dialog = app.dialog().file().set_title("Import Review").add_filter("Word or CriticMarkup", &exchange::REVIEW_FILES);
     if let Ok(doc) = document_of(&window)
         && let Some(folder) = doc.parent()
     {
@@ -144,13 +145,14 @@ pub async fn choose_word_file(app: AppHandle, window: Webview) -> Result<Option<
     Ok(dialog.blocking_pick_file().and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned()))
 }
 
-/// The .docx at `path` read as a review of the window's document: its tracked changes and comments as suggestions and
-/// comments, each under the name of whoever made it (their own review file); with `also_untracked`, what was changed
-/// with tracking off under `fallback_author`. What could not be placed in the text is returned, not written.
+/// The review at `path` (a .docx, or a file of CriticMarkup) read as a review of the window's document: its changes
+/// and comments as suggestions and comments, each under the name of whoever made it (their own review file), else
+/// `author`'s; with `also_untracked`, what was changed with tracking off (outside the marks) too, `author`'s. What
+/// could not be placed in the text is returned, not written; what the review has already is not written again.
 #[tauri::command]
-pub async fn import_word(app: AppHandle, window: Webview, path: String, also_untracked: bool, fallback_author: String) -> Result<Imported, String> {
+pub async fn import_review(app: AppHandle, window: Webview, path: String, also_untracked: bool, author: String) -> Result<Imported, String> {
     let doc = document_of(&window)?;
-    let made = tauri::async_runtime::spawn_blocking(move || exchange::import(&doc, &read(&doc)?, Path::new(&path), also_untracked, &fallback_author))
+    let made = tauri::async_runtime::spawn_blocking(move || exchange::import_review(&doc, &read(&doc)?, Path::new(&path), also_untracked, &author))
         .await
         .map_err(|e| e.to_string())??;
     if made.suggestions + made.comments > 0 {

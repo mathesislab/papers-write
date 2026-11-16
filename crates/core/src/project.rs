@@ -1,5 +1,5 @@
 //! A project: a folder with `write.toml`, which says what the files do not (the name, short name and colour, the
-//! main document, the build folder, the library searched). A document belongs to the project of the nearest folder
+//! main document, the build folder, what builds its Markdown, the library searched). A document belongs to the project of the nearest folder
 //! above it that has one. The file is read as written; a change writes only its own keys, so the comments and the
 //! keys the app does not know stay.
 
@@ -50,6 +50,38 @@ impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// What builds a Markdown document into a PDF.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Engine {
+    /// texmark: pandoc to a journal's LaTeX, then latexmk
+    #[default]
+    Texmark,
+    /// Quarto (`quarto render`)
+    Quarto,
+}
+
+impl Engine {
+    pub fn name(self) -> &'static str {
+        match self {
+            Engine::Texmark => "texmark",
+            Engine::Quarto => "quarto",
+        }
+    }
+}
+
+/// What builds the Markdown document `document`: Quarto for a `.qmd`, else what its project's `write.toml` says
+/// (`engine`), else texmark.
+pub fn engine_of(document: &Path) -> Engine {
+    if document.extension().is_some_and(|e| e.eq_ignore_ascii_case("qmd")) {
+        return Engine::Quarto;
+    }
+    match Project::of(document) {
+        Ok(Some(project)) => project.manifest.engine.unwrap_or_default(),
+        _ => Engine::Texmark,
+    }
+}
+
 /// What `write.toml` says; all of it optional.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
@@ -63,6 +95,8 @@ pub struct Manifest {
     pub main: Vec<PathBuf>,
     /// the build folder, relative to the folder (`build` without)
     pub build: Option<PathBuf>,
+    /// what builds the Markdown documents (texmark without; a `.qmd` is always Quarto's)
+    pub engine: Option<Engine>,
     /// a `.bib` file or a papers library searched for references, beside the papers library of the user
     pub library: Option<PathBuf>,
 }
@@ -188,6 +222,9 @@ impl Project {
         if manifest.build != old.build {
             text(doc, "build", path(&manifest.build).as_deref());
         }
+        if manifest.engine != old.engine {
+            text(doc, "engine", manifest.engine.map(Engine::name));
+        }
         if manifest.library != old.library {
             text(doc, "library", path(&manifest.library).as_deref());
         }
@@ -241,6 +278,7 @@ impl Manifest {
             colour: self.colour,
             main: self.main.iter().filter(|p| !p.as_os_str().is_empty()).cloned().collect(),
             build: path(&self.build),
+            engine: self.engine,
             library: path(&self.library),
         }
     }
@@ -484,10 +522,19 @@ mod tests {
         assert!(text.contains("# the journal's template\njournal = \"tc\""), "{text}");
         assert!(text.contains("short = \"ISP\""), "{text}");
         assert!(text.contains("main = [\"paper.md\", \"si.md\"]"), "{text}");
+        // the engine, written and read
+        project_again.set(&Manifest { engine: Some(Engine::Quarto), ..project_again.manifest.clone() }).unwrap();
+        assert!(fs::read_to_string(root.join(MANIFEST)).unwrap().contains("engine = \"quarto\""));
+        assert_eq!(Project::read(&root).unwrap().manifest.engine, Some(Engine::Quarto));
+        assert_eq!(engine_of(&root.join("paper.md")), Engine::Quarto);
         // a key unset is taken out
-        project_again.set(&Manifest { build: None, colour: None, ..project_again.manifest.clone() }).unwrap();
+        project_again.set(&Manifest { build: None, colour: None, engine: None, ..project_again.manifest.clone() }).unwrap();
         let text = fs::read_to_string(root.join(MANIFEST)).unwrap();
-        assert!(!text.contains("build") && !text.contains("colour"), "{text}");
+        assert!(!text.contains("build") && !text.contains("colour") && !text.contains("engine"), "{text}");
+        assert_eq!(engine_of(&root.join("paper.md")), Engine::Texmark);
+        // a .qmd is Quarto's whatever the project says
+        assert_eq!(engine_of(&root.join("paper.qmd")), Engine::Quarto);
+        assert_eq!(engine_of(&folder().join("loose.md")), Engine::Texmark);
         assert!(text.starts_with("# The project of papers-write"), "{text}");
         project.set(&project.manifest.clone()).unwrap();
         let _ = fs::remove_dir_all(&root);

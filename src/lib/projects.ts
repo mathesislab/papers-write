@@ -10,6 +10,8 @@ export type Manifest = {
   /** the main document(s), relative to the folder */
   main: string[];
   build: string | null;
+  /** what builds the Markdown documents: texmark (none) or Quarto; a `.qmd` is always Quarto's */
+  engine: "texmark" | "quarto" | null;
   library: string | null;
 };
 

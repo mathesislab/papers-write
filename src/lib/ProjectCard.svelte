@@ -1,7 +1,8 @@
 <script lang="ts">
   // The card of a project over the top of the window, like a macOS sheet (papers-review's info card and card of a
   // new project, in one). A folder with write.toml: Project Info, its name, short name (the tile of the project
-  // bar), colour, main document, build folder and library, and the folder; written on Done, dropped on Cancel or Esc.
+  // bar), colour, main document, build folder, what builds the Markdown (texmark or Quarto) and library, and the
+  // folder; written on Done, dropped on Cancel or Esc.
   // A folder without: New project, the name, short name, colour and main document (a Markdown or LaTeX file of the
   // folder, or a new paper from the paper-draft skeleton); Create writes write.toml (and the paper), Cancel leaves
   // nothing. There is no Esc for a new one: it would drop it by a stray key.
@@ -27,6 +28,7 @@
   /** the name of the new paper, when the main document is one */
   let paper = $state("paper.md");
   let build = $state("");
+  let engine = $state<"texmark" | "quarto">("texmark");
   let library = $state("");
   let error = $state("");
   /** asked of the app, not yet answered */
@@ -53,6 +55,7 @@
       short = m.short ?? (next.defined ? initials(name) : "");
       colour = m.colour ?? "none";
       build = m.build ?? "";
+      engine = m.engine ?? "texmark";
       library = m.library ?? "";
       main = m.main[0] ?? (next.documents.includes("paper.md") ? "paper.md" : next.defined ? (next.documents[0] ?? "") : NEW);
     } catch (e) {
@@ -71,6 +74,8 @@
       colour: was.colour === null && colour === "none" ? null : colour,
       main: [main === NEW ? paper.trim() : main, ...was.main.slice(1)].filter(Boolean),
       build: blank(build),
+      // texmark and none set: unset still
+      engine: was.engine === null && engine === "texmark" ? null : engine,
       library: blank(library),
     };
   }
@@ -155,6 +160,15 @@
       {#if !fresh}
         <label for="project-build">Build folder</label>
         <input id="project-build" bind:value={build} placeholder="build" autocomplete="off" spellcheck="false" />
+
+        <label for="project-engine">Build with</label>
+        <div class="row">
+          <select id="project-engine" bind:value={engine}>
+            <option value="texmark">texmark</option>
+            <option value="quarto">Quarto</option>
+          </select>
+          <span class="hint">the Markdown documents; a .qmd is always built by Quarto</span>
+        </div>
 
         <label for="project-library">Library</label>
         <div class="row">

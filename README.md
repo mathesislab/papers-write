@@ -205,6 +205,7 @@ them) are proposed upstream; until they are released,
   colour = "teal"        # blue teal green yellow orange red pink purple graphite none
   main = "paper.md"      # or ["paper.md", "supplement.md"]
   build = "build"        # the build folder (the default)
+  engine = "quarto"      # what builds the Markdown: texmark (the default) or quarto; a .qmd is always Quarto's
   library = "refs.bib"   # a .bib, or a papers library folder (.papers/config.json), or an absolute path
   ```
 

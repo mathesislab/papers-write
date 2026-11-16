@@ -183,6 +183,7 @@ short = "ISP"
 colour = "teal"
 main = "paper.md"        # or an array
 build = "build"
+engine = "quarto"        # optional: texmark without; a .qmd is Quarto's
 library = "refs.bib"     # optional
 ```
 

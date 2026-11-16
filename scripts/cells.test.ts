@@ -8,22 +8,32 @@ import { cellLanguage, cellParser } from "../src/lib/editor/lang/cells.ts";
 /** The tokens of `line` that have a style: `style:text`. */
 function tokens(lang: string, line: string): string[] {
   const parser = cellParser(lang);
+  const state = parser.startState?.(2);
   const stream = new StringStream(line, 4, 2);
   const out: string[] = [];
   while (!stream.eol()) {
-    const style = parser.token(stream, null);
+    const style = parser.token(stream, state);
     if (style) out.push(`${style}:${stream.current()}`);
     stream.start = stream.pos;
   }
   return out;
 }
 
-test("a cell's options, comments, strings, numbers and keywords", () => {
-  assert.deepEqual(tokens("julia", "#| label: fig-run"), ["meta:#| label: fig-run"]);
-  assert.deepEqual(tokens("julia", 'for x in 1:10 # the runs'), ["keyword:for", "keyword:in", "number:1", "number:10", "comment:# the runs"]);
-  assert.deepEqual(tokens("julia", 'println("a #b") ; y = x\''), ['string:"a #b"']);
-  assert.deepEqual(tokens("python", "def f(s='x'): return 2.5e3"), ["keyword:def", "string:'x'", "keyword:return", "number:2.5e3"]);
-  assert.deepEqual(tokens("r", "x <- NULL"), ["keyword:NULL"]);
+test("a cell's options apart; the rest as the language's mode has it", () => {
+  for (const lang of ["julia", "python", "r"]) assert.deepEqual(tokens(lang, "#| label: fig-run"), ["meta:#| label: fig-run"]);
+  assert.deepEqual(tokens("julia", "for x in 1:10 # the runs"), [
+    "keyword:for",
+    "variable:x",
+    "operator:in",
+    "number:1",
+    "operator::",
+    "number:10",
+    "comment:# the runs",
+  ]);
+  // a quote after a name is a transpose in Julia, not a string
+  assert.deepEqual(tokens("julia", "y = x'; end").slice(-2), ["operator:'", "keyword:end"]);
+  assert.deepEqual(tokens("python", "def f(s='x'): return 2.5e3"), ["keyword:def", "def:f", "variable:s", "operator:=", "string:'x'", "keyword:return", "number:2.5e3"]);
+  assert.deepEqual(tokens("r", "x <- NULL # c"), ["variable:x", "operator:<-", "atom:NULL", "comment:# c"]);
 });
 
 test("the languages of a fence's info", () => {

@@ -86,8 +86,8 @@ them) are proposed upstream; until they are released,
   document stops the build (Quarto would write over it). Code cells run as
   Quarto runs them, with no time limit; to cache them, `execute: freeze: auto`
   in the front matter. In the editor the code of Julia, Python and R cells
-  (```` ```{julia} ````, and plain ```` ```julia ```` fences) is coloured:
-  keywords, strings, numbers, comments, and a cell's `#|` options. Quarto is found on PATH, in `/usr/local/bin` or
+  (```` ```{julia} ````, and plain ```` ```julia ```` fences) is coloured by
+  CodeMirror's modes of those languages, a cell's `#|` options apart. Quarto is found on PATH, in `/usr/local/bin` or
   `/Applications/quarto/bin`, or where Settings ▸ Build says.
 - Build ▸ Marked-up PDF… makes the marked-up manuscript for a revision: choose
   the earlier version, a tag or one of the last 30 commits that touched the

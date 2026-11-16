@@ -1,40 +1,27 @@
 // The code of a fenced block in Julia, Python or R: Quarto's cells (```` ```{julia} ````) and plain fences
-// (```` ```julia ````) alike. A small stream language of its own, not the language's grammar (no package of those
-// languages is needed): comments, strings, numbers and keywords, and a cell's options (`#| label: fig-x`) apart.
+// (```` ```julia ````) alike, coloured by CodeMirror's modes of those languages (@codemirror/legacy-modes), with a
+// cell's options (`#| label: fig-x`) apart.
 
 import { Language, StreamLanguage, type StreamParser } from "@codemirror/language";
-import { tags } from "@lezer/highlight";
+import { julia } from "@codemirror/legacy-modes/mode/julia";
+import { python } from "@codemirror/legacy-modes/mode/python";
+import { r } from "@codemirror/legacy-modes/mode/r";
 
-const KEYWORDS: Record<string, string> = {
-  julia:
-    "function end if elseif else for while return begin let local global const struct mutable module using import export do try catch finally break continue macro quote abstract primitive type where in isa true false nothing missing",
-  python:
-    "def return if elif else for while in not and or is import from as with try except finally raise class pass break continue lambda yield global nonlocal assert del async await True False None",
-  r: "function if else for while repeat in next break return TRUE FALSE NULL NA NaN Inf library require",
-};
+const MODES: Record<string, StreamParser<unknown>> = { julia, python, r };
 
-/** The tokenizer of `lang` (`julia`, `python`, `r`). */
-export function cellParser(lang: string): StreamParser<null> {
-  const keywords = new Set((KEYWORDS[lang] ?? "").split(" "));
-  // a quote in Julia is a character or a transpose (`x'`): strings only in double quotes there
-  const single = lang !== "julia";
+/** `mode` with a cell's option lines (`#| label: fig-x`, at the start of a line) as `meta`, not comments. */
+export function withCellOptions<S>(mode: StreamParser<S>): StreamParser<S> {
   return {
-    name: lang,
-    startState: () => null,
-    languageData: { commentTokens: { line: "#" } },
-    tokenTable: { meta: tags.meta, comment: tags.comment, string: tags.string, number: tags.number, keyword: tags.keyword },
-    token(stream) {
+    ...mode,
+    token(stream, state) {
       if (stream.sol() && stream.match(/^#\|.*/)) return "meta";
-      if (stream.match(/^#.*/)) return "comment";
-      if (stream.match(/^"(?:[^"\\]|\\.)*"?/) || (single && stream.match(/^'(?:[^'\\]|\\.)*'?/))) return "string";
-      if (stream.match(/^\d[\d_]*(?:\.\d*)?(?:[eE][+-]?\d+)?/)) return "number";
-      const word = stream.match(/^[A-Za-z_][\w!]*/) as RegExpMatchArray | null;
-      if (word) return keywords.has(word[0]) ? "keyword" : null;
-      stream.next();
-      return null;
+      return mode.token(stream, state);
     },
   };
 }
+
+/** The tokenizer of `lang` (`julia`, `python`, `r`), a cell's options apart. */
+export const cellParser = (lang: string): StreamParser<unknown> => withCellOptions(MODES[lang]);
 
 const languages = new Map<string, Language>();
 

@@ -56,10 +56,12 @@ const style = HighlightStyle.define([
   { tag: lang.citationKey, color: "var(--md-cite, var(--accent))" },
   { tag: [lang.crossRefKey, lang.labelName], color: "var(--md-ref, var(--md-cite, var(--accent)))" },
   { tag: tags.comment, color: "var(--muted)", fontStyle: "italic" },
-  // code in fences (Julia, Python, R): keywords, strings, numbers; a Quarto cell's `#|` options as the front matter's keys
+  // code in fences (Julia, Python, R): keywords, names defined, strings, numbers and constants; a Quarto cell's `#|`
+  // options as the front matter's keys
   { tag: tags.keyword, color: "var(--md-heading)", fontWeight: "600" },
+  { tag: tags.definition(tags.variableName), color: "var(--accent)" },
   { tag: tags.string, color: "var(--md-quote, var(--muted))" },
-  { tag: tags.number, color: "var(--md-math-number, var(--md-quote, var(--muted)))" },
+  { tag: [tags.number, tags.atom, tags.bool], color: "var(--md-math-number, var(--md-quote, var(--muted)))" },
   { tag: tags.meta, color: "var(--md-meta, var(--md-heading))" },
   { tag: lang.mathNumber, color: "var(--md-math-number, var(--md-quote, var(--muted)))" },
 ]);

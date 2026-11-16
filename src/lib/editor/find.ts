@@ -1,7 +1,9 @@
 // Find and replace in the text (CodeMirror's search), as a bar at the top of the editor: the text to find, how many
-// matches and which one the selection is, case, whole word and regular expression, previous and next; the replace
-// field, Replace and All under it. The app's menu gives the commands (`find`): ⌘F, ⌥⌘F (the replace field), ⌘G, ⇧⌘G,
-// ⌘E (the selection to find). In suggest mode a replacement is the user's suggestion, as typing is (own.ts).
+// matches and which one the selection is, case, whole word and regular expression, previous and next, and × at the
+// right to close it; the replace field, Replace and All under it, shown or hidden by the arrow at the left. Find (⌘F)
+// opens the bar without the replace field, Find and Replace (⌥⌘F) with it; the app's menu gives the commands
+// (`find`), and ⌘G, ⇧⌘G, ⌘E (the selection to find). In suggest mode a replacement is the user's suggestion, as typing
+// is (own.ts).
 
 import {
   SearchQuery,
@@ -17,12 +19,22 @@ import {
   searchPanelOpen,
   setSearchQuery,
 } from "@codemirror/search";
-import type { EditorState, Extension } from "@codemirror/state";
+import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap, type Panel, type ViewUpdate } from "@codemirror/view";
 
 /** What the menu asks: the bar (on the find field, or the replace field), the next or previous match, the selection
  *  as the text to find. */
 export type FindCommand = "find" | "replace" | "next" | "previous" | "selection";
+
+/** The replace field shown, or hidden. */
+const showReplace = StateEffect.define<boolean>();
+const replaceShown = StateField.define<boolean>({
+  create: () => false,
+  update(shown, tr) {
+    for (const e of tr.effects) if (e.is(showReplace)) shown = e.value;
+    return shown;
+  },
+});
 
 /** The most matches counted; more are "1000+". */
 const MOST = 1000;
@@ -54,7 +66,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string,
 const ICONS = {
   previous: '<svg viewBox="0 0 12 12" width="11" height="11"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   next: '<svg viewBox="0 0 12 12" width="11" height="11"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  close: '<svg viewBox="0 0 12 12" width="10" height="10"><path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  close: '<svg viewBox="0 0 12 12" width="12" height="12"><path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  expand: '<svg viewBox="0 0 12 12" width="11" height="11"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
 function iconButton(name: keyof typeof ICONS, title: string, run: () => void) {
@@ -116,12 +129,29 @@ function panel(view: EditorView): Panel {
     return b;
   };
 
+  // the arrow shows or hides the replace field, the keys to the field shown
+  const expand = iconButton("expand", "", () => {
+    const shown = !view.state.field(replaceShown);
+    view.dispatch({ effects: showReplace.of(shown) });
+    (shown ? replace : field).focus();
+  });
+  expand.classList.add("cm-find-expand");
+  const close = iconButton("close", "Close (Esc)", () => (closeSearchPanel(view), view.focus()));
+  close.classList.add("cm-find-close");
+  const replaceRow = el(
+    "div",
+    { class: "cm-find-row cm-find-replace" },
+    replace,
+    button("Replace", "Replace this match, and find the next (↵)", () => replaceNext(view)),
+    button("All", "Replace all (⌘↵)", () => replaceAll(view)),
+  );
   const dom = el(
     "div",
     { class: "cm-find" },
     el(
       "div",
       { class: "cm-find-row" },
+      expand,
       field,
       total,
       caseBtn,
@@ -129,16 +159,21 @@ function panel(view: EditorView): Panel {
       regexBtn,
       iconButton("previous", "Previous (⇧⌘G)", () => findPrevious(view)),
       iconButton("next", "Next (⌘G)", () => findNext(view)),
-      iconButton("close", "Close (Esc)", () => (closeSearchPanel(view), view.focus())),
+      close,
     ),
-    el(
-      "div",
-      { class: "cm-find-row" },
-      replace,
-      button("Replace", "Replace this match, and find the next (↵)", () => replaceNext(view)),
-      button("All", "Replace all (⌘↵)", () => replaceAll(view)),
-    ),
+    replaceRow,
   );
+
+  function showRow(state: EditorState) {
+    const shown = state.field(replaceShown);
+    replaceRow.style.display = shown ? "" : "none";
+    expand.classList.toggle("open", shown);
+    const title = shown ? "Hide Replace" : "Show Replace (⌥⌘F)";
+    expand.title = title;
+    expand.setAttribute("aria-label", title);
+    expand.setAttribute("aria-expanded", String(shown));
+  }
+  showRow(view.state);
 
   function show(state: EditorState) {
     query = getSearchQuery(state);
@@ -162,6 +197,7 @@ function panel(view: EditorView): Panel {
     mount: () => field.select(),
     update(u: ViewUpdate) {
       if (u.docChanged || u.selectionSet || u.transactions.some((t) => t.effects.some((e) => e.is(setSearchQuery)))) show(u.state);
+      if (u.startState.field(replaceShown) !== u.state.field(replaceShown)) showRow(u.state);
     },
   };
 }
@@ -191,8 +227,11 @@ export function find(view: EditorView, what: FindCommand) {
   switch (what) {
     case "find":
     case "replace": {
+      // Find the bar alone, Find and Replace with the replace field: the one made the other
       const text = selected(view.state);
-      if (text) view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ ...spec(getSearchQuery(view.state)), search: text })) });
+      const effects: StateEffect<unknown>[] = [showReplace.of(what === "replace")];
+      if (text) effects.push(setSearchQuery.of(new SearchQuery({ ...spec(getSearchQuery(view.state)), search: text })));
+      view.dispatch({ effects });
       openSearchPanel(view);
       const fields = view.dom.querySelectorAll<HTMLInputElement>(".cm-find-field");
       const target = fields[what === "replace" ? 1 : 0];
@@ -247,9 +286,15 @@ const theme = EditorView.theme({
   ".cm-find-toggle:hover, .cm-find-icon:hover, .cm-find-button:hover": { color: "var(--fg)", background: "var(--chip)" },
   ".cm-find-toggle.on": { color: "var(--accent, #2f6fde)", background: "var(--selection)", borderColor: "transparent" },
   ".cm-find-button": { color: "var(--fg)", border: "1px solid var(--border, rgba(0,0,0,0.14))", background: "var(--bg)" },
+  ".cm-find-replace": { paddingLeft: "23px" },
+  ".cm-find-expand": { padding: "1px 3px" },
+  ".cm-find-expand svg": { transition: "transform 0.12s" },
+  ".cm-find-expand.open svg": { transform: "rotate(90deg)" },
+  // × at the right end of the bar, where a panel's close is looked for
+  ".cm-find-close": { marginLeft: "auto", color: "var(--fg)", padding: "2px 5px" },
   ".cm-searchMatch": { background: "rgba(255, 196, 0, 0.32)", borderRadius: "2px" },
   ".cm-searchMatch-selected": { background: "rgba(255, 150, 0, 0.55)" },
 });
 
 /** Find and replace, with the bar above. */
-export const finding: Extension = [search({ top: true, createPanel: panel }), keymap.of(searchKeymap), theme];
+export const finding: Extension = [replaceShown, search({ top: true, createPanel: panel }), keymap.of(searchKeymap), theme];

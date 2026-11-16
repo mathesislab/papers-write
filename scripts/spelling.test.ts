@@ -3,15 +3,14 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { markdown } from "@codemirror/lang-markdown";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { parsed } from "./parsed.ts";
 import { EditorState } from "@codemirror/state";
 import { languageOf, notProse, proseRanges } from "../src/lib/editor/spelling.ts";
 import { paperMarkdown } from "../src/lib/editor/lang/index.ts";
 
 const make = (doc: string) => {
   const state = EditorState.create({ doc, extensions: [markdown({ extensions: paperMarkdown })] });
-  ensureSyntaxTree(state, doc.length, Infinity);
-  return state;
+  return parsed(state);
 };
 const prose = (doc: string) => {
   const state = make(doc);

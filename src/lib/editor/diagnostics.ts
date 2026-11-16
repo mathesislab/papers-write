@@ -75,7 +75,9 @@ const held = StateField.define<Held>({
       if (e.is(missingEffect)) missing = e.value;
       else if (e.is(includedEffect)) included = e.value;
     }
-    if (missing === value.missing && included === value.included && !tr.docChanged) return value;
+    // the tree parsed further (a large text, opened) is looked at again too, not only a change of the text
+    const parsedOn = syntaxTree(tr.state) !== syntaxTree(tr.startState);
+    if (missing === value.missing && included === value.included && !tr.docChanged && !parsedOn) return value;
     return { missing, included, problems: problemsOf(tr.state, missing, included) };
   },
 });

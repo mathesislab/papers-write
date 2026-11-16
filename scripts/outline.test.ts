@@ -3,15 +3,14 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { markdown } from "@codemirror/lang-markdown";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { parsed } from "./parsed.ts";
 import { EditorState } from "@codemirror/state";
 import { currentHeading, outline } from "../src/lib/editor/outline.ts";
 import { paperMarkdown, tex } from "../src/lib/editor/lang/index.ts";
 
 const make = (doc: string, latex = false) => {
   const state = EditorState.create({ doc, extensions: [latex ? tex : markdown({ extensions: paperMarkdown })] });
-  ensureSyntaxTree(state, doc.length, Infinity);
-  return state;
+  return parsed(state);
 };
 
 test("Markdown headings by level, none in code", () => {

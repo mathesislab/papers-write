@@ -4,20 +4,18 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { parsed } from "./parsed.ts";
 import { environmentTex, labelTarget, targetAt } from "../src/lib/editor/hover.ts";
 import { latexMath, latexMathAt } from "../src/lib/editor/lang/tex-math.ts";
 import { paperMarkdown, tex } from "../src/lib/editor/lang/index.ts";
 
 const md = (doc: string) => {
   const state = EditorState.create({ doc, extensions: [markdown({ extensions: paperMarkdown })] });
-  ensureSyntaxTree(state, doc.length, Infinity);
-  return state;
+  return parsed(state);
 };
 const latex = (doc: string) => {
   const state = EditorState.create({ doc, extensions: [tex] });
-  ensureSyntaxTree(state, doc.length, Infinity);
-  return state;
+  return parsed(state);
 };
 
 /** The target at the `|` of the marked text. */

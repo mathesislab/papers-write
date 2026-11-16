@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    # one draft release for the build jobs: each creating its own, they race
+    # and make two. A manual run needs a tag selected: the release is named
+    # after the ref.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.draft.outputs.id }}
+    steps:
+      - id: draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          find_draft() {
+            gh api "repos/$GITHUB_REPOSITORY/releases" \
+              --jq ".[] | select(.draft and .tag_name == \"$GITHUB_REF_NAME\") | .id" | head -1
+          }
+          id=$(find_draft)
+          if [ -z "$id" ]; then
+            # the id from the answer: a new draft is not listed at once
+            id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$GITHUB_REF_NAME" -f name="$GITHUB_REF_NAME" -F draft=true --jq .id)
+          fi
+          # without an id, the builds would skip their uploads
+          test -n "$id"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: draft
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # file names without the version: the website links to the latest release
+          - os: ubuntu-22.04
+            args: --bundles deb,appimage
+            assets: Papers-Write-linux-[arch][ext]
+          - os: macos-15
+            args: --bundles app,dmg
+            assets: Papers-Write-macos-[arch][ext]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target.noindex"
+
+      - run: npm ci
+
+      # not code-signed or notarized; a person reviews the draft before publishing.
+      # The updates are signed with the key of the updater (its public key is in
+      # tauri.conf.json); latest.json tells the apps about them.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          releaseId: ${{ needs.draft.outputs.id }}
+          includeUpdaterJson: true
+          assetNamePattern: ${{ matrix.assets }}
+          tauriScript: npm run tauri
+          args: ${{ matrix.args }}

@@ -128,20 +128,22 @@
     <button onclick={() => onfind("find")} title="Find (⌘F)" aria-label="Find">{@render icon("find")}</button>
     <button onclick={() => onfind("replace")} title="Find and Replace (⌥⌘F)" aria-label="Find and Replace">{@render icon("replace")}</button>
   </div>
-  <span class="space"></span>
-  <button
-    class="panel"
-    class:on={panel}
-    onclick={onpanel}
-    disabled={!reviewing}
-    title={reviewing ? `${panel ? "Hide" : "Show"} Review Panel (⌥⌘R)` : "Save the document to review it"}
-    aria-label="{panel ? 'Hide' : 'Show'} Review Panel"
-    aria-pressed={panel}
-  >
-    {@render icon("panel")}
-    {#if open}<span class="count" title="{open} open">{open}</span>{/if}
-  </button>
-  <ModeControl {mode} {view} {colour} {reviewing} {onmode} {onview} />
+  <!-- at the right, together on a line of their own in a narrow window -->
+  <div class="end">
+    <button
+      class="panel"
+      class:on={panel}
+      onclick={onpanel}
+      disabled={!reviewing}
+      title={reviewing ? `${panel ? "Hide" : "Show"} Review Panel (⌥⌘R)` : "Save the document to review it"}
+      aria-label="{panel ? 'Hide' : 'Show'} Review Panel"
+      aria-pressed={panel}
+    >
+      {@render icon("panel")}
+      {#if open}<span class="count" title="{open} open">{open}</span>{/if}
+    </button>
+    <ModeControl {mode} {view} {colour} {reviewing} {onmode} {onview} />
+  </div>
 </div>
 
 <style>
@@ -170,8 +172,11 @@
     margin: 0 4px;
     background: var(--line);
   }
-  .space {
-    flex: 1;
+  .end {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
   button {
     display: inline-flex;
@@ -199,9 +204,6 @@
     color: var(--fg);
     background: var(--chip);
     border-color: var(--line);
-  }
-  .panel {
-    margin-right: 4px;
   }
   .count {
     min-width: 14px;

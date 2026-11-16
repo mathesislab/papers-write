@@ -50,7 +50,7 @@ pub struct FileHits {
 
 /// The extensions of the files searched.
 const EXTENSIONS: &[&str] = &[
-    "md", "markdown", "tex", "bib", "txt", "toml", "yaml", "yml", "sty", "cls", "csv", "lua",
+    "md", "markdown", "qmd", "tex", "bib", "txt", "toml", "yaml", "yml", "sty", "cls", "csv", "lua",
 ];
 
 /// The folders not searched, besides the hidden ones: what builds and tools make.

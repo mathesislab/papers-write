@@ -103,13 +103,14 @@
     naming = { folder, name: "untitled.md" };
   }
 
-  /** The name is made: Enter; the file is of Markdown, so `.md` is added when it is not there. */
+  /** The name is made: Enter; the file is of Markdown, so `.md` is added when it has no Markdown extension
+   *  (`.qmd` is Quarto's). */
   function commit() {
     if (!naming) return;
     const { folder, name } = naming;
     naming = null;
     const file = name.trim();
-    if (file) onnew?.(folder, /\.md$/i.test(file) ? file : `${file}.md`);
+    if (file) onnew?.(folder, /\.(md|markdown|qmd)$/i.test(file) ? file : `${file}.md`);
   }
 
   function focusName(input: HTMLInputElement) {

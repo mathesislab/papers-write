@@ -661,7 +661,7 @@ pub(crate) fn history_of(doc: &Path, rev: &str, current: &str) -> Result<History
     let text = String::from_utf8(bytes).map_err(|_| format!("{name} at {rev}: not a UTF-8 text file"))?;
     let label = short(rev);
     let items = as_items(&text, &suggestions(&text, current), &format!("since {label}"));
-    let markdown = doc.extension().is_some_and(|e| ["md", "markdown", "txt"].iter().any(|m| e.eq_ignore_ascii_case(m)));
+    let markdown = write_core::files::is_markdown(doc) || doc.extension().is_some_and(|e| e.eq_ignore_ascii_case("txt"));
     Ok(History { title: format!("{name} since {label}"), text, items, markdown })
 }
 

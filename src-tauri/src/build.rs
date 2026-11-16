@@ -69,7 +69,7 @@ pub enum Earlier {
 /// What a document is built from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
-    /// Markdown (`.md`, `.markdown`): by texmark
+    /// Markdown (`.md`, `.markdown`, `.qmd`): by texmark
     Markdown,
     /// LaTeX (`.tex`): by latexmk
     Latex,
@@ -77,12 +77,10 @@ pub enum Kind {
 
 /// The kind of document of `path` by its extension, none for one that cannot be built.
 pub fn kind_of(path: &Path) -> Option<Kind> {
-    let ext = path.extension()?.to_string_lossy().to_ascii_lowercase();
-    match ext.as_str() {
-        "md" | "markdown" => Some(Kind::Markdown),
-        "tex" => Some(Kind::Latex),
-        _ => None,
+    if write_core::files::is_markdown(path) {
+        return Some(Kind::Markdown);
     }
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tex")).then_some(Kind::Latex)
 }
 
 /// An error of a LaTeX log: a line that starts with `! ` or, with `-file-line-error`, `file:line: `, and the line of
@@ -787,7 +785,7 @@ pub async fn earlier_file(app: AppHandle, window: Webview) -> Result<Option<Stri
         .dialog()
         .file()
         .set_title("Earlier version")
-        .add_filter("Markdown", &["md", "markdown"]);
+        .add_filter("Markdown", &write_core::files::MARKDOWN);
     if let Ok(file) = document_of(&window)
         && let Some(folder) = file.parent()
     {

@@ -39,6 +39,14 @@ pub struct Node {
 /// The most files and folders a tree lists: a folder of data can hold many.
 const MOST: usize = 5000;
 
+/// The extensions of a Markdown document: pandoc's, and Quarto's `.qmd`.
+pub const MARKDOWN: [&str; 3] = ["md", "markdown", "qmd"];
+
+/// Whether `path` is a Markdown document, by its extension.
+pub fn is_markdown(path: &Path) -> bool {
+    path.extension().is_some_and(|e| MARKDOWN.iter().any(|m| e.eq_ignore_ascii_case(m)))
+}
+
 pub fn kind(path: &Path) -> Kind {
     if path.is_dir() {
         return Kind::Folder;
@@ -49,7 +57,7 @@ pub fn kind(path: &Path) -> Kind {
         .unwrap_or_default();
     match extension.as_str() {
         "pdf" => Kind::Pdf,
-        "md" | "markdown" => Kind::Markdown,
+        e if MARKDOWN.contains(&e) => Kind::Markdown,
         "bib" => Kind::Bib,
         "tex" | "sty" | "cls" => Kind::Latex,
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "eps" | "tif" | "tiff" => Kind::Image,

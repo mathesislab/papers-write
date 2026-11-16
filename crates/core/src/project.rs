@@ -248,9 +248,7 @@ impl Manifest {
 
 /// Whether a file can be a project's main document: Markdown or LaTeX.
 pub fn is_document(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| ["md", "markdown", "tex"].iter().any(|d| e.eq_ignore_ascii_case(d)))
+    crate::files::is_markdown(path) || path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tex"))
 }
 
 /// The Markdown and LaTeX files of a folder and of its folders, relative to it, sorted; not those of hidden

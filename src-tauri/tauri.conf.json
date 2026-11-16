@@ -33,6 +33,7 @@
         "ext": [
           "md",
           "markdown",
+          "qmd",
           "txt",
           "tex",
           "bib",

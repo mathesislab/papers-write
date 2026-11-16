@@ -354,6 +354,28 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
     }
 
     #[test]
+    fn quarto_crossrefs_with_quarto_words() {
+        if pandoc().is_err() {
+            return;
+        }
+        let dir = scratch("quarto");
+        let generation = AtomicU64::new(1);
+        let text = "# Intro {#sec-intro}\n\n$$\na = b\n$$ {#eq-a}\n\nSee @eq-a, @sec-intro and [@fig-x; @fig-y], @fig-nope.\n\n![X](x.png){#fig-x}\n\n![Y](y.png){#fig-y}\n";
+        let p = render(text, &dir, false, &generation, 1).unwrap();
+        assert!(p.error.is_none(), "{:?}", p.error);
+        let h = &p.html;
+        assert!(h.contains("Equation\u{a0}<a href=\"#eq-a\">1</a>"), "{h}");
+        assert!(h.contains("Section\u{a0}<a href=\"#sec-intro\">1</a>"), "{h}");
+        assert!(h.contains("Figures\u{a0}<a href=\"#fig-x\">1</a> and <a href=\"#fig-y\">2</a>"), "{h}");
+        assert!(h.contains("Figure 1: X") && h.contains("<strong>??</strong>"), "{h}");
+        // the front matter's prefix, as Quarto's
+        let text = format!("---\ncrossref:\n  fig-prefix: Fig.\n---\n\n{text}");
+        let h = render(&text, &dir, false, &generation, 1).unwrap().html;
+        assert!(h.contains("Fig.\u{a0}<a href=\"#fig-x\">1</a> and"), "{h}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn crossref_words_come_from_the_front_matter() {
         if pandoc().is_err() {
             return;

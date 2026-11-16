@@ -11,11 +11,19 @@
 --   * words before the numbers only when the front matter says so, as texmark does (empty: bare numbers):
 --     `crossref: {fig: Fig., figs: Figs., eq: Eq., eqs: Eqs., tbl: Table, tbls: Tables, sec: Sect., secs: Sects.,
 --     lst: Listing, lsts: Listings}`: "Fig. 1", "Figs. 1 and 2" (a plural left out is the singular)
+--   * Quarto's labels and references, `{#fig-x}` and `@fig-x` (a hyphen for the colon), the same, but with Quarto's
+--     words: "Figure 1", "Figures 1 and 2", "Equation 1" (no parentheses), "Section 1", "Table 1"; the front matter's
+--     `crossref: {fig-prefix: Fig.}` changes them as Quarto's does
 -- A failure inside leaves the document as it was.
 
 -- the words before a reference, singular and plural, by kind: none until the front matter gives them
 local KINDS = {
   fig = { "", "" }, eq = { "", "" }, tbl = { "", "" }, sec = { "", "" }, lst = { "", "" },
+}
+-- Quarto's words, for the references written `@fig-x`
+local QUARTO = {
+  fig = { "Figure", "Figures" }, eq = { "Equation", "Equations" }, tbl = { "Table", "Tables" },
+  sec = { "Section", "Sections" }, lst = { "Listing", "Listings" },
 }
 local NAMES = { fig = "Figure", tbl = "Table", lst = "Listing" }
 local WRAP = { equation = false, align = "aligned", gather = "gathered" }
@@ -24,10 +32,14 @@ local NBSP = "\xC2\xA0"
 local labels, count, hdr = {}, { fig = 0, eq = 0, tbl = 0, sec = 0, lst = 0 }, { 0, 0, 0, 0, 0, 0 }
 local number_sections = false
 
+-- the kind of a label or reference, `fig` of `fig:x` and of Quarto's `fig-x`
 local function kind_of(id)
-  local k = id and id:match("^(%a+):")
+  local k = id and id:match("^(%a+)[:%-]")
   return k and KINDS[k] and k or nil
 end
+
+-- a label or reference written as Quarto's (`fig-x`)
+local function quarto(id) return id:match("^%a+%-") ~= nil end
 
 local function register(id, kind, n, text, anchor)
   labels[id] = { kind = kind, n = n, text = text, id = anchor or id }
@@ -222,8 +234,8 @@ pass1.RawBlock = function(b)
   return nil
 end
 
--- the text of a reference to `e`
-local function number_text(e) return e.kind == "eq" and ("(" .. e.text .. ")") or e.text end
+-- the text of a reference to `e`: an equation's number in parentheses, but not after Quarto's "Equation"
+local function number_text(e, q) return (e.kind == "eq" and not q) and ("(" .. e.text .. ")") or e.text end
 
 local function link(content, e) return pandoc.Link(content, "#" .. e.id) end
 
@@ -250,22 +262,22 @@ local function resolve_cite(c)
   for _, ct in ipairs(c.citations) do
     local k = kind_of(ct.id)
     if not k then return nil end
-    items[#items + 1] = { kind = k, e = labels[ct.id] }
+    items[#items + 1] = { kind = k, q = quarto(ct.id), e = labels[ct.id] }
   end
   if #items == 0 then return nil end
-  -- runs of one kind, each with its word (plural for several), the numbers joined
+  -- runs of one kind (written one way), each with its word (plural for several), the numbers joined
   local groups = {}
   local i = 1
   while i <= #items do
-    local k, j = items[i].kind, i
-    while j < #items and items[j + 1].kind == k do j = j + 1 end
+    local k, q, j = items[i].kind, items[i].q, i
+    while j < #items and items[j + 1].kind == k and items[j + 1].q == q do j = j + 1 end
     local nums = {}
     for g = i, j do
       local e = items[g].e
-      nums[#nums + 1] = e and pandoc.Inlines({ link({ pandoc.Str(number_text(e)) }, e) }) or pandoc.Inlines({ unknown() })
+      nums[#nums + 1] = e and pandoc.Inlines({ link({ pandoc.Str(number_text(e, q)) }, e) }) or pandoc.Inlines({ unknown() })
     end
     local part = pandoc.Inlines({})
-    local word = KINDS[k][j > i and 2 or 1]
+    local word = (q and QUARTO or KINDS)[k][j > i and 2 or 1]
     if word ~= "" then part:insert(pandoc.Str(word .. NBSP)) end
     part:extend(join(nums))
     groups[#groups + 1] = part
@@ -318,6 +330,9 @@ local function read_words(meta)
     local one, many = m[k], m[k .. "s"]
     if one ~= nil then words[1] = pandoc.utils.stringify(one); words[2] = words[1] end
     if many ~= nil then words[2] = pandoc.utils.stringify(many) end
+    -- Quarto's: `fig-prefix: Fig.`, singular and plural
+    local prefix = m[k .. "-prefix"]
+    if prefix ~= nil then QUARTO[k] = { pandoc.utils.stringify(prefix), pandoc.utils.stringify(prefix) } end
   end
 end
 

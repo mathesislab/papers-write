@@ -258,6 +258,9 @@ them) are proposed upstream; until they are released,
   only when the front matter gives them: `crossref: {fig: Fig., figs: Figs.,
   eq: Eq., eqs: Eqs., tbl: Table, tbls: Tables, sec: Sect., secs: Sects., lst:
   Listing, lsts: Listings}` (a plural left out is the singular; empty is bare).
+  Quarto's (`{#fig-x}`, `@fig-x`) are numbered too, with Quarto's words:
+  "Figure 1", "Figures 1 and 2", "Equation 1"; `crossref: {fig-prefix: Fig.}`
+  changes them. The export to Word numbers them the same way.
   Drag the split to resize; its width is kept for the window.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
   project's tile) has three tabs; shown or not, its width and its tab are the same in all the

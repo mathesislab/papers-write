@@ -57,7 +57,8 @@ them) are proposed upstream; until they are released,
   `\emph`, `\texttt`, `\href`; `\section`, `\subsection`, `\subsubsection`;
   `itemize`, `enumerate` and `quote` around the lines. In suggest mode a
   format is a suggestion.
-- A PDF opens in a tab like the text files (PDFKit, as Preview shows it): the
+- A PDF opens in a tab like the text files (PDFKit, as Preview shows it; on
+  Linux pdf.js, as Papers Desktop there, with the same tools): the
   page in view (click it to go to a page), zoom in, out and to fit the width
   (⌘= ⌘- ⌘0, PDF menu), Find (Edit ▸ Find: ⌘F, next ⌘G, previous ⇧⌘G). Back
   and Forward (‹ ›, Go ▸ Back ⌘[ and Forward ⌘]) return to the page a link

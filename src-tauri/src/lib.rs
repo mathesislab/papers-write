@@ -78,6 +78,7 @@ pub fn run() {
             tabs::commands::page_ready,
             tabs::commands::set_folders,
             files::read_text,
+            files::read_pdf,
             files::write_text,
             preview::preview,
             hover::render_math,

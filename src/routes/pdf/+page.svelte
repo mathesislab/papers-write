@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The page of a tab that shows a PDF (PDFKit), in the project bar and sidebar of every tab (Frame): its tools are
+  // The page of a tab that shows a PDF (PDFKit on macOS, pdf.js elsewhere: PdfjsView), in the project bar and sidebar of every tab (Frame): its tools are
   // Back and Forward (the page a link or a jump left: ⌘[ ⌘]), the page in view (and the field to go to one), the zoom
   // (⌘= ⌘- ⌘0, the PDF menu) and Find (⌘F, ⌘G; the menu says them as `pdf`). The Go menu comes as `go`: Back, Forward,
   // the previous, next, first and last page, Go to Page… (⌥⌘G). The PDF is read again, at the same page, when it
@@ -8,13 +8,17 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
+  import PdfjsView from "$lib/PdfjsView.svelte";
   import { listen } from "$lib/events";
   import { part, ready } from "papers-write/project";
   import Frame from "$lib/Frame.svelte";
   import "$lib/theme.css";
 
   let path = $state<string | null | undefined>();
-  let view = $state<PdfView>();
+  let view = $state<PdfView | PdfjsView>();
+  /** PDFKit is macOS's */
+  const mac = navigator.userAgent.includes("Mac");
+  const Viewer = mac ? PdfView : PdfjsView;
   let count = $state(0);
   let current = $state(1);
   /** whether there is a page to go back to, or forward */
@@ -187,7 +191,7 @@
   <div class="viewer">
     {#if path}
       {#key `${path}:${reads}`}
-        <PdfView
+        <Viewer
           bind:this={view}
           {path}
           page={current}

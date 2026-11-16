@@ -19,6 +19,15 @@ pub fn read_text(path: String) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| format!("{path}: not a UTF-8 text file"))
 }
 
+/// The bytes of a PDF, for the page to show with pdf.js where PDFKit is not (Linux).
+#[tauri::command]
+pub fn read_pdf(path: String) -> Result<tauri::ipc::Response, String> {
+    if !Path::new(&path).extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf")) {
+        return Err(format!("{path}: not a PDF"));
+    }
+    fs::read(&path).map(tauri::ipc::Response::new).map_err(|e| format!("{path}: {e}"))
+}
+
 /// `text` written to the file, atomically: a file beside it, renamed. A file that is a link is written through it,
 /// and one that was there keeps its permissions.
 #[tauri::command]

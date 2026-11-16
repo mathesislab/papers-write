@@ -222,9 +222,9 @@ pub fn open_file(app: &AppHandle, path: &Path) -> Result<(), String> {
     }
 }
 
-/// Files opened, one after the other; what could not be is told in a dialog.
-/// Files handed over by macOS (Open With, the Dock, a double click): opened, or kept until the app is ready, as
-/// they may come while it is still launching, before any window can be made.
+/// Files handed over by the system: by macOS as an event (Open With, the Dock, a double click), elsewhere as the
+/// arguments of the command (`papers-write paper.md`, a desktop file's `%F`). Opened, or kept until the app is ready,
+/// as they may come while it is still launching, before any window can be made.
 pub fn opened(app: &AppHandle, paths: Vec<PathBuf>) {
     let state = app.state::<Documents>();
     if !state.ready.load(Ordering::SeqCst) {

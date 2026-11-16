@@ -17,6 +17,8 @@ use tauri::{AppHandle, Manager, Webview};
 #[derive(Deserialize)]
 pub struct Text {
     pub id: u32,
+    // the checker is macOS's: elsewhere every text is taken as spelled right
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub text: String,
 }
 
@@ -39,6 +41,7 @@ pub struct Tags(Mutex<HashMap<String, isize>>);
 
 /// The language NSSpellChecker is given for what the document asks (`en-GB`, `de`): the identifier as it spells it
 /// (`en_GB`), else the language alone (`en`); none (the system's choice) when it has neither.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn pick_language(asked: Option<&str>, available: &[String]) -> Option<String> {
     let asked = asked?.trim().replace('-', "_");
     if asked.is_empty() {
@@ -143,6 +146,7 @@ mod mac {
 }
 
 /// Runs `job` on the main thread, and waits for what it returns.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 async fn on_main<T: Send + 'static>(app: &AppHandle, job: impl FnOnce() -> T + Send + 'static) -> Option<T> {
     let (tx, rx) = std::sync::mpsc::channel();
     app.run_on_main_thread(move || {

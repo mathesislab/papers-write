@@ -68,6 +68,12 @@ pub fn run() {
         .manage(sidebar::GoTos::default())
         .setup(|app| {
             settings::init(app.handle());
+            // elsewhere than on macOS the files to open are the arguments of the command
+            #[cfg(not(target_os = "macos"))]
+            documents::opened(
+                app.handle(),
+                std::env::args_os().skip(1).filter_map(|a| std::fs::canonicalize(a).ok()).collect(),
+            );
             app.manage(Updates::new(app.handle()));
             app.set_menu(menu::build(app.handle())?)?;
             app.on_menu_event(menu::on_event);

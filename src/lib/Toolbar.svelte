@@ -1,10 +1,10 @@
 <script lang="ts">
   // The toolbar above a text, under the tabs: the formats (bold, italic, code, a link; a heading, bullets, numbers, a
   // quotation: Markdown, or LaTeX in a .tex file; none in plain text), a comment on the selection, Find and Find and
-  // Replace; at the right the review panel, shown or hidden, with the number of open suggestions and comments, and the
+  // Replace (the one the bar shows is pressed, and a click on it closes the bar); at the right the review panel, shown or hidden, with the number of open suggestions and comments, and the
   // mode, Editing or Suggesting (ModeControl). Each button says its key, where it has one (the menus give them).
 
-  import type { Format, ReviewMode, ReviewView } from "papers-write/editor";
+  import type { FindBar, Format, ReviewMode, ReviewView } from "papers-write/editor";
   import ModeControl from "$lib/ModeControl.svelte";
 
   let {
@@ -15,6 +15,7 @@
     colour,
     panel,
     reviewing,
+    findbar,
     onformat,
     oncomment,
     onfind,
@@ -34,9 +35,12 @@
     panel: boolean;
     /** the document has a review (it is a file) */
     reviewing: boolean;
+    /** what the find bar shows */
+    findbar: FindBar;
     onformat: (what: Format) => void;
     oncomment: () => void;
-    onfind: (what: "find" | "replace") => void;
+    /** the bar shown, Find or Find and Replace; or closed */
+    onfind: (what: "find" | "replace" | "close") => void;
     onpanel: () => void;
     onmode: (mode: ReviewMode) => void;
     onview: (view: ReviewView) => void;
@@ -55,6 +59,10 @@
     ["numbered", tex ? "Numbered List: enumerate" : "Numbered List"],
     ["quote", tex ? "Quote: the quote environment" : "Quote"],
   ]);
+  const FIND: ["find" | "replace", string, string][] = [
+    ["find", "Find", "⌘F"],
+    ["replace", "Find and Replace", "⌥⌘F"],
+  ];
 </script>
 
 {#snippet icon(what: Format | "comment" | "find" | "replace" | "panel")}
@@ -125,8 +133,15 @@
   </div>
   <span class="rule"></span>
   <div class="group">
-    <button onclick={() => onfind("find")} title="Find (⌘F)" aria-label="Find">{@render icon("find")}</button>
-    <button onclick={() => onfind("replace")} title="Find and Replace (⌥⌘F)" aria-label="Find and Replace">{@render icon("replace")}</button>
+    {#each FIND as [what, name, key] (what)}
+      <button
+        class:on={findbar === what}
+        onclick={() => onfind(findbar === what ? "close" : what)}
+        title={findbar === what ? `Close ${name} (Esc)` : `${name} (${key})`}
+        aria-label={name}
+        aria-pressed={findbar === what}>{@render icon(what)}</button
+      >
+    {/each}
   </div>
   <!-- at the right, together on a line of their own in a narrow window -->
   <div class="end">
@@ -200,7 +215,7 @@
   button:disabled {
     opacity: 0.4;
   }
-  .panel.on {
+  button.on {
     color: var(--fg);
     background: var(--chip);
     border-color: var(--line);

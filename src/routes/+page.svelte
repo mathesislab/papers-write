@@ -60,6 +60,7 @@
     type Found,
     type ReviewView,
     type HoverSources,
+    type FindBar,
     type FindCommand,
     type Heading,
     type ProjectQuery,
@@ -88,6 +89,8 @@
   /** the file of the window; none while untitled; undefined until the backend says */
   let path = $state<string | null | undefined>();
   let editor = $state<FileEditor>();
+  /** what the editor's find bar shows (the toolbar's Find buttons) */
+  let findbar = $state<FindBar>(null);
   let builds = $state<Build>();
   let exchange = $state<Exchange>();
   let gitbar = $state<GitBar>();
@@ -564,7 +567,8 @@
     reviewing={!!session.me}
     onformat={(what) => editor?.format(what)}
     oncomment={comment}
-    onfind={(what) => findCommand(what === "replace" ? "find-replace" : "find")}
+    {findbar}
+    onfind={(what) => editor?.find(what)}
     onpanel={togglePanel}
     onmode={(m) => m !== session.mode && session.toggleMode()}
     onview={(v) => session.setView(v)}
@@ -601,6 +605,7 @@
         review={session.handlers}
         onchange={changed}
         bind:error
+        bind:findbar
       />
     {/key}
   {/if}

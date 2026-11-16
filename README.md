@@ -252,8 +252,9 @@ them) are proposed upstream; until they are released,
   at the right to close it (or Esc). Find and Replace… (⌥⌘F) opens it with
   the replace field, Replace (↵ in its field) and All (⌘↵); the arrow at the
   left of the bar shows or hides that field, and ⌘F and ⌥⌘F turn one into the
-  other. Use Selection for Find (⌘E). In suggest mode a replacement is a
-  suggestion.
+  other. The toolbar's two buttons do the same; the one the bar shows is
+  pressed, and a click on it closes the bar. Use Selection for Find (⌘E). In
+  suggest mode a replacement is a suggestion.
 - With a readable width, the margins beside the column are a shade darker.
 - Hover (a pause of 300 ms; none while the mouse is down): over math
   (`$..$`, `$$..$$`, `equation`, `align`...) the equation, rendered by pandoc

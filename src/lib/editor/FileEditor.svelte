@@ -17,7 +17,7 @@
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, setSpelling, type EditorPrefs } from "./editor";
   import type { Completion, Diagnostics, HoverSources, Spelling } from "./types";
   import { recheck } from "./diagnostics";
-  import { find as findIn, replaceEverywhere, type FindCommand, type ProjectQuery } from "./find";
+  import { findBar, find as findIn, replaceEverywhere, type FindBar, type FindCommand, type ProjectQuery } from "./find";
   import { format as formatIn, type Format } from "./format";
   import { currentHeading, outline as outlineOf, type Heading } from "./outline";
   import {
@@ -55,6 +55,7 @@
     error = $bindable(""),
     path = $bindable(""),
     selected = $bindable(0),
+    findbar = $bindable(null),
   }: {
     /** the file read: its path, and its text */
     load: () => Promise<{ path: string; text: string }>;
@@ -99,6 +100,8 @@
     path?: string;
     /** the words selected */
     selected?: number;
+    /** what the find bar shows: none, Find, or Find and Replace */
+    findbar?: FindBar;
   } = $props();
 
   let host: HTMLElement;
@@ -119,6 +122,7 @@
   let here = -1;
   const selection = EditorView.updateListener.of((u) => {
     if (u.selectionSet || u.docChanged) selected = selectedWords(u.state);
+    findbar = findBar(u.state);
     if (onoutline && (u.docChanged || u.selectionSet)) {
       const before = here;
       if (u.docChanged) headings = outlineOf(u.state);

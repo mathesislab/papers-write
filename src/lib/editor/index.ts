@@ -28,7 +28,7 @@ export { currentHeading, headingTitle, outline, type Heading } from "./outline";
 export { sections, type Section } from "./sections";
 export { DEFAULTS, LATEX, find as findSymbols, latex, merged, typed, type Entry, type Rule } from "./symbols";
 export { completionSource } from "./completion";
-export { find, finding, replaceEverywhere, type FindCommand, type ProjectQuery } from "./find";
+export { find, findBar, finding, replaceEverywhere, type FindBar, type FindCommand, type ProjectQuery } from "./find";
 export { format, formatSpec, type Format } from "./format";
 export { insertQuote, quoteSpec } from "./quote";
 export { citationKeys, diagnostics, labelProblems, recheck, type Problem } from "./diagnostics";

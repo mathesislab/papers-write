@@ -23,8 +23,11 @@ import { StateEffect, StateField, type EditorState, type Extension } from "@code
 import { EditorView, keymap, type Panel, type ViewUpdate } from "@codemirror/view";
 
 /** What the menu asks: the bar (on the find field, or the replace field), the next or previous match, the selection
- *  as the text to find. */
-export type FindCommand = "find" | "replace" | "next" | "previous" | "selection";
+ *  as the text to find; or the bar closed (the toolbar's button of the bar shown). */
+export type FindCommand = "find" | "replace" | "next" | "previous" | "selection" | "close";
+
+/** What the bar shows: none (closed), the find field alone, or the replace field too. */
+export type FindBar = "find" | "replace" | null;
 
 /** The replace field shown, or hidden. */
 const showReplace = StateEffect.define<boolean>();
@@ -35,6 +38,16 @@ const replaceShown = StateField.define<boolean>({
     return shown;
   },
 });
+
+/** What the bar shows in `state`. */
+export const findBar = (state: EditorState): FindBar =>
+  !searchPanelOpen(state) ? null : state.field(replaceShown, false) ? "replace" : "find";
+
+/** The bar closed, the keys back to the text (Esc, ×, or the toolbar's button of the bar shown). */
+function closeBar(view: EditorView) {
+  closeSearchPanel(view);
+  view.focus();
+}
 
 /** The most matches counted; more are "1000+". */
 const MOST = 1000;
@@ -117,8 +130,7 @@ function panel(view: EditorView): Panel {
     input.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        closeSearchPanel(view);
-        view.focus();
+        closeBar(view);
       }
     });
 
@@ -136,7 +148,7 @@ function panel(view: EditorView): Panel {
     (shown ? replace : field).focus();
   });
   expand.classList.add("cm-find-expand");
-  const close = iconButton("close", "Close (Esc)", () => (closeSearchPanel(view), view.focus()));
+  const close = iconButton("close", "Close (Esc)", () => closeBar(view));
   close.classList.add("cm-find-close");
   const replaceRow = el(
     "div",
@@ -248,7 +260,10 @@ export function find(view: EditorView, what: FindCommand) {
       const text = selected(view.state);
       if (text) view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ ...spec(getSearchQuery(view.state)), search: text })) });
       if (!open) view.focus();
+      return;
     }
+    case "close":
+      closeBar(view);
   }
 }
 

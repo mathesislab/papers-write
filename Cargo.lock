@@ -2929,7 +2929,7 @@ dependencies = [
 
 [[package]]
 name = "papers-write"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "notify",
  "objc2",

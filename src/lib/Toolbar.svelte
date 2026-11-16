@@ -54,10 +54,10 @@
     ["link", tex ? "Link: \\href (⌘K)" : "Link (⌘K)"],
   ]);
   const BLOCKS: [Format, string][] = $derived([
-    ["heading", tex ? "Section: \\section, \\subsection, \\subsubsection, none" : "Heading: #, ##, ###, none"],
-    ["bullet", tex ? "Bulleted List: itemize" : "Bulleted List"],
-    ["numbered", tex ? "Numbered List: enumerate" : "Numbered List"],
-    ["quote", tex ? "Quote: the quote environment" : "Quote"],
+    ["heading", tex ? "Section: \\section, \\subsection, \\subsubsection, none (⇧⌘H)" : "Heading: #, ##, ###, none (⇧⌘H)"],
+    ["bullet", tex ? "Bulleted List: itemize (⇧⌘8)" : "Bulleted List (⇧⌘8)"],
+    ["numbered", tex ? "Numbered List: enumerate (⇧⌘7)" : "Numbered List (⇧⌘7)"],
+    ["quote", tex ? "Quote: the quote environment (⇧⌘9)" : "Quote (⇧⌘9)"],
   ]);
   const FIND: ["find" | "replace", string, string][] = [
     ["find", "Find", "⌘F"],

@@ -51,11 +51,12 @@ them) are proposed upstream; until they are released,
   of open suggestions and comments, and the mode, Editing or Suggesting.
 - Format menu: Bold (⌘B), Italic (⌘I), Code, Link (⌘K) go around the
   selection, or come off when it is already so (a cursor inside a word takes
-  the word); Heading steps through `#`, `##`, `###` and none; Bulleted List,
-  Numbered List and Quote put `- `, `1. ` or `> ` on the lines selected, or
-  take them off. In a `.tex` file: `\textbf`, `\emph`, `\texttt`, `\href`;
-  `\section`, `\subsection`, `\subsubsection`; `itemize`, `enumerate` and
-  `quote` around the lines. In suggest mode a format is a suggestion.
+  the word); Heading (⇧⌘H) steps through `#`, `##`, `###` and none; Bulleted
+  List (⇧⌘8), Numbered List (⇧⌘7) and Quote (⇧⌘9) put `- `, `1. ` or `> ` on
+  the lines selected, or take them off. In a `.tex` file: `\textbf`,
+  `\emph`, `\texttt`, `\href`; `\section`, `\subsection`, `\subsubsection`;
+  `itemize`, `enumerate` and `quote` around the lines. In suggest mode a
+  format is a suggestion.
 - A PDF opens in a tab like the text files (PDFKit, as Preview shows it): the
   page in view (click it to go to a page), zoom in, out and to fit the width
   (⌘= ⌘- ⌘0, PDF menu), Find (Edit ▸ Find: ⌘F, next ⌘G, previous ⇧⌘G). Back

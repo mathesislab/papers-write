@@ -150,10 +150,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("format-code", "Code", None)?,
             &item("format-link", "Link", Some("CmdOrCtrl+K"))?,
             &separator()?,
-            &item("format-heading", "Heading", None)?,
-            &item("format-bullet", "Bulleted List", None)?,
-            &item("format-numbered", "Numbered List", None)?,
-            &item("format-quote", "Quote", None)?,
+            &item("format-heading", "Heading", Some("Shift+CmdOrCtrl+H"))?,
+            &item("format-bullet", "Bulleted List", Some("Shift+CmdOrCtrl+8"))?,
+            &item("format-numbered", "Numbered List", Some("Shift+CmdOrCtrl+7"))?,
+            &item("format-quote", "Quote", Some("Shift+CmdOrCtrl+9"))?,
         ],
     )?;
     let view = Submenu::with_items(

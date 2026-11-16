@@ -18,6 +18,7 @@
   import type { Completion, Diagnostics, HoverSources, Spelling } from "./types";
   import { recheck } from "./diagnostics";
   import { find as findIn, replaceEverywhere, type FindCommand, type ProjectQuery } from "./find";
+  import { format as formatIn, type Format } from "./format";
   import { currentHeading, outline as outlineOf, type Heading } from "./outline";
   import {
     accept as acceptItem,
@@ -301,6 +302,11 @@
   /** A command of Find (the menu's): the bar, the next or previous match, the selection to find. */
   export function find(what: FindCommand) {
     if (editor) findIn(editor, what);
+  }
+
+  /** Bold, italic, a heading, a list… at the selection (Markdown, or LaTeX in a LaTeX file; none in plain text). */
+  export function format(what: Format) {
+    if (editor && (!mono || latex)) formatIn(editor, what, latex);
   }
 
   /** Every match of a search of the project replaced (in suggest mode, as suggestions). */

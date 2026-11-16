@@ -380,7 +380,8 @@ pw review import paper.md back.review            # a review sent back, merged
 A file of CriticMarkup comes back as suggestions and comments: a mark is the
 person's whose name begins its note (`{>>Jane Doe: …<<}`, someone of the review, as
 the export writes it, or `{>>@Jane Doe: …<<}`), else `--author`'s ("CriticMarkup"
-without it). A mark where the document has changed since is listed, not placed.
+without it). What the review has open already is not added again (a Word review
+the same), and a mark where the document has changed since is listed, not placed.
 
 Accept writes the suggestions into the file (from the end of the text) and appends the decisions to the review
 under the user's name, as the app does (git `user.name` of the document's folder, else the system's full name, else

@@ -147,6 +147,8 @@ pub fn export(doc: &Path, current: &str, to: &Path) -> Result<Exported, String> 
 pub struct Imported {
     pub suggestions: usize,
     pub comments: usize,
+    /// those the review has open already (the same change, or comment, at the same place), not written again
+    pub already: usize,
     /// whose, each once
     pub authors: Vec<String>,
     /// what could not be placed in the text, one line each
@@ -222,10 +224,32 @@ pub fn import_critic(doc: &Path, current: &str, file: &Path, also_untracked: boo
     record(doc, current, found, &format!("CriticMarkup review: {}", file.file_name().unwrap_or_default().to_string_lossy()))
 }
 
-/// What an import found written to the review of `doc`, each person's to their own file, all in `round`.
+/// What an import found written to the review of `doc`, each person's to their own file, all in `round`; what the
+/// review has open already (a file exported from it and sent back, its own marks still in it) is not written again,
+/// whoever it is said to be from.
 fn record(doc: &Path, current: &str, found: review::Imported, round: &str) -> Result<Imported, String> {
-    let mut made = Imported { suggestions: found.suggestions.len(), comments: found.comments.len(), unplaced: found.unplaced, ..Default::default() };
+    let items = Review::load(doc).map_err(|e| e.to_string())?.items(current);
+    let there = |r: &review::NewRecord| {
+        items.iter().any(|i| {
+            i.state == review::State::Open
+                && i.kind == r.kind
+                && (i.at.from, i.at.to) == (r.from, r.to)
+                && match r.kind {
+                    review::Kind::Suggestion => i.replacement == r.insert,
+                    _ => i.record.text.as_deref().map(str::trim) == r.text.as_deref().map(str::trim),
+                }
+        })
+    };
+    let mut made = Imported { unplaced: found.unplaced, ..Default::default() };
     for (author, record) in found.suggestions.into_iter().chain(found.comments) {
+        if there(&record) {
+            made.already += 1;
+            continue;
+        }
+        match record.kind {
+            review::Kind::Suggestion => made.suggestions += 1,
+            _ => made.comments += 1,
+        }
         let me = Person::new(author.as_str(), "");
         Review::add(doc, &me, current, record.round(round)).map_err(|e| e.to_string())?;
         if !made.authors.contains(&author) {
@@ -320,4 +344,27 @@ mod tests {
         assert_eq!(applied.split_whitespace().collect::<Vec<_>>().join(" "), "The *grounding line* retreats slowly [@smith2020] when the bed slopes. The ice shelf thickens.");
     }
 
+    #[test]
+    fn critic_markup_sent_back_adds_only_what_is_new() {
+        let dir = folder("critic");
+        let doc = dir.join("paper.md");
+        let current = "The grounding line retreats rapidly when the bed slopes.\n\nThe ice shelf thins.\n";
+        std::fs::write(&doc, current).unwrap();
+        suggest(&doc, current, "The grounding line retreats slowly when the bed slopes.\n\nThe ice shelf thins.\n");
+        let items = Review::load(&doc).unwrap().items(current);
+        let (out, _) = review::critic::markdown_with_changes(current, &items);
+        // a co-author marks it further, and names no one
+        let back = dir.join("paper.crit.md");
+        std::fs::write(&back, out.replace("ice shelf thins", "ice shelf {~~thins~>thickens~~}{>>surely?<<}")).unwrap();
+        let made = import_critic(&doc, current, &back, false, "Carol Poe").unwrap();
+        assert_eq!((made.suggestions, made.comments, made.already), (1, 0, 1));
+        assert_eq!(made.authors, ["Carol Poe"]);
+        let items = Review::load(&doc).unwrap().items(current);
+        let carol: Vec<_> = items.iter().filter(|i| i.author == "Carol Poe").collect();
+        assert_eq!(carol.len(), 1);
+        assert_eq!((carol[0].replacement.as_deref(), carol[0].record.text.as_deref()), (Some("thickens"), Some("surely?")));
+        assert_eq!(carol[0].record.round.as_deref(), Some("CriticMarkup review: paper.crit.md"));
+        // again: all of it there already
+        assert_eq!(import_critic(&doc, current, &back, false, "Carol Poe").unwrap().already, 2);
+    }
 }

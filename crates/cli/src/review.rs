@@ -302,7 +302,8 @@ fn import(doc: &Path, flags: &[String]) -> Result {
     let text = read(doc)?;
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase());
     let said = |made: exchange::Imported| {
-        println!("{} suggestions and {} comments from {}", made.suggestions, made.comments, if made.authors.is_empty() { "nobody".into() } else { made.authors.join(", ") });
+        let already = if made.already > 0 { format!("; {} already in the review", made.already) } else { String::new() };
+        println!("{} suggestions and {} comments from {}{already}", made.suggestions, made.comments, if made.authors.is_empty() { "nobody".into() } else { made.authors.join(", ") });
         for u in made.unplaced {
             println!("not placed: {u}");
         }

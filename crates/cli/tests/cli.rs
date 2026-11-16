@@ -232,13 +232,10 @@ fn critic_markup_goes_out_and_comes_back() {
     assert!(marked.contains("{~~rapidly~>slowly~~}") && marked.contains("{==Fig. 3==}{>>Bob Roe: Which one?<<}"), "{marked}");
     std::fs::write(&crit, marked.replace("slopes inland", "slopes {~~inland~>seaward~~}")).unwrap();
 
-    // the same document elsewhere, without the review: no one there for the notes to name
-    let other = folder();
-    let doc2 = other.join("paper.md");
-    let o = pw(&["review", "import", path(&doc2), path(&crit), "--author", "Carol Poe"]);
+    let o = pw(&["review", "import", path(&doc), path(&crit), "--author", "Carol Poe"]);
     assert!(o.status.success(), "{}", err(&o));
-    assert_eq!(out(&o).trim(), "2 suggestions and 1 comments from Carol Poe");
-    let list = out(&pw(&["review", "list", path(&doc2)]));
+    assert_eq!(out(&o).trim(), "1 suggestions and 0 comments from Carol Poe; 2 already in the review");
+    let list = out(&pw(&["review", "list", path(&doc)]));
     assert!(list.contains("Carol Poe") && list.contains("\"inland\" → \"seaward\""), "{list}");
     let o = pw(&["review", "import", path(&doc), path(&crit), "--author"]);
     assert_eq!(o.status.code(), Some(2), "{}", err(&o));

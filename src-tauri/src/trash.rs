@@ -1,4 +1,5 @@
-//! A file or folder moved to the Trash, as the Finder does: taken back from there, not deleted (as papers-review).
+//! A file or folder moved to the Trash, as the Finder does: taken back from there, not deleted (as papers-review). On
+//! Linux the desktop's Trash (`gio trash`, the freedesktop.org one).
 
 use std::path::Path;
 
@@ -13,7 +14,16 @@ pub fn trash(path: &Path) -> Result<(), String> {
 
 #[cfg(not(target_os = "macos"))]
 pub fn trash(path: &Path) -> Result<(), String> {
-    Err(format!("{}: the Trash on macOS only", path.display()))
+    let out = std::process::Command::new("gio")
+        .arg("trash")
+        .arg(path)
+        .output()
+        .map_err(|e| format!("{}: no Trash (gio: {e})", path.display()))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!("{}: {}", path.display(), String::from_utf8_lossy(&out.stderr).trim()))
+    }
 }
 
 #[cfg(test)]

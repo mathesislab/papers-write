@@ -222,12 +222,14 @@ pub fn show(app: &AppHandle, section: Option<&str>) {
         Some(section) => format!("/settings#{section}"),
         None => "/settings".to_string(),
     };
-    let built = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App(url.into()))
+    let builder = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App(url.into()))
         .title("Settings")
         .inner_size(600.0, 680.0)
-        .min_inner_size(480.0, 420.0)
-        .tabbing_identifier("papers-write-settings")
-        .build();
+        .min_inner_size(480.0, 420.0);
+    // a window of its own, not a tab of a document's (macOS)
+    #[cfg(target_os = "macos")]
+    let builder = builder.tabbing_identifier("papers-write-settings");
+    let built = builder.build();
     match built {
         Ok(window) => {
             let _ = window.set_focus();

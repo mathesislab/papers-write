@@ -321,9 +321,12 @@ fn make_window(app: &AppHandle) -> tauri::Result<Window> {
     let mut builder = WindowBuilder::new(app, &label)
         .title(style.title)
         .inner_size(style.size.0, style.size.1)
-        .min_inner_size(style.least.0, style.least.1)
-        // never merged into AppKit's tabs: the pages draw their own
-        .tabbing_identifier(&label);
+        .min_inner_size(style.least.0, style.least.1);
+    // never merged into AppKit's tabs: the pages draw their own
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.tabbing_identifier(&label);
+    }
     builder = match at {
         Some((x, y)) => builder.position(x, y),
         None => builder.center(),

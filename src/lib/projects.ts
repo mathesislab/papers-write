@@ -13,6 +13,10 @@ export type Manifest = {
   /** what builds the Markdown documents: texmark (none) or Quarto; a `.qmd` is always Quarto's */
   engine: "texmark" | "quarto" | null;
   library: string | null;
+  /** Go to File and Find in Project: the .gitignore followed (null: it is), paths left out, paths brought back */
+  gitignore: boolean | null;
+  hide: string[];
+  show: string[];
 };
 
 /** mirrors projects::Card */

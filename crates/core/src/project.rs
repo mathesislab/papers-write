@@ -99,6 +99,13 @@ pub struct Manifest {
     pub engine: Option<Engine>,
     /// a `.bib` file or a papers library searched for references, beside the papers library of the user
     pub library: Option<PathBuf>,
+    /// Go to File and Find in Project: the project's `.gitignore` followed (none: it is), paths left out besides
+    /// the usual output folders, and paths brought back (exclude.rs); gitignore's patterns
+    pub gitignore: Option<bool>,
+    #[serde(default)]
+    pub hide: Vec<String>,
+    #[serde(default)]
+    pub show: Vec<String>,
 }
 
 /// `main = "paper.md"` or `main = ["paper.md", "supplement.md"]`.
@@ -228,6 +235,23 @@ impl Project {
         if manifest.library != old.library {
             text(doc, "library", path(&manifest.library).as_deref());
         }
+        if manifest.gitignore != old.gitignore {
+            match manifest.gitignore {
+                Some(false) => doc["gitignore"] = value(false),
+                _ => {
+                    doc.remove("gitignore");
+                }
+            }
+        }
+        for (key, new, was) in [("hide", &manifest.hide, &old.hide), ("show", &manifest.show, &old.show)] {
+            if new != was {
+                if new.is_empty() {
+                    doc.remove(key);
+                } else {
+                    doc[key] = Item::Value(new.iter().map(String::as_str).collect::<Array>().into());
+                }
+            }
+        }
     }
 
     /// The name, else the folder's.
@@ -280,6 +304,9 @@ impl Manifest {
             build: path(&self.build),
             engine: self.engine,
             library: path(&self.library),
+            gitignore: self.gitignore.filter(|g| !g),
+            hide: self.hide.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+            show: self.show.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
         }
     }
 }

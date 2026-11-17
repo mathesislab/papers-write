@@ -57,11 +57,23 @@
       build = m.build ?? "";
       engine = m.engine ?? "texmark";
       library = m.library ?? "";
-      main = m.main[0] ?? (next.documents.includes("paper.md") ? "paper.md" : next.defined ? (next.documents[0] ?? "") : NEW);
+      main = m.main[0] ?? likelyMain(next.documents) ?? (next.defined ? "" : NEW);
     } catch (e) {
       error = String(e);
     }
   }
+
+  /** The document a folder's main one most likely is: the one named after the folder (thesis.md in thesis/), else
+   *  paper.md, main.md or main.tex, else the first; none when the folder has no Markdown or LaTeX file. */
+  function likelyMain(documents: string[]): string | undefined {
+    const named = [`${folder}.md`, `${folder}.tex`, "paper.md", "main.md", "main.tex"];
+    return named.find((n) => documents.includes(n)) ?? documents[0];
+  }
+
+  /** The name typed for a new paper, unless it is a document of the folder already: then that document. */
+  const existing = $derived(main === NEW && card?.documents.includes(paper.trim()) ? paper.trim() : null);
+  /** The main document chosen: a document of the folder, or the name of the new paper. */
+  const chosen = $derived(existing ?? (main === NEW ? paper.trim() : main));
 
   /** What write.toml is to say. */
   function edited(c: Card): Manifest {
@@ -72,7 +84,7 @@
       short: unless(shortName, initials(name.trim() || folder), was.short),
       // no colour set and none chosen: unset still
       colour: was.colour === null && colour === "none" ? null : colour,
-      main: [main === NEW ? paper.trim() : main, ...was.main.slice(1)].filter(Boolean),
+      main: [chosen, ...was.main.slice(1)].filter(Boolean),
       build: blank(build),
       // texmark and none set: unset still
       engine: was.engine === null && engine === "texmark" ? null : engine,
@@ -85,7 +97,7 @@
     const manifest = edited(card);
     busy = true;
     try {
-      if (fresh) await invoke("create_project", { root, manifest, paper: main === NEW });
+      if (fresh) await invoke("create_project", { root, manifest, paper: main === NEW && !existing });
       else if (JSON.stringify(manifest) !== JSON.stringify(card.manifest)) await invoke("set_project_info", { root, manifest });
       onclose();
     } catch (e) {
@@ -153,7 +165,11 @@
         </select>
         {#if main === NEW}
           <input bind:value={paper} placeholder="paper.md" aria-label="Name of the new paper" autocomplete="off" spellcheck="false" />
-          <span class="hint">Front matter (title, authors, bibliography, journal to choose) and the headings of the sections</span>
+          {#if existing}
+            <span class="hint">{existing} is in the folder already: it becomes the main document as it is</span>
+          {:else}
+            <span class="hint">Front matter (title, authors, bibliography, journal to choose) and the headings of the sections</span>
+          {/if}
         {/if}
       </div>
 
@@ -187,7 +203,7 @@
   {#if error}<p class="error">{error}</p>{/if}
   <footer>
     <button type="button" onclick={cancel} disabled={busy}>Cancel</button>
-    <button type="submit" class="default" disabled={!card || busy || (fresh && !(main === NEW ? paper.trim() : main))}>{fresh ? "Create" : "Done"}</button>
+    <button type="submit" class="default" disabled={!card || busy || (fresh && !chosen)}>{fresh ? "Create" : "Done"}</button>
   </footer>
 </form>
 

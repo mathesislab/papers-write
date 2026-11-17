@@ -293,7 +293,12 @@
 
   /** The marks of Show in PDF taken off: the word's highlight unwrapped, the line's spans let go. */
   function clearMarks() {
-    for (const mark of container.querySelectorAll<HTMLElement>(".synced-word")) mark.replaceWith(...mark.childNodes);
+    for (const mark of container.querySelectorAll<HTMLElement>(".synced-word")) {
+      const parent = mark.parentNode;
+      mark.replaceWith(...mark.childNodes);
+      // its text one node again, as pdf.js made it: split, the next search would read only a part of it
+      parent?.normalize();
+    }
     for (const span of container.querySelectorAll<HTMLElement>(".synced-line")) span.classList.remove("highlight", "selected", "synced-line");
   }
 
@@ -310,7 +315,7 @@
     const pattern = m.word ? new RegExp(`(?<![\\p{L}\\p{N}])${m.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "giu") : null;
     const before = new Set(m.before.map((w) => w.toLowerCase()));
     const after = new Set(m.after.map((w) => w.toLowerCase()));
-    let best: { score: number; distance: number; parts: { node: Text; from: number; to: number }[] } | null = null;
+    let best: { score: number; distance: number; parts: { span: HTMLElement; from: number; to: number }[] } | null = null;
     let waiting = false;
     // the pages of the paragraph, whole: the map can give a paragraph's lines to other lines of the source, and the
     // words around the word, not the place, pick the right one; the most likely line only breaks ties
@@ -318,7 +323,12 @@
       const pageView = viewer.getPageView(page - 1);
       const pageDiv = pageView?.div as HTMLElement | undefined;
       if (!pageView || !pageDiv) continue;
-      const leaves = [...pageDiv.querySelectorAll<HTMLElement>(".textLayer span:not(.synced-word)")].filter((s) => s.firstChild?.nodeType === Node.TEXT_NODE);
+      // the text layer's spans of text: not the wrappers of others (pdf.js's marked content), not the highlights inside
+      // them (Find's, the marks), which are of their span's text
+      const isMark = (e: Element) => e.classList.contains("highlight") || e.classList.contains("synced-word");
+      const leaves = [...pageDiv.querySelectorAll<HTMLElement>(".textLayer span")].filter(
+        (s) => !isMark(s) && ![...s.children].some((c) => c.tagName === "SPAN" && !isMark(c)) && !!s.textContent,
+      );
       if (!leaves.length) {
         waiting = true;
         continue;
@@ -339,15 +349,14 @@
       }
       // their text, a space between spans except between two that touch (a word written in pieces: P and 4)
       let flat = "";
-      const pieces: { node: Text; start: number; middle: number }[] = [];
+      const pieces: { span: HTMLElement; start: number; middle: number }[] = [];
       for (const line of lines) {
         line.sort((x, y) => x.rect.left - y.rect.left);
         line.forEach(({ span, rect }, i) => {
           const prev = line[i - 1]?.rect;
           if (flat && !(prev && rect.left - prev.right < rect.height * 0.2)) flat += " ";
-          const node = span.firstChild as Text;
-          pieces.push({ node, start: flat.length, middle: rect.top + rect.height / 2 - origin });
-          flat += node.textContent ?? "";
+          pieces.push({ span, start: flat.length, middle: rect.top + rect.height / 2 - origin });
+          flat += span.textContent ?? "";
         });
       }
       if (!pattern) continue;
@@ -356,8 +365,8 @@
         const end = at + found[0].length;
         // the pieces the word is in (one, or several where the PDF writes it in pieces)
         const parts = pieces
-          .filter((p) => p.start < end && p.start + (p.node.textContent?.length ?? 0) > at)
-          .map((p) => ({ node: p.node, from: Math.max(0, at - p.start), to: Math.min(p.node.textContent?.length ?? 0, end - p.start), middle: p.middle }));
+          .filter((p) => p.start < end && p.start + (p.span.textContent?.length ?? 0) > at)
+          .map((p) => ({ span: p.span, from: Math.max(0, at - p.start), to: Math.min(p.span.textContent?.length ?? 0, end - p.start), middle: p.middle }));
         if (!parts.length) continue;
         const score =
           wordsOf(flat.slice(Math.max(0, at - 90), at)).slice(-6).filter((w) => before.has(w)).length +
@@ -370,12 +379,7 @@
       // each piece marked (from the last, so that the earlier ones' places hold)
       for (const part of [...best.parts].reverse()) {
         if (part.to <= part.from) continue;
-        const range = document.createRange();
-        range.setStart(part.node, part.from);
-        range.setEnd(part.node, part.to);
-        const mark = document.createElement("span");
-        mark.className = "highlight selected synced-word";
-        range.surroundContents(mark);
+        markText(part.span, part.from, part.to);
       }
       return best.score ? "word marked" : "word marked (its neighbours differ)";
     }
@@ -399,6 +403,29 @@
     return lines ? "line marked (the word is not in the PDF's text there)" : "nothing of the page's text there to mark";
   }
 
+
+  /** The characters [from, to) of a span's text wrapped in a mark, through whichever text nodes hold them (a span's
+   *  text can be in several: Find's highlights split it). */
+  function markText(span: HTMLElement, from: number, to: number) {
+    const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+    const nodes: { node: Text; start: number }[] = [];
+    let at = 0;
+    for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+      nodes.push({ node: n, start: at });
+      at += n.length;
+    }
+    for (const { node, start } of nodes.reverse()) {
+      const a = Math.max(from, start) - start;
+      const b = Math.min(to, start + node.length) - start;
+      if (b <= a) continue;
+      const range = document.createRange();
+      range.setStart(node, a);
+      range.setEnd(node, b);
+      const mark = document.createElement("span");
+      mark.className = "highlight selected synced-word";
+      range.surroundContents(mark);
+    }
+  }
 
   /** A page's text layer drawn anew (pdf.js makes it again as it draws the page): the mark drawn on it again. */
   function redrawn({ pageNumber }: { pageNumber: number }) {

@@ -22,6 +22,7 @@
   import { currentHeading, outline as outlineOf, type Heading } from "./outline";
   import {
     accept as acceptItem,
+    itemsAt,
     redoSuggestion,
     review as reviewOf,
     scrollToItem,
@@ -298,6 +299,8 @@
   }
   /** A suggestion accepted: its text put in, as typed (written as any change). */
   export const accept = (item: ReviewItem) => !!editor && !!review && acceptItem(editor, item);
+  /** The review's items at the cursor (its ends included), as drawn (with `review`). */
+  export const itemsHere = (): ReviewItem[] => (editor && review ? itemsAt(editor.state, editor.state.selection.main.head) : []);
   /** The item `id` scrolled to and selected; false if it is not shown. */
   export const scrollTo = (id: string) => !!editor && !!review && scrollToItem(editor, id);
   /** The lines at the cursor indented less or more (⌘[ and ⌘] of the Go menu). */

@@ -81,4 +81,9 @@ export type ReviewHandlers = {
   withdraw: (id: string) => Promise<void>;
   /** an item clicked in the text */
   select?: (id: string) => void;
+  /** a suggestion accepted or rejected, or a comment resolved, from its tooltip in the text (none: no buttons there) */
+  act?: (id: string, action: ReviewAction) => void;
 };
+
+/** What the tooltip of an item in the text offers: a suggestion accepted or rejected, a comment resolved. */
+export type ReviewAction = "accept" | "reject" | "resolve";

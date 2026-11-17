@@ -62,6 +62,8 @@ pub struct Settings {
     pub appearance: Appearance,
     /// the windows' zoom, all they show (⌘= ⌘− ⌘0 on a text): 1 is as designed
     pub zoom: f64,
+    /// the interface as large as the text asks: text set larger than the default makes the windows larger (`scale`)
+    pub interface_follows_text: bool,
     pub line_numbers: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
@@ -102,6 +104,7 @@ impl Default for Settings {
             text_width: 46.0,
             appearance: Appearance::System,
             zoom: 1.0,
+            interface_follows_text: true,
             line_numbers: false,
             spelling: true,
             symbols: Vec::new(),
@@ -156,6 +159,14 @@ impl Settings {
             Settings::default().text_width
         };
         self
+    }
+
+    /// How much the windows are scaled: the zoom, and with the interface following the text, as much again as the text
+    /// is larger than the default (the interface's text then about `INTERFACE` of the editor's; the editors draw their
+    /// text that much smaller, `textScale` of settings.ts, so that it stays the size set). Never smaller than the zoom.
+    pub fn scale(&self) -> f64 {
+        let follow = if self.interface_follows_text { (INTERFACE * self.editor_size / INTERFACE_SIZE).max(1.0) } else { 1.0 };
+        self.zoom * follow
     }
 
     /// The file set for the tool `name` (texmark, quarto, latexmk, pandoc); none when it is to be found as usual.
@@ -218,7 +229,7 @@ fn put(app: &AppHandle, settings: Settings) {
     chosen_tools(&settings);
     themed(app, settings.appearance);
     for webview in app.webviews().values() {
-        let _ = webview.set_zoom(settings.zoom);
+        let _ = webview.set_zoom(settings.scale());
     }
     if let Some(dir) = DIR.get() {
         settings.save(dir);
@@ -285,11 +296,15 @@ pub fn toggle_full_width(app: &AppHandle) {
 #[tauri::command]
 pub fn settings(webview: tauri::Webview) -> Settings {
     let settings = get();
-    if settings.zoom != 1.0 {
-        let _ = webview.set_zoom(settings.zoom);
+    if settings.scale() != 1.0 {
+        let _ = webview.set_zoom(settings.scale());
     }
     settings
 }
+
+/// The interface's text (px, theme.css) and the share of the editor's text it is, when it follows it.
+const INTERFACE_SIZE: f64 = 13.0;
+const INTERFACE: f64 = 0.85;
 
 /// The least and most zoom of the windows.
 const ZOOM: (f64, f64) = (0.5, 2.0);
@@ -421,6 +436,7 @@ mod tests {
             text_width: 60.0,
             appearance: Appearance::Dark,
             zoom: 1.2,
+            interface_follows_text: false,
             line_numbers: true,
             spelling: false,
             symbols: vec![("(c)".into(), "©".into()), ("->".into(), String::new())],

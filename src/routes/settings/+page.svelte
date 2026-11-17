@@ -358,6 +358,13 @@
         </label>
         <label class="row">
           <span>
+            <span class="label">Interface follows the text size</span>
+            <span class="hint">With the text set larger than the default, menus, fields and icons grow with it (their text about 85% of the editor's)</span>
+          </span>
+          <input type="checkbox" class="switch" bind:checked={settings.interface_follows_text} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
             <span class="label">Appearance</span>
             <span class="hint">Light or dark, or as the system is; also in the View menu and the toolbar</span>
           </span>

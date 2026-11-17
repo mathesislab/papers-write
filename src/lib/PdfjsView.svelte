@@ -300,10 +300,12 @@
     const pattern = m.word ? new RegExp(`(?<![\\p{L}\\p{N}])${m.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "giu") : null;
     const before = new Set(m.before.map((w) => w.toLowerCase()));
     const after = new Set(m.after.map((w) => w.toLowerCase()));
-    let best: { score: number; distance: number; node: Text; at: number; length: number } | null = null;
+    let best: { score: number; distance: number; parts: { node: Text; from: number; to: number }[] } | null = null;
     let waiting = false;
-    for (const region of m.regions) {
-      const pageView = viewer.getPageView(region.page - 1);
+    // the pages of the paragraph, whole: the map can give a paragraph's lines to other lines of the source, and the
+    // words around the word, not the place, pick the right one; the most likely line only breaks ties
+    for (const page of [...new Set(m.regions.map((r) => r.page))]) {
+      const pageView = viewer.getPageView(page - 1);
       const pageDiv = pageView?.div as HTMLElement | undefined;
       if (!pageView || !pageDiv) continue;
       const leaves = [...pageDiv.querySelectorAll<HTMLElement>(".textLayer span:not(.synced-word)")].filter((s) => s.firstChild?.nodeType === Node.TEXT_NODE);
@@ -311,47 +313,60 @@
         waiting = true;
         continue;
       }
-      // the band of the region in the page's pixels, and the most likely line's middle there
       const [, , , top] = pageView.viewport.viewBox;
       const yOf = (fromTop: number) => pageView.viewport.convertToViewportPoint(0, top - fromTop)[1] as number;
       const origin = pageDiv.getBoundingClientRect().top + pageDiv.clientTop;
-      const [bandTop, bandBottom] = [yOf(region.top), yOf(region.bottom)].sort((a, b) => a - b);
-      const lineMiddle = region.page === m.page ? (yOf(top - m.line[1]) + yOf(top - m.line[3])) / 2 : null;
-      const inBand = leaves
-        .map((span) => ({ span, rect: span.getBoundingClientRect() }))
-        .filter(({ rect }) => {
-          const middle = rect.top + rect.height / 2 - origin;
-          return middle >= bandTop - 2 && middle <= bandBottom + 2;
-        })
-        .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
-      // the band's text in reading order, each span's text node and where it starts in it
+      const lineMiddle = page === m.page ? (yOf(top - m.line[1]) + yOf(top - m.line[3])) / 2 : null;
+      // the spans in reading order: grouped in lines (their middles within half a line of each other: a citation, a
+      // figure in another font sit a little higher or lower), each line from left to right
+      const placed = leaves.map((span) => ({ span, rect: span.getBoundingClientRect() })).sort((x, y) => x.rect.top + x.rect.height / 2 - (y.rect.top + y.rect.height / 2));
+      const lines: (typeof placed)[] = [];
+      for (const p of placed) {
+        const last = lines[lines.length - 1];
+        const mid = (r: DOMRect) => r.top + r.height / 2;
+        if (last && Math.abs(mid(last[0].rect) - mid(p.rect)) < Math.max(p.rect.height, last[0].rect.height) / 2) last.push(p);
+        else lines.push([p]);
+      }
+      // their text, a space between spans except between two that touch (a word written in pieces: P and 4)
       let flat = "";
       const pieces: { node: Text; start: number; middle: number }[] = [];
-      for (const { span, rect } of inBand) {
-        const node = span.firstChild as Text;
-        pieces.push({ node, start: flat.length, middle: rect.top + rect.height / 2 - origin });
-        flat += (node.textContent ?? "") + " ";
+      for (const line of lines) {
+        line.sort((x, y) => x.rect.left - y.rect.left);
+        line.forEach(({ span, rect }, i) => {
+          const prev = line[i - 1]?.rect;
+          if (flat && !(prev && rect.left - prev.right < rect.height * 0.2)) flat += " ";
+          const node = span.firstChild as Text;
+          pieces.push({ node, start: flat.length, middle: rect.top + rect.height / 2 - origin });
+          flat += node.textContent ?? "";
+        });
       }
       if (!pattern) continue;
       for (const found of flat.matchAll(pattern)) {
         const at = found.index ?? 0;
-        const piece = pieces.findLast((p) => p.start <= at);
-        if (!piece || at + found[0].length > piece.start + (piece.node.textContent?.length ?? 0)) continue;
+        const end = at + found[0].length;
+        // the pieces the word is in (one, or several where the PDF writes it in pieces)
+        const parts = pieces
+          .filter((p) => p.start < end && p.start + (p.node.textContent?.length ?? 0) > at)
+          .map((p) => ({ node: p.node, from: Math.max(0, at - p.start), to: Math.min(p.node.textContent?.length ?? 0, end - p.start), middle: p.middle }));
+        if (!parts.length) continue;
         const score =
           wordsOf(flat.slice(Math.max(0, at - 90), at)).slice(-6).filter((w) => before.has(w)).length +
-          wordsOf(flat.slice(at + found[0].length, at + found[0].length + 90)).slice(0, 6).filter((w) => after.has(w)).length;
-        const distance = lineMiddle === null ? 1e6 : Math.abs(piece.middle - lineMiddle);
-        if (!best || score > best.score || (score === best.score && distance < best.distance))
-          best = { score, distance, node: piece.node, at: at - piece.start, length: found[0].length };
+          wordsOf(flat.slice(end, end + 90)).slice(0, 6).filter((w) => after.has(w)).length;
+        const distance = lineMiddle === null ? 1e6 : Math.abs(parts[0].middle - lineMiddle);
+        if (!best || score > best.score || (score === best.score && distance < best.distance)) best = { score, distance, parts };
       }
     }
     if (best) {
-      const range = document.createRange();
-      range.setStart(best.node, best.at);
-      range.setEnd(best.node, best.at + best.length);
-      const mark = document.createElement("span");
-      mark.className = "highlight selected synced-word";
-      range.surroundContents(mark);
+      // each piece marked (from the last, so that the earlier ones' places hold)
+      for (const part of [...best.parts].reverse()) {
+        if (part.to <= part.from) continue;
+        const range = document.createRange();
+        range.setStart(part.node, part.from);
+        range.setEnd(part.node, part.to);
+        const mark = document.createElement("span");
+        mark.className = "highlight selected synced-word";
+        range.surroundContents(mark);
+      }
       return best.score ? "word marked" : "word marked (its neighbours differ)";
     }
     if (waiting) return "marked once the page is drawn";

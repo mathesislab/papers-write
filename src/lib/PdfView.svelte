@@ -2,14 +2,16 @@
   // A PDF in PDFKit, as Preview shows it (tauri-plugin-pdfkit, as papers-review has it): a native view over the area
   // of this element, kept in place as the area changes; the props and the commands of every view of a PDF (`PdfViewer`,
   // pdf.ts). The commands go to the view in order: a search typed letter by letter must not land after the next one.
+  // A ⌘-click and a right-click come from the view with the page's text and the place clicked in it (`onClick`).
 
   import { onMount } from "svelte";
   import * as pdfkit from "tauri-plugin-pdfkit-api";
-  import type { Entry, Turn } from "tauri-plugin-pdfkit-api";
-  import type { OutlineItem, PdfViewProps } from "$lib/pdf";
+  import type { Click, Entry, Place, Turn } from "tauri-plugin-pdfkit-api";
+  import { lineOfText, spoken, wordAround, type OutlineItem, type PdfViewProps, type Spot } from "$lib/pdf";
+  import { pdfMenu } from "$lib/pdfMenu";
 
   // `covered`: hidden while the page shows a card over it, as the view lies above all of the page
-  let { path, page = 1, covered = false, onpage, onhistory, onopen, onoutline }: PdfViewProps = $props();
+  let { path, page = 1, covered = false, onpage, onhistory, onopen, onoutline, onsource, menuItem = null }: PdfViewProps = $props();
 
   let area: HTMLDivElement;
   // names this view for `cover` and `close`: the PDF read again has a view made anew while the old one goes
@@ -81,6 +83,26 @@
     return send(() => pdfkit.find(text, again, backwards));
   }
 
+  /** A click on a place of the PDF as Go to Source takes it: the line (with the next when it is short), the point, the
+   *  word and the words around it; none off the text. */
+  function spotOf(place: Place | null): Spot | null {
+    if (!place?.line || place.index === null) return null;
+    const at = { page: place.page, x: place.x, y: place.y };
+    return { line: lineOfText(place.text, place.line[0], place.line[1]), at, ...wordAround(place.text, place.index) };
+  }
+
+  /** A ⌘-click: the source there; a right-click: the menu of a PDF's text (pdfMenu), at the pointer. */
+  function clicked({ menu, client, place, selected }: Click) {
+    const spot = spotOf(place);
+    if (!menu) {
+      if (spot) onsource?.(spot);
+      return;
+    }
+    // the page from the line clicked, for Read Aloud from Here
+    const fromHere = place?.line ? spoken(place.text.slice(place.line[0])) : "";
+    void pdfMenu(spot, selected.trim(), fromHere, { onsource, menuItem }, client.x, client.y);
+  }
+
   // a card shown or gone after the PDF opened
   let opening = true;
   $effect(() => {
@@ -99,6 +121,7 @@
     resize.observe(area);
     const unlisten = pdfkit.onPage((p) => onpage(p));
     const unlistenHistory = pdfkit.onHistory((h) => onhistory?.(h));
+    const unlistenClick = pdfkit.onClick(clicked);
     send(() => pdfkit.open(id, shown, page, pdfkit.frameOf(area), covered))
       .then(({ count, outline }) => {
         opened = true;
@@ -110,6 +133,7 @@
       resize.disconnect();
       unlisten.then((f) => f());
       unlistenHistory.then((f) => f());
+      unlistenClick.then((f) => f());
       send(() => pdfkit.close(id));
     };
   });

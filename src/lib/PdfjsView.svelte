@@ -178,13 +178,21 @@
     return text;
   }
 
-  /** ⌃-click, or a double-click (not one that selected several words: a selection made by tap and drag), on the
-   *  text: its place in the source (Go to Source). */
+  /** where the second press of a double-click was: a double-click whose pointer moved before it was let go is a
+   *  selection (double-tap and drag), not a double-click */
+  let secondPress: { x: number; y: number } | null = null;
+  function pressed(e: MouseEvent) {
+    if (e.detail >= 2) secondPress = { x: e.clientX, y: e.clientY };
+  }
+
+  /** ⌃-click, or a double-click (one that did not drag: a selection made by tap and drag stays one), on the text:
+   *  its place in the source (Go to Source). */
   function sourceClick(e: MouseEvent) {
     if (!onsource || e.button !== 0) return;
     if (e.type === "dblclick") {
-      const selected = window.getSelection()?.toString().trim() ?? "";
-      if (/\s/.test(selected)) return;
+      const moved = secondPress && Math.hypot(e.clientX - secondPress.x, e.clientY - secondPress.y) > 4;
+      secondPress = null;
+      if (moved) return;
       window.getSelection()?.removeAllRanges();
     } else if (!(e.ctrlKey || e.metaKey)) return;
     const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
@@ -483,6 +491,7 @@
     let task: PDFDocumentLoadingTask | null = null;
     container.addEventListener("click", sourceClick, true);
     container.addEventListener("dblclick", sourceClick, true);
+    container.addEventListener("mousedown", pressed, true);
     container.addEventListener("contextmenu", sourceMenu);
     const pages = document.createElement("div");
     pages.className = "pdfViewer";
@@ -566,6 +575,7 @@
     return () => {
       container.removeEventListener("click", sourceClick, true);
       container.removeEventListener("dblclick", sourceClick, true);
+      container.removeEventListener("mousedown", pressed, true);
       container.removeEventListener("contextmenu", sourceMenu);
       resize.disconnect();
       task?.destroy();

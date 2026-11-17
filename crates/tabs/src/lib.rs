@@ -434,8 +434,13 @@ fn behind(page: &Webview, other: &Webview) {
             });
         });
     }
+    // GTK does not stack a window's child webviews: it lays them out one after the other, each taking part of the
+    // window. A page not in front is hidden instead (shown again by `reveal`).
     #[cfg(not(target_os = "macos"))]
-    let _ = (page, other);
+    {
+        let _ = other;
+        let _ = page.hide();
+    }
 }
 
 /// The page of the window's tab in front put above the window's other pages, once it is drawn; till then the page
@@ -452,6 +457,9 @@ fn reveal(app: &AppHandle, window: &str) {
         return;
     };
     app.state::<Tabs>().on_top.lock().unwrap().insert(window.to_string(), front.clone());
+    // outside macOS the pages behind are hidden (`behind`): the one in front is shown
+    #[cfg(not(target_os = "macos"))]
+    let _ = shown.show();
     for other in pages_of(app, window) {
         if let Some(webview) = app.get_webview(&other) {
             if other != front {
@@ -481,7 +489,11 @@ pub fn select(app: &AppHandle, page: &str) {
     if let Some(window) = app.get_window(&window_label) {
         let _ = window.set_title(&window_title(app, page));
         let _ = window.unminimize();
-        let _ = window.show();
+        // GTK shows a window with `show_all`, which shows again the pages hidden behind the one in front (`behind`):
+        // a window shown already is not shown again
+        if !cfg!(target_os = "linux") || !window.is_visible().unwrap_or(false) {
+            let _ = window.show();
+        }
         let _ = window.set_focus();
     }
     reveal(app, &window_label);

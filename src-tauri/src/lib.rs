@@ -227,6 +227,7 @@ pub fn run() {
             pdfsync::pdf_boxes,
             pdfsync::place_in_text,
             menu::view_shown,
+            menu::sidebar_shown,
             sidepdf::side_pdf,
             profiles::build_profiles,
             profiles::set_build_profile,

@@ -125,6 +125,16 @@
     barTimer = setTimeout(loadBar, ms);
   }
 
+  // View ▸ Show Sidebar and Show Outline say Hide while they are shown: told as they change, and as the window comes
+  // to the front
+  $effect(() => {
+    const [shown, outline] = [side.shown, side.shown && sideTab === "outline"];
+    const tell = () => invoke("sidebar_shown", { shown, outline }).catch(() => {});
+    tell();
+    window.addEventListener("focus", tell);
+    return () => window.removeEventListener("focus", tell);
+  });
+
   export function toggleSidebar() {
     if (!sideRoot) return onsay("Save the document first, to see its folder");
     side.set({ shown: !side.shown });

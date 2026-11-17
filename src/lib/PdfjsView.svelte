@@ -194,7 +194,17 @@
     if (!layer || !range) return { before: [], after: [] };
     // the text layer's spans in reading order, and the place of the pointer in their text
     const spans = [...layer.querySelectorAll<HTMLElement>("span")].filter((s) => !s.querySelector("span") && s.textContent);
-    const placed = spans.map((s) => ({ s, r: s.getBoundingClientRect() })).sort((a, b) => Math.round(a.r.top - b.r.top) || a.r.left - b.r.left);
+    // in reading order: grouped in lines (middles within half a line: a citation, a figure in another font sit a
+    // little higher or lower), each line from left to right
+    const mid = (r: DOMRect) => r.top + r.height / 2;
+    const bySide = spans.map((s) => ({ s, r: s.getBoundingClientRect() })).sort((a, b) => mid(a.r) - mid(b.r));
+    const lines: (typeof bySide)[] = [];
+    for (const p of bySide) {
+      const last = lines[lines.length - 1];
+      if (last && Math.abs(mid(last[0].r) - mid(p.r)) < Math.max(p.r.height, last[0].r.height) / 2) last.push(p);
+      else lines.push([p]);
+    }
+    const placed = lines.flatMap((line) => line.sort((a, b) => a.r.left - b.r.left));
     const { text, starts } = joined(placed);
     let at = -1;
     placed.forEach(({ s }, i) => {

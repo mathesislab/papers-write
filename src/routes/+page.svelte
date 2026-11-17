@@ -335,7 +335,9 @@
     const head = view.state.selection.main.head;
     const line = view.state.doc.lineAt(head);
     // exactly, from the map the build left beside the PDF; else by the words around the cursor
-    if (await sidePdf?.showSource(path, line.number)) return;
+    const range = view.state.wordAt(head);
+    const word = range ? view.state.sliceDoc(range.from, range.to) : "";
+    if (await sidePdf?.showSource(path, line.number, word)) return;
     for (const phrase of phrasesAt(line.text, head - line.from)) {
       if (await sidePdf?.find(phrase)) return;
     }

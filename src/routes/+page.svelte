@@ -32,6 +32,7 @@
   // it changes.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { onMount, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
   import { ensureSyntaxTree } from "@codemirror/language";
@@ -173,8 +174,14 @@
     path = (await invoke<{ path: string | null }>("document")).path;
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
-    const going = await invoke<{ at: number; end: number } | null>("pending_go_to").catch(() => null);
-    if (going) queueMicrotask(() => editor?.select(going.at, going.end));
+    const going = await invoke<{ at: number; end: number; mark: boolean } | null>("pending_go_to").catch(() => null);
+    if (going) queueMicrotask(() => goTo(going));
+  }
+
+  /** A place to go to: a match selected, or a place found from a PDF marked (the cursor at its start). */
+  function goTo(go: { at: number; end: number; mark: boolean }) {
+    if (go.mark) editor?.markFound(go.at, go.end);
+    else editor?.select(go.at, go.end);
   }
 
   /** the reviews sent back and joined to this document (the backend says them, a window made for it is not listening yet) */
@@ -254,8 +261,50 @@
     if (pdfBeside) [previewing, panel] = [false, false];
   }
 
-  /** View ▸ Show in PDF: the words around the cursor looked for in the PDF beside the text (shown first if it is
-   *  not), the longest phrase of them first. */
+  let previewPane = $state<Preview>();
+
+  /** ⌃-click in the text, or Show in … of its menu: where the cursor is, shown in the pane beside it: the preview's
+   *  block when the preview is shown, else in the PDF (shown first when it is not). */
+  function syncHere() {
+    if (previewing && markdown) {
+      follow();
+      queueMicrotask(() => previewPane?.flash());
+    } else void showInPdf();
+  }
+
+  /** A right-click in the text: Show in Preview or in PDF, and the edits of the selection. */
+  async function editorMenu() {
+    const where = previewing && markdown ? "Preview" : "PDF";
+    const mod = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl";
+    const items = await Promise.all([
+      MenuItem.new({ text: `Show in ${where} (${mod}-click)`, enabled: !!path, action: syncHere }),
+      PredefinedMenuItem.new({ item: "Separator" }),
+      PredefinedMenuItem.new({ item: "Cut" }),
+      PredefinedMenuItem.new({ item: "Copy" }),
+      PredefinedMenuItem.new({ item: "Paste" }),
+      PredefinedMenuItem.new({ item: "SelectAll" }),
+    ]);
+    await (await Menu.new({ items })).popup();
+  }
+
+  /** ⌃-click in the preview: the words of its block looked for in the text, the word clicked marked there. */
+  async function previewToSource(text: string, word: string) {
+    const place = await invoke<[number, number] | null>("place_in_text", { text: current(), query: text, word }).catch(() => null);
+    if (place) editor?.markFound(place[0], place[1]);
+    else say("Not found in the text");
+  }
+
+  // View ▸ Show Preview and Show PDF say Hide while shown: told as they change, and as the window comes to the front
+  $effect(() => {
+    const shown = { preview: previewing && markdown, pdf: pdfBeside };
+    const tell = () => invoke("view_shown", shown).catch(() => {});
+    tell();
+    window.addEventListener("focus", tell);
+    return () => window.removeEventListener("focus", tell);
+  });
+
+  /** Show in PDF: the place of the cursor in the PDF beside the text (shown first if it is not): exactly from the
+   *  map the build left beside the PDF, else by the words around the cursor, the longest phrase of them first. */
   async function showInPdf() {
     const view = editor?.view();
     if (!view || !path) return;
@@ -275,8 +324,8 @@
   }
 
   /** ⌃-click in the PDF beside the text: its source there (this text, or another file in its tab). */
-  async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null) {
-    const found = await invoke<boolean>("open_source_at", { pdf, text, at }).catch(() => false);
+  async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null, word = "") {
+    const found = await invoke<boolean>("open_source_at", { pdf, text, at, word }).catch(() => false);
     if (!found) say("Not found in the project's sources");
   }
 
@@ -565,9 +614,8 @@
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", togglePreview),
       listen("pdf-beside", togglePdf),
-      listen("show-in-pdf", () => void showInPdf()),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
-      listen<{ at: number; end: number }>("go-to", (e) => editor?.select(e.payload.at, e.payload.end)),
+      listen<{ at: number; end: number; mark: boolean }>("go-to", (e) => goTo(e.payload)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
       listen<string>("find", (e) => findCommand(e.payload)),
       listen<Format>("format", (e) => editor?.format(e.payload)),
@@ -636,6 +684,8 @@
         mono={!markdown && !latex}
         {latex}
         {prefs}
+        onsync={syncHere}
+        oncontext={editorMenu}
         {symbols}
         {completion}
         {hover}
@@ -655,11 +705,17 @@
   {#if previewing && markdown}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
-    <div class="pane" style:width={width ? `${width}px` : "45%"}><Preview {html} error={said} {block} /></div>
+    <div class="pane" style:width={width ? `${width}px` : "45%"}>
+      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} />
+      <button class="close-pane" onclick={togglePreview} title="Hide Preview" aria-label="Hide Preview">×</button>
+    </div>
   {:else if pdfBeside && path}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
-    <div class="pane" style:width={width ? `${width}px` : "45%"}><SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} /></div>
+    <div class="pane" style:width={width ? `${width}px` : "45%"}>
+      <SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} />
+      <button class="close-pane" onclick={togglePdf} title="Hide PDF" aria-label="Hide PDF">×</button>
+    </div>
   {/if}
   {#if panel}
     <div class="pane review"><ReviewPanel {session} /></div>
@@ -780,9 +836,31 @@
     background: var(--line);
   }
   .pane {
+    position: relative;
     flex: none;
     min-width: 240px;
     max-width: 80%;
+  }
+  /* the pane closed: its × at the top right */
+  .close-pane {
+    position: absolute;
+    z-index: 4;
+    top: 3px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    opacity: 0.85;
+  }
+  .close-pane:hover {
+    color: var(--fg);
+    opacity: 1;
   }
   .review {
     width: 320px;

@@ -165,7 +165,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
             &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
-            &item("show-in-pdf", "Show in PDF", Some("Alt+CmdOrCtrl+J"))?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
         ],
@@ -316,7 +315,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
-        "preview" | "pdf-beside" | "show-in-pdf" | "outline" | "sidebar" => {
+        "preview" | "pdf-beside" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
             }
@@ -353,5 +352,22 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         _ => {}
+    }
+}
+
+/// An item of the menu bar, in whichever menu it is.
+fn item_of(app: &AppHandle, id: &str) -> Option<MenuItem<Wry>> {
+    let menu = app.menu()?;
+    menu.items().ok()?.into_iter().find_map(|kind| kind.as_submenu().and_then(|s| s.get(id)).and_then(|i| i.as_menuitem().cloned()))
+}
+
+/// View ▸ Show Preview and Show PDF saying Hide when the page in front shows them (as it tells, when they change and
+/// when its window comes to the front).
+#[tauri::command]
+pub fn view_shown(app: AppHandle, preview: bool, pdf: bool) {
+    for (id, shown, name) in [("preview", preview, "Preview"), ("pdf-beside", pdf, "PDF")] {
+        if let Some(item) = item_of(&app, id) {
+            let _ = item.set_text(format!("{} {name}", if shown { "Hide" } else { "Show" }));
+        }
     }
 }

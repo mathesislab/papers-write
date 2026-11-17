@@ -14,7 +14,7 @@
   import { listen } from "$lib/events";
 
   type At = { page: number; x: number; y: number };
-  let { onsource, onsay }: { onsource: (pdf: string, text: string, at: At | null) => void; onsay: (what: string) => void } = $props();
+  let { onsource, onsay }: { onsource: (pdf: string, text: string, at: At | null, word: string) => void; onsay: (what: string) => void } = $props();
 
   type Offered = { path: string; name: string; modified: number };
   type Side = { pdf: string | null; offered: Offered[] };
@@ -111,7 +111,7 @@
           {page}
           onpage={(p) => (page = p)}
           onopen={(count) => (page = Math.min(page, count))}
-          onsource={(text: string, at: At | null) => side?.pdf && onsource(side.pdf, text, at)}
+          onsource={(text: string, at: At | null, word: string) => side?.pdf && onsource(side.pdf, text, at, word)}
         />
       {/key}
     {:else if side}
@@ -138,7 +138,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 8px;
+    /* room at the right for the page's × of the pane */
+    padding: 4px 34px 4px 8px;
     border-bottom: 1px solid var(--line);
     background: var(--bg);
     font-size: 12px;

@@ -24,11 +24,14 @@ const MOST: usize = 2000;
 #[derive(Default)]
 pub struct GoTos(Mutex<HashMap<String, GoTo>>);
 
-/// A match to select in the editor: `go-to`, `pending_go_to`.
+/// A match to select in the editor: `go-to`, `pending_go_to`. With `mark`, the cursor goes to its start and the match
+/// is marked till the user types or moves, rather than selected (where typing would replace it): a place found from
+/// a PDF.
 #[derive(Clone, Copy, Serialize)]
 pub struct GoTo {
     at: usize,
     end: usize,
+    mark: bool,
 }
 
 /// Replace all in a window's text: `replace-all`.
@@ -94,13 +97,21 @@ fn replace_in(app: &AppHandle, path: &Path, query: &Query, with: &str) -> Result
 /// A file opened (as File ▸ Open does) with the match at `at..end` selected. A PDF is opened only.
 #[tauri::command]
 pub fn open_at(app: AppHandle, path: String, at: usize, end: usize) -> Result<(), String> {
-    let path = Path::new(&path);
+    go_to(&app, Path::new(&path), GoTo { at, end, mark: false })
+}
+
+/// A file opened with [at, end) marked, the cursor at its start (a place found from a PDF).
+pub fn open_marked(app: &AppHandle, path: &Path, at: usize, end: usize) -> Result<(), String> {
+    go_to(app, path, GoTo { at, end, mark: true })
+}
+
+fn go_to(app: &AppHandle, path: &Path, go: GoTo) -> Result<(), String> {
+    let app = app.clone();
     let shown = documents::label_of(&app, path);
     documents::open_file(&app, path)?;
     if documents::is_pdf(path) {
         return Ok(());
     }
-    let go = GoTo { at, end };
     match (shown, documents::label_of(&app, path)) {
         (Some(label), _) => app.emit_to(EventTarget::webview(label), "go-to", go).map_err(|e| e.to_string()),
         (None, Some(label)) => {

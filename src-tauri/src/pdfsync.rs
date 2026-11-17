@@ -48,7 +48,7 @@ fn offset_of(text: &str, line: u32, column: usize) -> usize {
 }
 
 /// Where the text clicked in `pdf` is in its sources: the file, and the UTF-16 offset of the words found.
-pub fn find(pdf: &Path, text: &str, word: &str) -> Option<(PathBuf, usize, usize)> {
+pub fn find(pdf: &Path, text: &str, word: &str, around: &Around) -> Option<(PathBuf, usize, usize)> {
     let root = root_of(pdf)?;
     let files = sources(&root);
     let texts: Vec<String> = files.iter().map(|f| std::fs::read_to_string(f).unwrap_or_default()).collect();
@@ -56,22 +56,58 @@ pub fn find(pdf: &Path, text: &str, word: &str) -> Option<(PathBuf, usize, usize
     let places = srcmap::find_text(&refs, text);
     let modified = |p: &Place| std::fs::metadata(&files[p.text]).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
     let place = places.iter().max_by_key(|p| modified(p))?;
-    let (from, to) = span_of(&texts[place.text], place.line, place.column, word);
+    let (from, to) = span_of(&texts[place.text], place.line, place.column, word, around);
     Some((files[place.text].clone(), from, to))
 }
 
-/// What to mark in line `line` (1-based) of `text`, from byte `column` of it on: the word clicked, where it is
-/// there (its first place from `column`, else from the line's start); else the word at `column`. Its start and end as
-/// UTF-16 offsets of `text`, as the editor counts.
-fn span_of(text: &str, line: u32, column: usize, word: &str) -> (usize, usize) {
+/// The words around the word clicked in a PDF, which pick its place in the source line among the word's places there.
+#[derive(serde::Deserialize, Default, Clone)]
+pub struct Around {
+    #[serde(default)]
+    before: Vec<String>,
+    #[serde(default)]
+    after: Vec<String>,
+}
+
+/// The words of a text as they compare: lower case, letters and digits, two at least.
+fn words_of(text: &str) -> Vec<String> {
+    text.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| w.chars().count() > 1).map(str::to_string).collect()
+}
+
+/// What to mark in line `line` (1-based) of `text`: the word clicked, at its place in the line whose neighbours are
+/// most like those it had in the PDF (`around`), the nearest to byte `column` among equals; else the word at `column`.
+/// Its start and end as UTF-16 offsets of `text`, as the editor counts.
+fn span_of(text: &str, line: u32, column: usize, word: &str, around: &Around) -> (usize, usize) {
     let content = text.split('\n').nth(line.saturating_sub(1) as usize).unwrap_or("");
     let column = column.min(content.len());
     let word = word.trim_matches(|c: char| !c.is_alphanumeric());
-    let found = (!word.is_empty())
-        .then(|| content.get(column..).and_then(|rest| rest.find(word)).map(|i| column + i).or_else(|| content.find(word)))
-        .flatten();
-    let (start, end) = match found {
-        Some(i) => (i, i + word.len()),
+    let lower = content.to_lowercase();
+    let is_word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric());
+    let mut best: Option<(usize, usize, usize)> = None;
+    if !word.is_empty() && lower.len() == content.len() {
+        let target = word.to_lowercase();
+        let mut from = 0;
+        while let Some(i) = lower[from..].find(&target).map(|i| from + i) {
+            from = i + target.len();
+            if is_word(content[..i].chars().next_back()) || is_word(content[i + target.len()..].chars().next()) {
+                continue;
+            }
+            // some words either side, cut where a character starts
+            let a = (i.saturating_sub(120)..=i).find(|&k| content.is_char_boundary(k)).unwrap_or(i);
+            let end = i + target.len();
+            let b = (end..=(end + 120).min(content.len())).rev().find(|&k| content.is_char_boundary(k)).unwrap_or(end);
+            let before = words_of(&content[a..i]);
+            let after = words_of(&content[end..b]);
+            let score = before.iter().rev().take(6).filter(|w| around.before.contains(w)).count()
+                + after.iter().take(6).filter(|w| around.after.contains(w)).count();
+            let distance = i.abs_diff(column);
+            if best.is_none_or(|(s, d, _)| score > s || (score == s && distance < d)) {
+                best = Some((score, distance, i));
+            }
+        }
+    }
+    let (start, end) = match best {
+        Some((_, _, i)) => (i, i + word.len()),
         None => {
             let rest = content.get(column..).unwrap_or("");
             let len = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
@@ -132,16 +168,17 @@ fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
 /// ⌃-click in a PDF: the source of the place clicked opened at it (as the sidebar's search opens a match), exactly
 /// from the build's map when there is one, else by the words clicked; false when it is found in none of the sources.
 #[tauri::command]
-pub async fn open_source_at(app: AppHandle, pdf: String, text: String, at: Option<At>, word: Option<String>) -> Result<bool, String> {
+pub async fn open_source_at(app: AppHandle, pdf: String, text: String, at: Option<At>, word: Option<String>, around: Option<Around>) -> Result<bool, String> {
     let word = word.unwrap_or_default();
+    let around = around.unwrap_or_default();
     let found = tauri::async_runtime::spawn_blocking(move || {
         let pdf = Path::new(&pdf);
         if let Some((file, line)) = at.and_then(|at| exact(pdf, at)) {
             let source = std::fs::read_to_string(&file).unwrap_or_default();
-            let (from, to) = span_of(&source, line, 0, &word);
+            let (from, to) = span_of(&source, line, 0, &word, &around);
             return Some((file, from, to));
         }
-        find(pdf, &text, &word)
+        find(pdf, &text, &word, &around)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -163,12 +200,25 @@ mod tests {
         let text = "intro\nThe sea level rises, as the sea warms.\n";
         let line2 = 6;
         // after the run found (from its column), else from the start
-        assert_eq!(span_of(text, 2, "The sea level rises, as ".len(), "sea"), (line2 + 28, line2 + 31));
-        assert_eq!(span_of(text, 2, 0, "level"), (line2 + 8, line2 + 13));
+        let none = Around::default();
+        assert_eq!(span_of(text, 2, "The sea level rises, as ".len(), "sea", &none), (line2 + 28, line2 + 31));
+        assert_eq!(span_of(text, 2, 0, "level", &none), (line2 + 8, line2 + 13));
         // a word not there: the word at the column
-        assert_eq!(span_of(text, 2, 4, "ocean"), (line2 + 4, line2 + 7));
+        assert_eq!(span_of(text, 2, 4, "ocean", &none), (line2 + 4, line2 + 7));
         // punctuation around the word clicked is not its
-        assert_eq!(span_of(text, 2, 0, "rises,"), (line2 + 14, line2 + 19));
+        assert_eq!(span_of(text, 2, 0, "rises,", &none), (line2 + 14, line2 + 19));
+    }
+
+    #[test]
+    fn the_place_of_the_word_whose_neighbours_are_those_in_the_pdf() {
+        let text = "x\nThe contributions modelled for the AR4 summed. Each contribution has its own pattern, divided into its contributions. P2 was first.\n";
+        let line2 = 2;
+        let around = Around { before: vec!["divided".into(), "into".into(), "its".into()], after: vec!["p2".into(), "was".into(), "first".into()] };
+        let (from, _) = span_of(text, 2, 0, "contributions", &around);
+        assert_eq!(from - line2, text.lines().nth(1).unwrap().rfind("contributions").unwrap());
+        // no neighbours: the first place
+        let (from, _) = span_of(text, 2, 0, "contributions", &Around::default());
+        assert_eq!(from - line2, 4);
     }
 
     #[test]

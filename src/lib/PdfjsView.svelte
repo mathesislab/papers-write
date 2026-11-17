@@ -35,7 +35,7 @@
     onopen: (count: number) => void;
     /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
      *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
-    onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string) => void;
+    onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string, around: { before: string[]; after: string[] }) => void;
   } = $props();
 
   let area: HTMLDivElement;
@@ -166,7 +166,31 @@
     e.preventDefault();
     e.stopPropagation();
     const text = lineOf(span);
-    if (text) onsource(text, pointOf(e), wordAt(e));
+    if (text) onsource(text, pointOf(e), wordAt(e), aroundOf(e, span));
+  }
+
+  /** The words around the word under the pointer, in its line of the PDF and the lines before and after it (the
+   *  source has them around the same word): six before, six after. */
+  function aroundOf(e: MouseEvent, span: HTMLElement): { before: string[]; after: string[] } {
+    const layer = span.closest(".textLayer");
+    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    if (!layer || !range) return { before: [], after: [] };
+    // the text layer's spans in reading order, and the place of the pointer in their text
+    const spans = [...layer.querySelectorAll<HTMLElement>("span")].filter((s) => !s.querySelector("span") && s.textContent);
+    const placed = spans.map((s) => ({ s, r: s.getBoundingClientRect() })).sort((a, b) => Math.round(a.r.top - b.r.top) || a.r.left - b.r.left);
+    let text = "";
+    let at = -1;
+    for (const { s } of placed) {
+      if (s.contains(range.startContainer)) at = text.length + range.startOffset;
+      text += (s.textContent ?? "") + " ";
+    }
+    if (at < 0) return { before: [], after: [] };
+    const words = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+    // the word itself out of both sides
+    let [from, to] = [at, at];
+    while (from > 0 && /[\p{L}\p{N}_-]/u.test(text[from - 1])) from--;
+    while (to < text.length && /[\p{L}\p{N}_-]/u.test(text[to])) to++;
+    return { before: words(text.slice(Math.max(0, from - 160), from)).slice(-6), after: words(text.slice(to, to + 160)).slice(0, 6) };
   }
 
   /** The word under the pointer, in the text layer. */

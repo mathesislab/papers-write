@@ -429,7 +429,6 @@
     background: rgba(255, 221, 0, 0.42);
     border-radius: 2px;
     pointer-events: none;
-    mix-blend-mode: multiply;
   }
   .error {
     position: absolute;

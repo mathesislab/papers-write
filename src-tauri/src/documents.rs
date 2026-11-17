@@ -384,11 +384,17 @@ pub fn asks_before_closing(app: &AppHandle, page: &str) -> bool {
     true
 }
 
-/// A window asked to close: when tabs of it hold untitled text, it asks first whether to discard it.
+/// A window asked to close: when tabs of it hold untitled text, it asks first whether to discard it. Outside macOS,
+/// the last window closed quits the app (there is no Dock to keep it in), its windows saved as open for the next
+/// start, as Quit does.
 pub fn closing(window: &Window, api: &CloseRequestApi) {
     let app = window.app_handle().clone();
     let n = crate::tabs::pages_of(&app, window.label()).iter().filter(|p| unsaved(&app, p)).count();
     if n == 0 {
+        if is_last(&app, window.label()) {
+            api.prevent_close();
+            quit_on_last(&app);
+        }
         return;
     }
     api.prevent_close();
@@ -400,9 +406,24 @@ pub fn closing(window: &Window, api: &CloseRequestApi) {
     };
     sheet::ask_then(&app, front.as_ref(), "Close", message, Level::Warning, &["Discard", "Cancel"], move |button| {
         if button.as_deref() == Some("Discard") {
-            let _ = window.destroy();
+            if is_last(window.app_handle(), window.label()) {
+                quit_on_last(window.app_handle());
+            } else {
+                let _ = window.destroy();
+            }
         }
     });
+}
+
+/// Whether the window is the last window of tabs, outside macOS (where the app stays in the Dock without one).
+fn is_last(app: &AppHandle, window: &str) -> bool {
+    !cfg!(target_os = "macos") && crate::tabs::windows(app) == [window]
+}
+
+/// The last window closed, outside macOS: the app quits, its windows saved as open (untitled text was asked about).
+fn quit_on_last(app: &AppHandle) {
+    crate::tabs::quitting(app);
+    app.exit(0);
 }
 
 #[cfg(test)]

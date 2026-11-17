@@ -131,6 +131,9 @@ pub struct Manifest {
     /// where the suggestions and comments are kept: notes (none) or in the text as CriticMarkup
     #[serde(default)]
     pub review: Option<ReviewStore>,
+    /// the build profile (`.papers-write/build/<name>.toml`) a fresh checkout starts with; the user's choice takes over
+    #[serde(default)]
+    pub profile: Option<String>,
 }
 
 /// `main = "paper.md"` or `main = ["paper.md", "supplement.md"]`.
@@ -263,6 +266,9 @@ impl Project {
         if manifest.review != old.review {
             text(doc, "review", manifest.review.map(ReviewStore::name));
         }
+        if manifest.profile != old.profile {
+            text(doc, "profile", manifest.profile.as_deref());
+        }
     }
 
     /// The name, else the folder's.
@@ -316,6 +322,7 @@ impl Manifest {
             engine: self.engine,
             library: path(&self.library),
             review: self.review,
+            profile: text(&self.profile),
         }
     }
 }

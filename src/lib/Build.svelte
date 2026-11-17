@@ -11,14 +11,15 @@
   import { invoke } from "@tauri-apps/api/core";
   import { REVEAL, keys } from "papers-write/editor";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
-  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { onMount } from "svelte";
   import { listen } from "$lib/events";
 
   type LatexError = { message: string; line: number | null; file: string | null; here: boolean; context: string | null; md_line: number | null };
   type Status = {
     what: "build" | "diff";
-    state: "building" | "done" | "failed";
+    /** "watching": a watch profile's command left running; "external": a profile built elsewhere, only followed */
+    state: "building" | "done" | "failed" | "watching" | "external";
     seconds: number | null;
     pdf: string | null;
     log: string | null;
@@ -50,9 +51,24 @@
   /** when the last build ended */
   let ended = $state<Date | null>(null);
 
+  /** the build profiles of the document's project (`.papers-write/build/*.toml`) and the one active */
+  type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "external" };
+  type Profiles = { profiles: Profile[]; active: string | null; watching: string | null; wrong: string[]; folder: string | null };
+  let profiles = $state<Profiles | null>(null);
+  const loadProfiles = async () => (profiles = await invoke<Profiles>("build_profiles").catch(() => null));
+  /** the active profile's name, said after what the button says */
+  const named = $derived(profiles?.active ? ` · ${profiles.active}` : "");
+
   const errors = $derived(status?.errors.length ?? 0);
   const label = $derived(
-    !status
+    status?.state === "watching"
+      ? `Watching${named}`
+      : status?.state === "external"
+        ? `Built elsewhere${named}`
+        : labelOf() + (status?.state === "building" ? "" : named),
+  );
+  function labelOf(): string {
+    return !status
       ? "Build"
       : status.state === "building"
         ? status.what === "diff"
@@ -60,10 +76,16 @@
           : "Building…"
         : status.state === "done"
           ? `${status.what === "diff" ? "Marked-up PDF" : "Built"} ${ended?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) ?? ""}`
-          : `${status.what === "diff" ? "Marked-up PDF" : "Build"} failed`,
-  );
+          : `${status.what === "diff" ? "Marked-up PDF" : "Build"} failed`;
+  }
   const title = $derived(
-    keys(status?.state === "done" ? `Made in ${status.seconds?.toFixed(1)} s. Build and Show PDF (⌥⇧⌘B)` : "Build and Show PDF (⌥⇧⌘B)"),
+    keys(
+    status?.state === "watching" || status?.state === "external"
+      ? `${status.message ?? ""}. Show the PDF (⌥⇧⌘B)`
+      : status?.state === "done"
+        ? `Made in ${status.seconds?.toFixed(1)} s. Build and Show PDF (⌥⇧⌘B)`
+        : "Build and Show PDF (⌥⇧⌘B)"
+    ),
   );
 
   /** The ▾ beside the button: the builds to choose from, and the PDF made last. */
@@ -76,8 +98,30 @@
       PredefinedMenuItem.new({ item: "Separator" }),
       MenuItem.new({ text: "Marked-up PDF…", action: () => void run("marked-up") }),
       ...(pdf ? [MenuItem.new({ text: "Show PDF", action: () => void request("open_document", { path: pdf }) })] : []),
+      ...(await profileItems()),
     ]);
     await (await Menu.new({ items })).popup(new LogicalPosition(at.left, at.top));
+  }
+
+  /** The build profiles in the ▾: none (the document in front, by texmark, Quarto or latexmk) or one of the project's,
+   *  the active one ticked; and the folder of the profiles. */
+  async function profileItems() {
+    await loadProfiles();
+    if (!profiles?.folder) return [];
+    const choose = async (name: string | null) => {
+      profiles = (await request<Profiles>("set_build_profile", { name })) ?? profiles;
+      status = null;
+    };
+    const RUNS = { build: "", watch: " (kept running)", external: " (built elsewhere)" };
+    return [
+      PredefinedMenuItem.new({ item: "Separator" }),
+      CheckMenuItem.new({ text: "No Profile: This Document", checked: !profiles.active, action: () => void choose(null) }),
+      ...profiles.profiles.map((p) =>
+        CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}`, checked: profiles?.active === p.name, action: () => void choose(p.name) }),
+      ),
+      ...(profiles.wrong.length ? [MenuItem.new({ text: `${profiles.wrong.length} profile file${profiles.wrong.length === 1 ? "" : "s"} not read`, enabled: false })] : []),
+      MenuItem.new({ text: "Build Profiles…", action: () => void request("reveal_profiles") }),
+    ];
   }
 
   /** The status, and the sheet for what failed. */
@@ -134,6 +178,7 @@
   const grab = (node: HTMLElement) => node.focus();
 
   onMount(() => {
+    loadProfiles();
     const unlisten = listen<Status>("build-status", (e) => told(e.payload));
     return () => void unlisten.then((f) => f());
   });

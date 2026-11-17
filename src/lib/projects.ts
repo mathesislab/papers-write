@@ -15,6 +15,8 @@ export type Manifest = {
   library: string | null;
   /** where the suggestions and comments are kept: notes (none) or in the text as CriticMarkup */
   review: "notes" | "in-file" | null;
+  /** the build profile a fresh checkout starts with */
+  profile: string | null;
 };
 
 /** mirrors projects::Card */

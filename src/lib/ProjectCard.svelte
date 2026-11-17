@@ -95,6 +95,7 @@
       // notes and none set: unset still
       review: was.review === null && reviewStore === "notes" ? null : reviewStore,
       library: blank(library),
+      profile: was.profile,
     };
   }
 

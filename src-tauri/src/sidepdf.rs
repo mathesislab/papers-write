@@ -43,6 +43,10 @@ fn pdf_of(app: &AppHandle, source: &Path) -> Option<PathBuf> {
     if let Some(pdf) = chosen.filter(|p| p.is_file()) {
         return Some(pdf);
     }
+    // the PDF of the document's build profile
+    if let Some(pdf) = crate::profiles::active(app, source).and_then(|(p, root)| p.pdf.map(|pdf| root.join(pdf))).filter(|p| p.is_file()) {
+        return Some(pdf);
+    }
     let stem = source.file_stem()?;
     let built = project::build_dir_of(source).join(stem).with_extension("pdf");
     built.is_file().then_some(built)

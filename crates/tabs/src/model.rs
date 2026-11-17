@@ -123,6 +123,25 @@ impl Win {
         Removed { next, empty: self.sets.is_empty() }
     }
 
+    /// A page moved to place `to` among the tabs of its set (dragged in the strip, or a step left or right); `to`
+    /// past the end puts it last. Whether the order changed.
+    pub fn move_to(&mut self, page: &str, to: usize) -> bool {
+        let Some(s) = self.set_of(page) else {
+            return false;
+        };
+        let pages = &mut self.sets[s].pages;
+        let Some(i) = pages.iter().position(|p| p == page) else {
+            return false;
+        };
+        let to = to.min(pages.len() - 1);
+        if i == to {
+            return false;
+        }
+        let page = pages.remove(i);
+        pages.insert(to, page);
+        true
+    }
+
     /// A set of loose files with `page` alone given to `project`, the file it now shows being of it.
     pub fn adopt(&mut self, page: &str, project: &Path) -> bool {
         match self.set_of(page) {
@@ -221,6 +240,20 @@ mod tests {
         assert_eq!(w.remove("1"), Removed { next: Some("2".into()), empty: false });
         assert_eq!(w.shown(), Some(Path::new("/b")));
         assert_eq!(w.remove("2"), Removed { next: None, empty: true });
+    }
+
+    #[test]
+    fn a_tab_moved_takes_its_place_among_those_of_its_set() {
+        let mut w = win(&[("/p", &["a", "b", "c"]), ("/q", &["d"])]);
+        assert!(w.move_to("a", 2));
+        assert_eq!(w.sets[0].pages, ["b", "c", "a"]);
+        assert!(w.move_to("a", 0));
+        assert_eq!(w.sets[0].pages, ["a", "b", "c"]);
+        assert!(w.move_to("b", 99));
+        assert_eq!(w.sets[0].pages, ["a", "c", "b"]);
+        assert!(!w.move_to("b", 2));
+        assert!(!w.move_to("d", 1));
+        assert!(!w.move_to("none", 0));
     }
 
     #[test]

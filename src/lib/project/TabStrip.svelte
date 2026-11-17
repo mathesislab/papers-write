@@ -8,7 +8,8 @@
 
   // The tabs of a window as a strip, shared by papers-write and papers-review: each as wide as its name needs
   // (within bounds), the one in front marked, a close button at its right (shown on the tab in front and on hover).
-  // A click chooses a tab (`onselect`), the close button or a middle click closes it (`onclose`). It only draws: what
+  // A click chooses a tab (`onselect`), the close button or a middle click closes it (`onclose`). With `onmove`, a tab
+  // is dragged along the strip to another place (the others making way), told when let go. It only draws: what
   // the tabs are and what choosing does are the app's. Nothing shows for fewer than `least` tabs. An app may put a
   // control of its own on a tab, before the close button (`extra`, shown like it).
   //
@@ -20,6 +21,7 @@
     least = 2,
     onselect,
     onclose,
+    onmove,
     extra,
   }: {
     tabs: TabItem[];
@@ -29,22 +31,88 @@
     least?: number;
     onselect: (id: string) => void;
     onclose: (id: string) => void;
+    /** a tab dragged to place `to` among the tabs (none: tabs are not dragged) */
+    onmove?: (id: string, to: number) => void;
     /** a control of the app's on a tab, before its close button */
     extra?: Snippet<[TabItem]>;
   } = $props();
+
+  /** How far the pointer goes before a press on a tab is a drag rather than a click. */
+  const SLOP = 4;
+
+  let strip = $state<HTMLElement>();
+  /** the tab being dragged: where it started, how far it went, the tabs' places when it started, where it would go */
+  let drag = $state<{ id: string; from: number; x: number; dx: number; moved: boolean; spans: { left: number; width: number }[]; to: number } | null>(null);
+  /** a drag just ended: the click that follows it is not a choice */
+  let dragged = false;
+
+  function press(e: PointerEvent, id: string) {
+    if (!onmove || e.button !== 0 || (e.target as HTMLElement).closest("button, .extra")) return;
+    const tabs = [...(strip?.querySelectorAll<HTMLElement>(".tab") ?? [])];
+    const spans = tabs.map((t) => ({ left: t.offsetLeft, width: t.offsetWidth }));
+    const from = tabs.findIndex((t) => t.dataset.id === id);
+    if (from < 0) return;
+    drag = { id, from, x: e.clientX, dx: 0, moved: false, spans, to: from };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function move(e: PointerEvent) {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    const moved = drag.moved || Math.abs(dx) > SLOP;
+    // the place whose middle the dragged tab's middle has passed
+    const own = drag.spans[drag.from];
+    const middle = own.left + own.width / 2 + dx;
+    let to = 0;
+    drag.spans.forEach((span, i) => {
+      if (i !== drag!.from && span.left + span.width / 2 < middle) to++;
+    });
+    drag = { ...drag, dx, moved, to };
+  }
+
+  function release() {
+    if (!drag) return;
+    const { id, from, to, moved } = drag;
+    drag = null;
+    if (!moved) return;
+    dragged = true;
+    setTimeout(() => (dragged = false), 0);
+    if (to !== from) onmove?.(id, to);
+  }
+
+  /** How far a tab is drawn from its place while another is dragged: the one dragged follows the pointer, those
+   *  between where it was and where it would go make way. */
+  function offset(i: number): number {
+    if (!drag?.moved) return 0;
+    const { from, to, dx, spans } = drag;
+    if (i === from) return dx;
+    const gap = spans.length > 1 ? Math.abs(spans[1].left - spans[0].left - spans[0].width) : 0;
+    const room = spans[from].width + gap;
+    if (from < to && i > from && i <= to) return -room;
+    if (to < from && i >= to && i < from) return room;
+    return 0;
+  }
 </script>
 
 {#if tabs.length >= least}
-  <div class="strip" role="tablist">
-    {#each tabs as tab (tab.id)}
+  <div class="strip" role="tablist" bind:this={strip}>
+    {#each tabs as tab, i (tab.id)}
       <div
         class="tab"
         class:on={tab.id === front}
+        class:dragging={drag?.moved && drag.id === tab.id}
+        class:sliding={drag?.moved && drag.id !== tab.id}
+        style:transform={offset(i) ? `translateX(${offset(i)}px)` : undefined}
+        data-id={tab.id}
         role="tab"
         tabindex="-1"
         aria-selected={tab.id === front}
         title={tab.tooltip ?? tab.title}
-        onclick={() => tab.id !== front && onselect(tab.id)}
+        onclick={() => !dragged && tab.id !== front && onselect(tab.id)}
+        onpointerdown={(e) => press(e, tab.id)}
+        onpointermove={move}
+        onpointerup={release}
+        onpointercancel={() => (drag = null)}
         onauxclick={(e) => e.button === 1 && onclose(tab.id)}
         onkeydown={(e) => e.key === "Enter" && onselect(tab.id)}
       >
@@ -98,6 +166,15 @@
     cursor: default;
     -webkit-user-select: none;
     user-select: none;
+  }
+  .tab.sliding {
+    transition: transform 120ms ease;
+  }
+  .tab.dragging {
+    position: relative;
+    z-index: 1;
+    color: var(--fg);
+    background: var(--chip);
   }
   .tab:hover {
     color: var(--fg);

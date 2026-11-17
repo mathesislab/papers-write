@@ -200,7 +200,7 @@
 
   /** A box of the PDF (SyncTeX's: its page, its left and baseline in PDF points from the page's top left, its width
    *  and height above the baseline) brought into view, and marked a moment. */
-  export function showBox(box: { page: number; x: number; y: number; width: number; height: number }) {
+  export function showBox(box: { page: number; x: number; y: number; width: number; height: number }, word = "") {
     const pageView = viewer?.getPageView(box.page - 1);
     if (!viewer || !pageView) return;
     const [, , , top] = pageView.viewport.viewBox;
@@ -211,11 +211,55 @@
     told();
     viewer.scrollPageIntoView({ pageNumber: box.page, destArray: [null, { name: "XYZ" }, x1, y2 + 40, null] });
     const [a, b, c, d] = pageView.viewport.convertToViewportRectangle([x1, y1, x2, y2]);
+    const line = { left: Math.min(a, c), top: Math.min(b, d), width: Math.abs(c - a), height: Math.abs(d - b) };
+    // the word in that line of the text layer, once it is drawn; else the line
+    const mark = () => markRect(pageView.div, (word && wordRect(pageView.div, word, line)) || line);
+    if (pageView.div.querySelector(".textLayer span")) mark();
+    else {
+      const drawn = ({ pageNumber }: { pageNumber: number }) => {
+        if (pageNumber !== box.page) return;
+        bus?.off("textlayerrendered", drawn);
+        mark();
+      };
+      bus?.on("textlayerrendered", drawn);
+      setTimeout(() => bus?.off("textlayerrendered", drawn), 3000);
+    }
+  }
+
+  type Rect = { left: number; top: number; width: number; height: number };
+
+  /** Where `word` is in the text layer of the page `pageDiv`, within the band of `line` (rectangles in the page's CSS
+   *  pixels); the occurrence nearest the line's middle; none when it is not there. */
+  function wordRect(pageDiv: HTMLElement, word: string, line: Rect): Rect | null {
+    const origin = pageDiv.getBoundingClientRect();
+    const middle = line.top + line.height / 2;
+    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
+    let best: { rect: Rect; distance: number } | null = null;
+    for (const span of pageDiv.querySelectorAll<HTMLElement>(".textLayer span")) {
+      const node = span.firstChild;
+      if (!node || node.nodeType !== Node.TEXT_NODE) continue;
+      const found = pattern.exec(node.textContent ?? "");
+      if (!found) continue;
+      const range = document.createRange();
+      range.setStart(node, found.index);
+      range.setEnd(node, found.index + found[0].length);
+      const r = range.getBoundingClientRect();
+      const rect = { left: r.left - origin.left - pageDiv.clientLeft, top: r.top - origin.top - pageDiv.clientTop, width: r.width, height: r.height };
+      const distance = Math.abs(rect.top + rect.height / 2 - middle);
+      if (distance > line.height * 1.5 + 8) continue;
+      if (!best || distance < best.distance) best = { rect, distance };
+    }
+    return best?.rect ?? null;
+  }
+
+  /** A rectangle of a page marked, till the next click in the PDF (the one before it gone). */
+  function markRect(pageDiv: HTMLElement, rect: Rect) {
+    container.querySelectorAll(".synced").forEach((m) => m.remove());
     const mark = document.createElement("div");
     mark.className = "synced";
-    Object.assign(mark.style, { left: `${Math.min(a, c)}px`, top: `${Math.min(b, d)}px`, width: `${Math.abs(c - a)}px`, height: `${Math.abs(d - b)}px` });
-    pageView.div.append(mark);
-    setTimeout(() => mark.remove(), 1600);
+    Object.assign(mark.style, { left: `${rect.left - 2}px`, top: `${rect.top - 1}px`, width: `${rect.width + 4}px`, height: `${rect.height + 2}px` });
+    pageDiv.append(mark);
+    container.addEventListener("pointerdown", () => mark.remove(), { once: true });
   }
 
   /** The place of a click in the PDF: its page, and its point in PDF points from the page's top left. */
@@ -318,11 +362,7 @@
     background: color-mix(in srgb, var(--accent, #2f6fde) 22%, transparent);
     border-radius: 2px;
     pointer-events: none;
-    animation: synced 1.6s ease-out forwards;
-  }
-  @keyframes synced {
-    0%, 60% { opacity: 1; }
-    100% { opacity: 0; }
+    outline: 1.5px solid color-mix(in srgb, var(--accent, #2f6fde) 70%, transparent);
   }
   .error {
     position: absolute;

@@ -13,6 +13,7 @@
   import PdfjsView from "$lib/PdfjsView.svelte";
   import { listen } from "$lib/events";
   import { part, ready } from "papers-write/project";
+  import type { Heading } from "papers-write/editor";
   import Frame from "$lib/Frame.svelte";
   import "$lib/theme.css";
 
@@ -42,6 +43,16 @@
   /** the PDF opened the first time, for the tab to be shown (`ready`) */
   const opened = part();
   let frame = $state<Frame>();
+  /** the PDF's outline (its bookmarks: pdf.js only), the page of each, and the one the page in view is under */
+  let outline = $state.raw<Heading[]>([]);
+  let outlinePages: (number | null)[] = [];
+  const hereInOutline = $derived.by(() => {
+    let at = -1;
+    outlinePages.forEach((p, i) => {
+      if (p !== null && p <= current) at = i;
+    });
+    return outline.length ? at : -1;
+  });
   /** a card of the frame over the page: the PDF makes way */
   let carded = $state(false);
   /** what was just done or went wrong, for a moment */
@@ -154,7 +165,17 @@
   });
 </script>
 
-<Frame bind:this={frame} bind:covering={carded} {path} onsay={say} onfocus={() => view?.focus()}>
+<Frame
+  bind:this={frame}
+  bind:covering={carded}
+  {path}
+  headings={outline}
+  here={hereInOutline}
+  outlined={outline.length > 0}
+  onheading={(h) => (view as PdfjsView | undefined)?.goToOutline?.(h.from)}
+  onsay={say}
+  onfocus={() => view?.focus()}
+>
   <div class="tools">
     <button class="icon" disabled={!history.back} onclick={() => view?.back()} title={keys("Back (⌘[)")} aria-label="Back">‹</button>
     <button class="icon" disabled={!history.forward} onclick={() => view?.forward()} title={keys("Forward (⌘])")} aria-label="Forward">›</button>
@@ -210,6 +231,10 @@
           page={current}
           covered={!front || carded}
           onpage={(p) => (current = p)}
+          onoutline={(items: { level: number; title: string; page: number | null }[]) => {
+            outline = items.map((it, i) => ({ level: it.level, title: it.title, from: i }));
+            outlinePages = items.map((it) => it.page);
+          }}
           onhistory={(h) => (history = h)}
           onsource={toSource}
           onopen={(c) => {

@@ -94,12 +94,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &item("new", "New", Some("CmdOrCtrl+N"))?,
             &item("open", "Open…", Some("CmdOrCtrl+O"))?,
-            // as Sublime's Goto Anything: a file of the project, a heading (@), a line (:)
-            &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
             &recent,
             &item("open-project", "Open Project…", Some("Shift+CmdOrCtrl+O"))?,
-            // as Sublime's Quick Switch Project: the projects of the bar and the recent ones, in a list over the page
-            &item("switch-project", "Switch Project…", Some("Alt+CmdOrCtrl+P"))?,
             &separator()?,
             &item("save", "Save", Some("CmdOrCtrl+S"))?,
             &item("close", "Close", Some("CmdOrCtrl+W"))?,
@@ -142,7 +138,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &separator()?,
             &find,
             &separator()?,
-            &item("go-to-line", "Go to Line…", Some("Ctrl+G"))?,
             &item("select-next", "Select Next Occurrence", Some("CmdOrCtrl+D"))?,
             // outside macOS Ctrl+/ comments, as in the editors there; Symbols moves aside
             &item("toggle-comment", "Toggle Comment", if MAC { None } else { Some("Ctrl+/") })?,
@@ -235,20 +230,62 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
+    // all the moving about, as VS Code's Go menu: between the tabs, to a file, a line, a project, and in a PDF
     let go = Submenu::with_items(
         app,
         "Go",
         true,
         &[
-            &item("back", "Back", Some("CmdOrCtrl+["))?,
-            &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
+            // the tabs visited, as a browser's Back and Forward
+            &item("tab-back", "Back", if MAC { None } else { Some("Alt+Left") })?,
+            &item("tab-forward", "Forward", if MAC { None } else { Some("Alt+Right") })?,
             &separator()?,
-            &item("previous-page", "Previous Page", None)?,
-            &item("next-page", "Next Page", None)?,
-            &item("first-page", "First Page", None)?,
-            &item("last-page", "Last Page", None)?,
+            // as Sublime and VS Code: the tab in front before (⌃ held, ⌃Tab again: the one before that), the tabs in
+            // the strip's order, a tab by its place
+            &item("recent-tab", "Switch to Recent Tab", Some("Ctrl+Tab"))?,
+            &item("recent-tab-back", "Switch to Recent Tab Backwards", Some("Shift+Ctrl+Tab"))?,
+            &Submenu::with_items(
+                app,
+                "Tab",
+                true,
+                &(1..=9)
+                    .map(|n| {
+                        let name = if n == 9 { "Last Tab".to_string() } else { format!("Tab {n}") };
+                        let key = format!("{}+{n}", if MAC { "Cmd" } else { "Alt" });
+                        MenuItem::with_id(app, format!("tab-{n}"), name, true, Some(key.as_str()))
+                    })
+                    .collect::<tauri::Result<Vec<_>>>()?
+                    .iter()
+                    .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
+                    .collect::<Vec<_>>(),
+            )?,
+            // ⇧⌘[ ⇧⌘] as macOS's apps have them; Ctrl+PageUp and Ctrl+PageDown elsewhere, as browsers and editors do
+            &item("previous-tab", "Show Previous Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+[" } else { "Ctrl+PageUp" }))?,
+            &item("next-tab", "Show Next Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+]" } else { "Ctrl+PageDown" }))?,
             &separator()?,
-            &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
+            // as Sublime's Goto Anything: a file of the project, a heading (@), a line (:)
+            &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
+            &item("go-to-line", "Go to Line…", Some("Ctrl+G"))?,
+            // as Sublime's Quick Switch Project: the projects of the bar and the recent ones, in a list over the page
+            &item("switch-project", "Switch Project…", Some("Alt+CmdOrCtrl+P"))?,
+            &separator()?,
+            // in a PDF: back and forward along its links and jumps, its pages
+            &Submenu::with_items(
+                app,
+                "In the PDF",
+                true,
+                &[
+                    &item("back", "Back", Some("CmdOrCtrl+["))?,
+                    &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
+                    &separator()?,
+                    &item("previous-page", "Previous Page", None)?,
+                    &item("next-page", "Next Page", None)?,
+                    &item("first-page", "First Page", None)?,
+                    &item("last-page", "Last Page", None)?,
+                    &separator()?,
+                    &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
+                ],
+            )?,
         ],
     )?;
     let build = Submenu::with_items(
@@ -327,32 +364,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
             &separator()?,
-            // ⇧⌘[ ⇧⌘] as macOS's apps have them; Ctrl+PageUp and Ctrl+PageDown elsewhere, as browsers and editors do
-            &item("previous-tab", "Show Previous Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+[" } else { "Ctrl+PageUp" }))?,
-            &item("next-tab", "Show Next Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+]" } else { "Ctrl+PageDown" }))?,
             &item("move-tab-left", "Move Tab Left", Some("Shift+CmdOrCtrl+PageUp"))?,
             &item("move-tab-right", "Move Tab Right", Some("Shift+CmdOrCtrl+PageDown"))?,
-            // as Sublime and VS Code: the tab in front before (⌃ held, ⌃Tab again: the one before that), the tabs
-            // visited (as a browser's Back and Forward), a tab by its place
-            &item("recent-tab", "Switch to Recent Tab", Some("Ctrl+Tab"))?,
-            &item("recent-tab-back", "Switch to Recent Tab Backwards", Some("Shift+Ctrl+Tab"))?,
-            &item("tab-back", "Back to Previous Tab", if MAC { None } else { Some("Alt+Left") })?,
-            &item("tab-forward", "Forward to Next Tab", if MAC { None } else { Some("Alt+Right") })?,
-            &Submenu::with_items(
-                app,
-                "Tab",
-                true,
-                &(1..=9)
-                    .map(|n| {
-                        let name = if n == 9 { "Last Tab".to_string() } else { format!("Tab {n}") };
-                        let key = format!("{}+{n}", if MAC { "Cmd" } else { "Alt" });
-                        MenuItem::with_id(app, format!("tab-{n}"), name, true, Some(key.as_str()))
-                    })
-                    .collect::<tauri::Result<Vec<_>>>()?
-                    .iter()
-                    .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
-                    .collect::<Vec<_>>(),
-            )?,
         ],
     )?;
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows

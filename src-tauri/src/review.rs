@@ -38,6 +38,8 @@ pub struct Reviews {
     /// what the window's log is to say of the reviews sent back that were joined to its document, until its page
     /// takes it (a window made for the document is not listening yet)
     received: Mutex<HashMap<String, Vec<String>>>,
+    /// the windows without the review (a folder of notes): the Review menu off while one is in front
+    off: Mutex<std::collections::HashSet<String>>,
 }
 
 /// A review sent back, joined to the document of `label`: for its log of what the window did.
@@ -356,9 +358,36 @@ fn sync_views(app: &AppHandle, view: &str) {
     }
 }
 
-/// A window got the keys: the check marks of Suggest Changes and the views show its.
+/// Whether the window has the review (none in a folder of notes): the Review menu follows, while it is in front.
+#[tauri::command]
+pub fn review_off(window: Webview, off: bool) {
+    let app = window.app_handle();
+    let label = window.label().to_string();
+    {
+        let state = app.state::<Reviews>();
+        let mut set = state.off.lock().unwrap();
+        if off {
+            set.insert(label.clone());
+        } else {
+            set.remove(&label);
+        }
+    }
+    if crate::documents::front(app).is_some_and(|w| w.label() == label) {
+        sync_review_menu(app, off);
+    }
+}
+
+fn sync_review_menu(app: &AppHandle, off: bool) {
+    if let Some(menu) = app.menu().and_then(|m| m.get("review")).and_then(|k| k.as_submenu().cloned()) {
+        let _ = menu.set_enabled(!off);
+    }
+}
+
+/// A window got the keys: the check marks of Suggest Changes and the views show its, and the Review menu is there
+/// unless it is a folder of notes'.
 pub fn focused(app: &AppHandle, label: &str) {
     let state = app.state::<Reviews>();
+    sync_review_menu(app, state.off.lock().unwrap().contains(label));
     let on = state.suggesting.lock().unwrap().get(label).copied().unwrap_or(false);
     let view = state.views.lock().unwrap().get(label).cloned().unwrap_or_else(|| "markup".into());
     sync_menu(app, on);
@@ -371,6 +400,7 @@ pub fn unload(app: &AppHandle, label: &str) {
     state.slots.lock().unwrap().remove(label);
     state.suggesting.lock().unwrap().remove(label);
     state.views.lock().unwrap().remove(label);
+    state.off.lock().unwrap().remove(label);
 }
 
 /// The watch on a review folder, on a thread of its own that stops when this is dropped. The folder may not be there

@@ -17,6 +17,8 @@ export type Manifest = {
   profile: string | null;
   /** where the suggestions and comments are kept: notes (none) or in the text as CriticMarkup */
   review: "notes" | "in-file" | null;
+  /** a paper (none) or a folder of notes */
+  kind: "paper" | "notes" | null;
 };
 
 /** mirrors projects::Card */

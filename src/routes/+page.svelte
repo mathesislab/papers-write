@@ -45,6 +45,7 @@
   import CommentBox from "$lib/CommentBox.svelte";
   import ReviewPanel from "$lib/ReviewPanel.svelte";
   import CriticPanel from "$lib/CriticPanel.svelte";
+  import NotesSearch from "$lib/NotesSearch.svelte";
   import { ReviewSession } from "$lib/review.svelte";
   import { colorOf } from "$lib/reviewFormat";
   import { message, type Entry } from "$lib/commitLog";
@@ -191,11 +192,25 @@
   /** a LaTeX file: highlighted and completed, with no symbols typed */
   const latex = $derived(!!path && /\.(tex|sty|cls)$/i.test(path));
 
+  /** the folder of notes the page is of (none: a paper, or no project), and whether its search is shown */
+  let notes = $state<{ root: string; name: string } | null>(null);
+  let notesShown = $state(false);
+
+  async function askNotes() {
+    notes = await invoke<{ root: string; name: string } | null>("notes_of").catch(() => null);
+    // a folder of notes has no review: its tools and the Review menu go
+    void invoke("review_off", { off: !!notes }).catch(() => {});
+    if (notes) panel = false;
+    // a page of no file in a folder of notes: its search, to open one or make one
+    if (notes && !path) notesShown = true;
+  }
+
   async function ask() {
     log = [];
     path = (await invoke<{ path: string | null }>("document")).path;
     void restorePane();
     askStore();
+    void askNotes();
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
     const going = await invoke<{ at: number; end: number; mark: boolean } | null>("pending_go_to").catch(() => null);
@@ -612,6 +627,7 @@
 
   /** A choice of the Review menu. */
   function reviewMenu(what: string) {
+    if (notes) return;
     if (what === "suggest") session.toggleMode();
     else if (what.startsWith("view-")) session.setView(what.slice(5) as ReviewView);
     else if (what === "panel") togglePanel();
@@ -680,6 +696,8 @@
   /** Edit ▸ Find: in the text (the editor's bar), or in the project (the sidebar's search). */
   function findCommand(what: string) {
     if (what === "find-project") {
+      // a folder of notes: the search of its notes, not of all its files
+      if (notes) return void (notesShown = true);
       return frame?.findInProject();
     }
     // the PDF beside the text in front: its own find (it cannot be replaced in)
@@ -828,8 +846,8 @@
     const unlisten = [
       listen("opened", ask),
       listen("save-and-close", saveAndClose),
-      // the project's write.toml changed (Project Info): the suggestions may be kept elsewhere now
-      listen("projects-changed", askStore),
+      // the project's write.toml changed (Project Info): the suggestions may be kept elsewhere now, or it is notes now
+      listen("projects-changed", () => (askStore(), void askNotes())),
       listen("file-changed", () => {
         editor?.changedOnDisk();
         session.reload(300);
@@ -902,6 +920,7 @@
     onstore={(s) => invoke("set_review_store", { store: s }).then(askStore).catch((e) => say(String(e)))}
     colour={userColour}
     {panel}
+    review={!notes}
     reviewing={!!session.me}
     onformat={(what) => editor?.format(what)}
     oncomment={comment}
@@ -1039,6 +1058,9 @@
     oncommitted={() => (log = [])}
     onlog={(did) => log.push({ did })}
   />
+  {#if notesShown && notes}
+    <NotesSearch name={notes.name} onclose={() => ((notesShown = false), editor?.focus())} />
+  {/if}
   {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
   <Exchange
     bind:this={exchange}

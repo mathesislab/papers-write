@@ -45,7 +45,12 @@ impl Host for Write {
     }
 
     fn first_file(&self, _app: &AppHandle, root: &Path) -> Result<Option<PathBuf>, String> {
-        let main = write_core::project::Project::read(root).ok().and_then(|p| p.main());
+        let project = write_core::project::Project::read(root).ok();
+        // a folder of notes: its note changed last, else none (an empty page, which shows the search of the notes)
+        if project.as_ref().is_some_and(|p| p.manifest.kind == Some(write_core::project::Kind::Notes)) {
+            return Ok(write_core::notes::search(root, "").into_iter().next().map(|n| n.path));
+        }
+        let main = project.and_then(|p| p.main());
         match main {
             Some(main) => Ok(Some(main)),
             None => Err(format!("{}: no main document (Project Info…)", root.display())),

@@ -8,6 +8,7 @@ mod files;
 mod git;
 mod hover;
 mod menu;
+mod notes;
 mod package;
 mod pdfsync;
 mod preview;
@@ -193,12 +194,17 @@ pub fn run() {
             review::review_decide,
             review::review_counter,
             review::review_mode,
+            review::review_off,
             review::review_view,
             review::review_confirm,
             review::review_received,
             review::review_cleanup_plan,
             review::review_cleanup,
             projects::project_bar,
+            notes::notes_of,
+            notes::search_notes,
+            notes::new_note,
+            notes::kept_by,
             projects::switch_project,
             projects::open_project_in_new_window,
             projects::remove_from_bar,

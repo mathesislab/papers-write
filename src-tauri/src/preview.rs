@@ -7,8 +7,9 @@
 //! Images: the local ones are rewritten to base64 data URIs here, after pandoc, when the file is under 5 MB. Not
 //! `asset://`: the preview is a sandboxed `srcdoc` frame, whose origin is opaque, so it would need the asset
 //! protocol enabled, scoped to every document's folder (it is only known at run time), and a CSP for the frame;
-//! data URIs need none of these, and a figure shown stays as it was when the text was typed. (WebKit shows a PDF
-//! in `<img>`, so figures that are PDFs are embedded as such.)
+//! data URIs need none of these, and a figure shown stays as it was when the text was typed. A PDF figure, which
+//! pandoc writes as `<embed>`, is made an `<img>`: WebKit shows a PDF in one on macOS, and the page draws its first
+//! page as a PNG elsewhere (pdfImage.ts).
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -166,16 +167,21 @@ fn drain(mut pipe: impl Read + Send + 'static) -> std::thread::JoinHandle<String
     })
 }
 
-/// The local images of the fragment as data URIs.
+/// The local images of the fragment as data URIs. Pandoc writes a PDF figure as `<embed>`, which shows nothing in the
+/// frame: it is made an `<img>` (which WebKit draws a PDF in on macOS, and the page draws elsewhere).
 fn embed(html: &str, dir: &Path) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
-    while let Some(at) = rest.find("<img ") {
+    while let Some(at) = [rest.find("<img "), rest.find("<embed ")].into_iter().flatten().min() {
         let (before, tag_on) = rest.split_at(at);
         out.push_str(before);
         let end = tag_on.find('>').map_or(tag_on.len(), |i| i + 1);
         let (tag, after) = tag_on.split_at(end);
-        out.push_str(&embed_tag(tag, dir));
+        let tag = match tag.strip_prefix("<embed ") {
+            Some(attributes) => format!("<img alt=\"\" {attributes}"),
+            None => tag.to_string(),
+        };
+        out.push_str(&embed_tag(&tag, dir));
         rest = after;
     }
     out.push_str(rest);
@@ -255,6 +261,15 @@ mod tests {
         assert_eq!(base64(b"M"), "TQ==");
         assert_eq!(base64(b"Ma"), "TWE=");
         assert_eq!(base64(b"Man"), "TWFu");
+    }
+
+    #[test]
+    fn a_pdf_figure_is_embedded_as_an_image() {
+        let dir = std::env::temp_dir().join(format!("preview-embed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("f.pdf"), b"%PDF").unwrap();
+        let html = embed(r#"<figure><embed src="f.pdf" /><figcaption>x</figcaption></figure>"#, &dir);
+        assert_eq!(html, r#"<figure><img alt="" src="data:application/pdf;base64,JVBERg==" /><figcaption>x</figcaption></figure>"#);
     }
 
     #[test]

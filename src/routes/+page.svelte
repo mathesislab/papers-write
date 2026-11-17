@@ -33,6 +33,8 @@
 
   import { popupReleased } from "$lib/contextMenu";
   import { readAloudItems, spokenOf } from "$lib/readAloud";
+  import { toggleComment } from "@codemirror/commands";
+  import { gotoLine, selectNextOccurrence } from "@codemirror/search";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -690,7 +692,14 @@
     if (what === "check") check();
     else if (what === "references") listing = true;
     else if (what === "symbols") editor.list();
-    else (what === "redo" ? editor.redo : editor.undo)();
+    else if (what === "go-to-line" || what === "select-next" || what === "toggle-comment") {
+      const view = editor.view();
+      if (!view) return;
+      // the editor's own commands (CodeMirror's): the line asked, the next place of the selection added, a comment
+      // of the text's language (<!-- --> in Markdown, % in LaTeX)
+      ({ "go-to-line": gotoLine, "select-next": selectNextOccurrence, "toggle-comment": toggleComment })[what](view);
+      view.focus();
+    } else (what === "redo" ? editor.redo : editor.undo)();
   }
 
   /** Edit ▸ Find: in the text (the editor's bar), or in the project (the sidebar's search). */

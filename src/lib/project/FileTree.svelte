@@ -12,9 +12,18 @@
   // in a row of their own) or take files in, when the app does those; a file or folder can be shown in the Finder,
   // opened in the default app, removed from the project (a link) or moved to the Trash. The app adds its own: a pill
   // on a row (`badge`), items atop a file's menu (`extra`).
+  //
+  // The keys, with the tree in front (a click on a row leaves it there): Up and Down go from row to row, Right and Left
+  // open and close a folder, Enter opens the file (or folder), Delete moves it to the Trash (asked first; ⇧Delete
+  // without asking: it is in the Trash still). A file
+  // opened from the tree shows in a tab of its own, another page: that page's tree takes the keys back, on the file
+  // (`FOCUS`, which the pages of an app share).
 
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { REVEAL } from "../editor/platform";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { onMount } from "svelte";
   import type { Kind, Node } from "./types";
 
   let {
@@ -54,9 +63,106 @@
     ondefault: (path: string) => void;
     /** a linked file or folder to take out of the project (the file stays where it is) */
     onunlink?: (node: Node) => void;
-    /** a file or folder of the project to move to the Trash */
-    ontrash?: (node: Node) => void;
+    /** a file or folder of the project to move to the Trash; `now`: without asking first (⇧Delete) */
+    ontrash?: (node: Node, now?: boolean) => void;
   } = $props();
+
+  /** The file opened from the tree and when, for the page that shows it to give its tree the keys (localStorage:
+   *  the pages share it). */
+  const FOCUS = "file-tree-focus";
+
+  /** the row the keys are on (a path), and the tree's element */
+  let selected = $state<string | null>(null);
+  let element = $state<HTMLElement>();
+
+  /** Every node, by its path. */
+  const byPath = $derived.by(() => {
+    const map = new Map<string, Node>();
+    const add = (nodes: Node[]) => {
+      for (const n of nodes) {
+        map.set(n.path, n);
+        if (n.children) add(n.children);
+      }
+    };
+    add(files);
+    add(linked);
+    return map;
+  });
+
+  /** The rows shown, in order (the closed folders' files are not). */
+  const rows = () => [...(element?.querySelectorAll<HTMLElement>("button.item[data-path]") ?? [])];
+
+  /** The tree given the keys on the row of `path` (the file in front if none). */
+  export function focusTree(path = front) {
+    selected = path ?? selected;
+    const row = rows().find((r) => r.dataset.path === selected) ?? rows()[0];
+    if (row) {
+      selected = row.dataset.path ?? null;
+      row.focus({ preventScroll: true });
+      row.scrollIntoView({ block: "nearest" });
+    } else element?.focus();
+  }
+
+  /** A file opened from the tree: noted for the page that will show it, then opened. */
+  function openFromTree(node: Node) {
+    selected = node.path;
+    try {
+      localStorage.setItem(FOCUS, JSON.stringify({ path: node.path, at: Date.now() }));
+    } catch {}
+    onopen(node);
+  }
+
+  /** The keys of the tree. */
+  function keys(e: KeyboardEvent) {
+    if (naming || e.altKey || e.ctrlKey || e.metaKey) return;
+    const list = rows();
+    const at = list.findIndex((r) => r.dataset.path === selected);
+    const node = selected ? byPath.get(selected) : undefined;
+    const go = (i: number) => {
+      const row = list[Math.max(0, Math.min(list.length - 1, i))];
+      if (!row) return;
+      selected = row.dataset.path ?? null;
+      row.focus({ preventScroll: true });
+      row.scrollIntoView({ block: "nearest" });
+    };
+    if (e.key === "ArrowDown") go(at + 1);
+    else if (e.key === "ArrowUp") go(at < 0 ? 0 : at - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(list.length - 1);
+    else if (e.key === "ArrowRight" && node?.kind === "folder" && !opened.has(node.path) && node.children?.length) toggle(node);
+    else if (e.key === "ArrowLeft" && node?.kind === "folder" && opened.has(node.path)) toggle(node);
+    else if (e.key === "Enter" && node) node.kind === "folder" ? node.children?.length && toggle(node) : !node.missing && openFromTree(node);
+    else if ((e.key === "Delete" || e.key === "Backspace") && node && ontrash && !isLinked(node.path)) {
+      // the next row takes the keys, the one moved to the Trash going
+      const next = list[at + 1] ?? list[at - 1];
+      ontrash(node, e.shiftKey);
+      if (next) selected = next.dataset.path ?? null;
+    }
+    else return;
+    e.preventDefault();
+  }
+
+  /** Whether a path is of the linked files (not the project's: not moved to the Trash from here). */
+  const isLinked = (path: string) => linked.some((n) => path === n.path || path.startsWith(n.path + "/"));
+
+  // the page shows a file opened from the tree (here, or in another page's tree): its tree takes the keys back,
+  // after the editor, which takes them as its text is read
+  onMount(() => {
+    const claim = () => {
+      try {
+        const asked = JSON.parse(localStorage.getItem(FOCUS) ?? "null") as { path: string; at: number } | null;
+        if (!asked || asked.path !== front || Date.now() - asked.at > 4000) return;
+        for (const wait of [0, 150, 500]) setTimeout(() => focusTree(asked.path), wait);
+      } catch {}
+    };
+    claim();
+    const unlisten = getCurrentWebview().listen<boolean>("tab-shown", (e) => e.payload && claim());
+    window.addEventListener("focus", claim);
+    return () => {
+      unlisten.then((f) => f());
+      window.removeEventListener("focus", claim);
+    };
+  });
 
   const item = (text: string, action: () => void) => MenuItem.new({ text, action });
   const separator = () => PredefinedMenuItem.new({ item: "Separator" });
@@ -72,7 +178,7 @@
     e.preventDefault();
     const tools = folderItems(root);
     const items = await Promise.all([...tools, ...(tools.length ? [separator()] : []), item(REVEAL, () => onreveal(root))]);
-    await (await Menu.new({ items })).popup();
+    await (await Menu.new({ items })).popup(new LogicalPosition(e.clientX, e.clientY));
   }
 
   /** the name of the project folder */
@@ -81,6 +187,7 @@
   /** A right-click on a file or folder; `outside`: of the linked ones, `top`: at the top of its list. */
   async function menu(e: MouseEvent, node: Node, outside: boolean, top: boolean) {
     e.preventDefault();
+    selected = node.path;
     const items = [];
     if (node.kind === "folder" && !outside) {
       const tools = folderItems(node.path);
@@ -92,7 +199,8 @@
     if (!node.missing) items.push(item(REVEAL, () => onreveal(node.path)));
     if (outside && top && onunlink) items.push(separator(), item("Remove Link", () => onunlink(node)));
     if (!outside && ontrash) items.push(separator(), item("Move to Trash…", () => ontrash(node)));
-    await (await Menu.new({ items: await Promise.all(items) })).popup();
+    // at the pointer (without a place, it opens elsewhere in the window)
+    await (await Menu.new({ items: await Promise.all(items) })).popup(new LogicalPosition(e.clientX, e.clientY));
   }
 
   /** the folder a Markdown file is being named in, and the name typed so far */
@@ -204,7 +312,9 @@
       <button
         class="item"
         class:empty
-        onclick={() => !empty && toggle(node)}
+        class:selected={selected === node.path}
+        data-path={node.path}
+        onclick={() => ((selected = node.path), !empty && toggle(node))}
         oncontextmenu={(e) => menu(e, node, outside, depth === 0)}
         title={node.path}
       >
@@ -225,7 +335,9 @@
         class="item"
         class:front={node.path === front}
         class:missing={node.missing}
-        onclick={() => !node.missing && onopen(node)}
+        class:selected={selected === node.path}
+        data-path={node.path}
+        onclick={() => !node.missing && openFromTree(node)}
         oncontextmenu={(e) => menu(e, node, outside, depth === 0)}
         aria-disabled={node.missing}
         title={node.missing ? `${node.path}: not found` : node.path}
@@ -241,7 +353,8 @@
   {/each}
 {/snippet}
 
-<div class="tree">
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div class="tree" bind:this={element} tabindex="-1" onkeydown={keys} role="tree">
   <h4>Folder</h4>
   <div class="root" title={root} oncontextmenu={folderMenu} role="presentation">
     {@render folderIcon()}
@@ -300,6 +413,14 @@
   }
   .item:hover:not(.missing, .naming) {
     background: var(--chip);
+  }
+  /* the row the keys are on */
+  .item.selected {
+    outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+    outline-offset: -1px;
+  }
+  .tree:focus {
+    outline: none;
   }
   .item.front {
     background: var(--selection);

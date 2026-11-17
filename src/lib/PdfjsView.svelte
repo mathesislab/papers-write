@@ -223,20 +223,26 @@
     ahead = [];
     told();
     viewer.scrollPageIntoView({ pageNumber: box.page, destArray: [null, { name: "XYZ" }, x1, y2 + 40, null] });
-    const [a, b, c, d] = pageView.viewport.convertToViewportRectangle([x1, y1, x2, y2]);
+    // marked once the page is drawn, and again each time pdf.js draws it anew, till the next click in the PDF: the
+    // word in that line of the text layer, else the line
+    marked = { page: box.page, line: [x1, y1, x2, y2], word };
+    drawMark();
+  }
+
+  /** The place marked by Show in PDF: its page, its line (PDF space), the word looked for in it. */
+  let marked: { page: number; line: number[]; word: string } | null = null;
+
+  /** The mark drawn on its page, if the page is drawn and the mark is not on it yet. */
+  function drawMark() {
+    if (!marked) return;
+    const pageView = viewer?.getPageView(marked.page - 1);
+    if (!pageView?.div || pageView.div.querySelector(".synced")) return;
+    const [a, b, c, d] = pageView.viewport.convertToViewportRectangle(marked.line);
     const line = { left: Math.min(a, c), top: Math.min(b, d), width: Math.abs(c - a), height: Math.abs(d - b) };
-    // the word in that line of the text layer, once it is drawn; else the line
-    const mark = () => markRect(pageView.div, (word && wordRect(pageView.div, word, line)) || line);
-    if (pageView.div.querySelector(".textLayer span")) mark();
-    else {
-      const drawn = ({ pageNumber }: { pageNumber: number }) => {
-        if (pageNumber !== box.page) return;
-        bus?.off("textlayerrendered", drawn);
-        mark();
-      };
-      bus?.on("textlayerrendered", drawn);
-      setTimeout(() => bus?.off("textlayerrendered", drawn), 3000);
-    }
+    const hasText = !!pageView.div.querySelector(".textLayer span");
+    markRect(pageView.div, (hasText && marked.word && wordRect(pageView.div, marked.word, line)) || line);
+    // the text layer drawn later: the word looked for again
+    if (!hasText) pageView.div.querySelector(".synced")?.setAttribute("data-line", "1");
   }
 
   type Rect = { left: number; top: number; width: number; height: number };
@@ -265,14 +271,23 @@
     return best?.rect ?? null;
   }
 
-  /** A rectangle of a page marked, till the next click in the PDF (the one before it gone). */
+  /** A rectangle of a page marked (the one before it gone). */
   function markRect(pageDiv: HTMLElement, rect: Rect) {
     container.querySelectorAll(".synced").forEach((m) => m.remove());
     const mark = document.createElement("div");
     mark.className = "synced";
     Object.assign(mark.style, { left: `${rect.left - 2}px`, top: `${rect.top - 1}px`, width: `${rect.width + 4}px`, height: `${rect.height + 2}px` });
     pageDiv.append(mark);
-    container.addEventListener("pointerdown", () => mark.remove(), { once: true });
+  }
+
+  /** A page drawn anew (pdf.js clears what was added to it): the mark drawn on it again; its text layer drawn: the
+   *  word looked for in it, where only the line was marked. */
+  function redrawn({ pageNumber }: { pageNumber: number }) {
+    if (marked?.page !== pageNumber) return;
+    const pageView = viewer?.getPageView(pageNumber - 1);
+    const line = pageView?.div.querySelector(".synced[data-line]");
+    line?.remove();
+    drawMark();
   }
 
   /** The place of a click in the PDF: its page, and its point in PDF points from the page's top left. */
@@ -317,6 +332,13 @@
       if (page > 1) view.currentPageNumber = Math.min(page, count);
     });
     bus.on("pagechanging", ({ pageNumber }: { pageNumber: number }) => onpage(pageNumber));
+    bus.on("pagerendered", redrawn);
+    bus.on("textlayerrendered", redrawn);
+    // a click in the PDF: the mark of Show in PDF gone
+    container.addEventListener("pointerdown", () => {
+      marked = null;
+      container.querySelectorAll(".synced").forEach((m) => m.remove());
+    });
     // FOUND 0, NOT_FOUND 1, WRAPPED 2, PENDING 3
     bus.on("updatefindcontrolstate", ({ state }: { state: number }) => {
       if (state === 3 || !answer) return;
@@ -394,14 +416,20 @@
     outline: none;
     background: var(--sidebar, #eeeef1);
   }
-  /* the place Show in PDF found, marked a moment */
+  /* what Find found, in a highlighter's yellow as the place Show in PDF found */
+  .pdf :global(.textLayer .highlight) {
+    --highlight-bg-color: rgba(255, 221, 0, 0.45);
+    --highlight-selected-bg-color: rgba(255, 170, 0, 0.6);
+  }
+  /* the place Show in PDF found, marked till the next click in the PDF */
   .pdf :global(.synced) {
     position: absolute;
     z-index: 5;
-    background: color-mix(in srgb, var(--accent, #2f6fde) 22%, transparent);
+    /* a highlighter's yellow: the PDF's links and citations are often blue already */
+    background: rgba(255, 221, 0, 0.42);
     border-radius: 2px;
     pointer-events: none;
-    outline: 1.5px solid color-mix(in srgb, var(--accent, #2f6fde) 70%, transparent);
+    mix-blend-mode: multiply;
   }
   .error {
     position: absolute;

@@ -126,7 +126,9 @@
       provide: (f) => EditorView.decorations.from(f),
     }),
     EditorView.baseTheme({
-      ".cm-found": { background: "color-mix(in srgb, var(--accent, #2f6fde) 28%, transparent)", borderRadius: "2px", outline: "1px solid color-mix(in srgb, var(--accent, #2f6fde) 55%, transparent)" },
+      // a highlighter's yellow: the text's own colours (links, citations, review) are often blue
+      ".cm-found": { background: "rgba(255, 214, 0, 0.45)", borderRadius: "2px" },
+      "&dark .cm-found": { background: "rgba(255, 214, 0, 0.32)" },
     }),
   ];
 

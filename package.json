@@ -42,7 +42,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2.7.2",
     "pdfjs-dist": "^6.5.438",
-    "tauri-plugin-pdfkit-api": "github:mathesislab/tauri-plugin-pdfkit#v0.6.0"
+    "tauri-plugin-pdfkit-api": "github:mathesislab/tauri-plugin-pdfkit#v0.7.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",

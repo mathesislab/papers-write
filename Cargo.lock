@@ -4486,8 +4486,8 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-pdfkit"
-version = "0.6.0"
-source = "git+https://github.com/mathesislab/tauri-plugin-pdfkit?tag=v0.6.0#10f417eb73184d8f7a66ea752376b40463aeee05"
+version = "0.7.0"
+source = "git+https://github.com/mathesislab/tauri-plugin-pdfkit?tag=v0.7.0#70b319e2ac96c9bcc7f910fe9ec961f4e190742a"
 dependencies = [
  "block2",
  "objc2",

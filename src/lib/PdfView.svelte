@@ -166,7 +166,8 @@
     const unlisten = pdfkit.onPage((p) => onpage(p));
     const unlistenHistory = pdfkit.onHistory((h) => onhistory?.(h));
     const unlistenClick = pdfkit.onClick(clicked);
-    send(() => pdfkit.open(id, shown, page, frame(), covered))
+    // the clicks are the page's: ⌘-click to the source, the menu of pdfMenu
+    send(() => pdfkit.open(id, shown, page, frame(), covered, true))
       .then(({ count, outline }) => {
         opened = true;
         onopen(count);

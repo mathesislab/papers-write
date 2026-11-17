@@ -299,6 +299,8 @@
   function togglePreview(keep = true) {
     if (!markdown) return;
     previewing = !previewing;
+    // shown by a choice (not as the file opens): in view, one pane at a time
+    if (keep) onPane = previewing && onePane;
     if (previewing) {
       panel = false;
       pdfBeside = false;
@@ -309,9 +311,54 @@
   }
 
   /** View ▸ Show PDF: the PDF beside the text, in the preview's place. */
+  /** The panes (View ▸ Panes): the text and its preview or PDF side by side, or each the whole width one at a time
+   *  (a small screen), or so while the window is narrower than `NARROW`; `onPane` the pane in view then. The same in
+   *  every tab (the pages' storage, told to the others). */
+  type Panes = "side" | "one" | "auto";
+  const PANES = "panes";
+  /** narrower than this (points, as the page counts them): one pane at a time, in the automatic mode (a laptop's
+   *  screen, maximised, is about 1400) */
+  const NARROW = 1440;
+  let panesMode = $state<Panes>(readPanes());
+  let narrow = $state(window.innerWidth < NARROW);
+  const onePane = $derived(panesMode === "one" || (panesMode === "auto" && narrow));
+  let onPane = $state(false);
+  function readPanes(): Panes {
+    try {
+      const kept = localStorage.getItem(PANES);
+      return kept === "one" || kept === "auto" ? kept : "side";
+    } catch {
+      return "side";
+    }
+  }
+  function setPanes(mode: Panes) {
+    panesMode = mode;
+    try {
+      if (mode === "side") localStorage.removeItem(PANES);
+      else localStorage.setItem(PANES, mode);
+    } catch {}
+  }
+  /** The pane brought into view (Show in…), or the text (Go to Source); nothing while both are side by side. */
+  function flip(toPane: boolean) {
+    if (!onePane) return;
+    onPane = toPane;
+    if (!toPane) queueMicrotask(() => editor?.focus());
+  }
+  $effect(() => {
+    const changed = (e: StorageEvent) => e.key === PANES && (panesMode = readPanes());
+    const resized = () => (narrow = window.innerWidth < NARROW);
+    window.addEventListener("storage", changed);
+    window.addEventListener("resize", resized);
+    return () => {
+      window.removeEventListener("storage", changed);
+      window.removeEventListener("resize", resized);
+    };
+  });
+
   function togglePdf(keep = true) {
     if (!path) return say("Save the document first, to show its PDF");
     pdfBeside = !pdfBeside;
+    if (keep) onPane = pdfBeside && onePane;
     if (pdfBeside) [previewing, panel] = [false, false];
     if (keep) keepPane();
   }
@@ -328,6 +375,7 @@
   /** Show in Preview: the preview shown (in place of the PDF), scrolled to the cursor's block, which flashes. */
   async function showInPreview() {
     if (!markdown) return;
+    flip(true);
     if (!previewing) {
       togglePreview();
       // its HTML made first
@@ -360,13 +408,15 @@
   /** ⌃-click in the preview: the words of its block looked for in the text, the word clicked marked there. */
   async function previewToSource(text: string, word: string, around: { before: string[]; after: string[] }) {
     const place = await invoke<[number, number] | null>("place_in_text", { text: current(), query: text, word, around }).catch(() => null);
-    if (place) editor?.markFound(place[0], place[1]);
-    else say("Not found in the text");
+    if (place) {
+      flip(false);
+      editor?.markFound(place[0], place[1]);
+    } else say("Not found in the text");
   }
 
   // View ▸ Show Preview and Show PDF say Hide while shown: told as they change, and as the window comes to the front
   $effect(() => {
-    const shown = { preview: previewing && markdown, pdf: pdfBeside };
+    const shown = { preview: previewing && markdown, pdf: pdfBeside, panes: panesMode };
     const tell = () => invoke("view_shown", shown).catch(() => {});
     tell();
     window.addEventListener("focus", tell);
@@ -387,6 +437,7 @@
   async function showInPdfNow() {
     const view = editor?.view();
     if (!view || !path) return;
+    flip(true);
     if (!pdfBeside) {
       togglePdf();
       // the pane and its PDF read first
@@ -420,7 +471,8 @@
   /** ⌃-click in the PDF beside the text: its source there (this text, or another file in its tab). */
   async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null, word = "", around = { before: [] as string[], after: [] as string[] }) {
     const found = await invoke<boolean>("open_source_at", { pdf, text, at, word, around }).catch(() => false);
-    if (!found) say("Not found in the project's sources");
+    if (found) flip(false);
+    else say("Not found in the project's sources");
   }
 
   /** The split dragged: the width of the preview, kept for the window. */
@@ -737,6 +789,7 @@
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", () => togglePreview()),
       listen("pdf-beside", () => togglePdf()),
+      listen<string>("panes", (e) => setPanes(e.payload as Panes)),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number; mark: boolean }>("go-to", (e) => goTo(e.payload)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -770,9 +823,11 @@
   onfocus={() => editor?.focus()}
 >
   <div class="body">
-  <div class="panes" bind:this={panes}>
+  <!-- one pane at a time: the text and the pane each the whole width, the one not in view kept (its scroll) but hidden -->
+  <div class="panes" bind:this={panes} class:one={onePane && ((previewing && markdown) || (pdfBeside && !!path))} class:on-pane={onPane}>
   <!-- the text's column: its toolbar above it, so that its tools stay with it when a pane is beside it -->
   <div class="text">
+  <button class="flip to-pane" onclick={() => flip(true)} title="The {previewing && markdown ? 'preview' : 'PDF'}, in place of the text (View ▸ Panes)">{previewing && markdown ? "Preview" : "PDF"} ›</button>
   <Toolbar
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
@@ -834,6 +889,7 @@
     <div class="pane" style:width={width ? `${width}px` : "45%"}>
       <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? () => togglePdf() : undefined} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
+      <button class="flip to-text" onclick={() => flip(false)} title="Back to the text (View ▸ Panes)">‹ Text</button>
     </div>
   {:else if pdfBeside && path}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -841,6 +897,7 @@
     <div class="pane" style:width={width ? `${width}px` : "45%"}>
       <SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} onpreview={markdown ? () => togglePreview() : undefined} />
       <button class="close-pane" onclick={() => togglePdf()} title="Hide PDF" aria-label="Hide PDF">×</button>
+      <button class="flip to-text" onclick={() => flip(false)} title="Back to the text (View ▸ Panes)">‹ Text</button>
     </div>
   {/if}
   {#if panel}
@@ -925,6 +982,46 @@
     flex: 1;
     min-height: 0;
     display: flex;
+    position: relative;
+  }
+  /* one pane at a time: the pane over the whole width, shown or hidden; what is hidden keeps its place and scroll */
+  .panes.one > .split {
+    display: none;
+  }
+  .panes.one > .pane:not(.review) {
+    position: absolute;
+    inset: 0;
+    width: auto !important;
+    max-width: none;
+    z-index: 5;
+  }
+  .panes.one:not(.on-pane) > .pane:not(.review),
+  .panes.one.on-pane > .text {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .flip {
+    display: none;
+    position: absolute;
+    z-index: 6;
+    font: inherit;
+    font-size: 12px;
+    padding: 1px 8px;
+    color: var(--fg);
+    background: var(--chip);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+  }
+  .panes.one .flip {
+    display: block;
+  }
+  /* in the bottom right corner, where neither the text's nor the PDF's tools are */
+  .flip.to-pane,
+  .flip.to-text {
+    bottom: 14px;
+    right: 18px;
+    padding: 4px 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
   footer {
     flex: none;

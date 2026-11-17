@@ -22,6 +22,8 @@ serde = { version = "1", features = ["derive"] }
 # the app's state.json (the project bar, the recent projects)
 serde_json = "1"
 notify = "8"
+# the Read Aloud command split as a shell would (readaloud.rs)
+shlex = "1"
 tauri-plugin-opener = "2"
 # updates of the app, from the latest release (docs/releasing.md)
 tauri-plugin-updater = "2"

@@ -4,6 +4,7 @@
   // element. Back and Forward are the pages the links and the jumps (Go to Page, first, last) left. A ⌃-click on the
   // text gives the line clicked (`onsource`), for the page to open its source there.
 
+  import { readAloudItems } from "$lib/readAloud";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -242,12 +243,31 @@
     e.preventDefault();
     const [text, at, word, around] = [lineOf(span), pointOf(e), wordAt(e), aroundOf(e, span)];
     const mac = navigator.userAgent.includes("Mac");
+    const selected = window.getSelection()?.toString().trim() ?? "";
+    const reading = await readAloudItems(selected || fromHere(span), selected ? "Read Aloud" : "Read Aloud from Here");
     const items = await Promise.all([
+      ...reading,
       MenuItem.new({ text: `Find in Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word, around) }),
       PredefinedMenuItem.new({ item: "Copy" }),
     ]);
     // at the pointer (without a place, it opens elsewhere in the window)
     await (await Menu.new({ items })).popup(new LogicalPosition(e.clientX, e.clientY));
+  }
+
+  /** The page's text from `span` to its end, as a selection of it would copy it (its lines and spaces). */
+  function fromHere(span: HTMLElement): string {
+    const layer = span.closest(".textLayer");
+    const selection = window.getSelection();
+    if (!layer || !selection) return span.textContent ?? "";
+    const range = document.createRange();
+    range.setStartBefore(span);
+    range.setEndAfter(layer.lastChild ?? span);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const text = selection.toString();
+    selection.removeAllRanges();
+    // a word broken at a line's end joined again
+    return text.replace(/(\p{L})-\n(\p{Ll})/gu, "$1$2").replace(/\s+/g, " ").trim();
   }
 
   /** The word under the pointer, in the text layer. */

@@ -94,6 +94,10 @@ pub struct Settings {
     pub latexmk_path: String,
     pub pandoc_path: String,
 
+    /// Read Aloud: the command given the text, `{text}` standing for it (else it is the command's input), such as
+    /// `bard --text {text}`; empty: no Read Aloud in the menus
+    pub read_aloud: String,
+
     /// the files open as tabs of one window; off: each in a window of its own
     pub tabs: bool,
     /// a thin bar in the project's colour along the top of its windows
@@ -127,6 +131,7 @@ impl Default for Settings {
             quarto_path: String::new(),
             latexmk_path: String::new(),
             pandoc_path: String::new(),
+            read_aloud: String::new(),
             tabs: true,
             project_colour_bar: false,
             check_updates: true,
@@ -469,6 +474,7 @@ mod tests {
             quarto_path: "/opt/bin/quarto".into(),
             latexmk_path: "/opt/bin/latexmk".into(),
             pandoc_path: "/opt/bin/pandoc".into(),
+            read_aloud: "bard --text {text}".into(),
             tabs: false,
             project_colour_bar: true,
             check_updates: false,

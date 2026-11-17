@@ -12,6 +12,9 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager, Wry};
 
 use crate::documents;
 
+/// The keys of macOS, else those of Linux and Windows.
+const MAC: bool = cfg!(target_os = "macos");
+
 /// File ▸ Open Recent, kept to be filled again when the list of recent projects changes.
 pub struct RecentMenu(Submenu<Wry>);
 
@@ -110,9 +113,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &item("find", "Find…", Some("CmdOrCtrl+F"))?,
-            &item("find-replace", "Find and Replace…", Some("Alt+CmdOrCtrl+F"))?,
-            &item("find-next", "Find Next", Some("CmdOrCtrl+G"))?,
-            &item("find-previous", "Find Previous", Some("Shift+CmdOrCtrl+G"))?,
+            // outside macOS, the keys of the editors there (gedit, VS Code, Sublime): Ctrl+H Replace, F3 Find Next,
+            // Ctrl+G Go to Line
+            &item("find-replace", "Find and Replace…", Some(if MAC { "Alt+CmdOrCtrl+F" } else { "Ctrl+H" }))?,
+            &item("find-next", "Find Next", Some(if MAC { "CmdOrCtrl+G" } else { "F3" }))?,
+            &item("find-previous", "Find Previous", Some(if MAC { "Shift+CmdOrCtrl+G" } else { "Shift+F3" }))?,
             &item("find-selection", "Use Selection for Find", Some("CmdOrCtrl+E"))?,
             &separator()?,
             &item("find-project", "Find in Project…", Some("Shift+CmdOrCtrl+F"))?,
@@ -133,7 +138,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &separator()?,
             &find,
             &separator()?,
-            &item("symbols", "Symbols…", Some("CmdOrCtrl+/"))?,
+            &item("go-to-line", "Go to Line…", Some("Ctrl+G"))?,
+            &item("select-next", "Select Next Occurrence", Some("CmdOrCtrl+D"))?,
+            // outside macOS Ctrl+/ comments, as in the editors there; Symbols moves aside
+            &item("toggle-comment", "Toggle Comment", if MAC { None } else { Some("Ctrl+/") })?,
+            &item("symbols", "Symbols…", Some(if MAC { "CmdOrCtrl+/" } else { "Alt+Ctrl+/" }))?,
             &separator()?,
             &item("references", "References…", Some("Shift+CmdOrCtrl+R"))?,
             // a menu item, not a key of the page: macOS takes ⌘. for Cancel before the page sees it
@@ -388,7 +397,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "format", &id["format-".len()..]);
             }
         }
-        "undo" | "redo" | "symbols" | "references" | "check" => {
+        "undo" | "redo" | "symbols" | "references" | "check" | "go-to-line" | "select-next" | "toggle-comment" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "edit", id);
             }

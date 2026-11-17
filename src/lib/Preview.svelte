@@ -7,6 +7,7 @@
   import { showPdfImages } from "$lib/pdfImage";
 
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
   const keysOf = (k: string) => (navigator.userAgent.includes("Mac") ? k : "Ctrl");
 
   let {
@@ -19,7 +20,7 @@
     error?: string;
     block?: number;
     /** ⌃-click (⌘ on macOS) on the preview, or Find in Source in its menu: the text of the block clicked, and the word */
-    onsource?: (text: string, word: string) => void;
+    onsource?: (text: string, word: string, around: { before: string[]; after: string[] }) => void;
   } = $props();
 
   let frame: HTMLIFrameElement;
@@ -89,7 +90,7 @@
   }
 
   /** What was clicked in the frame: the text of its block (a paragraph, an item, a heading, a caption) and the word. */
-  function clicked(e: MouseEvent): { text: string; word: string } | null {
+  function clicked(e: MouseEvent): { text: string; word: string; around: { before: string[]; after: string[] } } | null {
     const doc = frame?.contentDocument;
     const target = e.target as Element | null;
     const block = target?.closest?.("p, li, h1, h2, h3, h4, h5, h6, figcaption, td, th, blockquote, dd, dt");
@@ -97,6 +98,7 @@
     const range = doc.caretRangeFromPoint?.(e.clientX, e.clientY);
     const node = range?.startContainer;
     let word = "";
+    const around = { before: [] as string[], after: [] as string[] };
     if (range && node?.nodeType === Node.TEXT_NODE) {
       const t = node.textContent ?? "";
       const isWord = (c: string) => /[\p{L}\p{N}_-]/u.test(c);
@@ -104,8 +106,18 @@
       while (a > 0 && isWord(t[a - 1])) a--;
       while (b < t.length && isWord(t[b])) b++;
       word = t.slice(a, b);
+      // the words around it in its block, which pick its place in the text among the word's places
+      const pre = doc.createRange();
+      pre.setStart(block, 0);
+      pre.setEnd(node, a);
+      const post = doc.createRange();
+      post.setStart(node, b);
+      post.setEndAfter(block.lastChild ?? block);
+      const words = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+      around.before = words(pre.toString()).slice(-6);
+      around.after = words(post.toString()).slice(0, 6);
     }
-    return { text: (block.textContent ?? "").replace(/\s+/g, " ").trim(), word };
+    return { text: (block.textContent ?? "").replace(/\s+/g, " ").trim(), word, around };
   }
 
   /** The frame loaded: its PDF figures drawn as images (WebKitGTK does not draw them), ⌃-click and its menu taken to
@@ -119,17 +131,19 @@
         const at = clicked(e);
         if (!at) return;
         e.preventDefault();
-        onsource(at.text, at.word);
+        onsource(at.text, at.word, at.around);
       });
       doc.addEventListener("contextmenu", async (e) => {
         const at = clicked(e);
         if (!at) return;
         e.preventDefault();
         const items = await Promise.all([
-          MenuItem.new({ text: `Find in Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word) }),
+          MenuItem.new({ text: `Find in Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word, at.around) }),
           PredefinedMenuItem.new({ item: "Copy" }),
         ]);
-        await (await Menu.new({ items })).popup();
+        // at the pointer: the frame's own place added to where the click is in it
+        const box = frame.getBoundingClientRect();
+        await (await Menu.new({ items })).popup(new LogicalPosition(box.left + e.clientX, box.top + e.clientY));
       });
     }
     reveal();

@@ -6,6 +6,7 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { GlobalWorkerOptions, getDocument, type PDFDocumentLoadingTask } from "pdfjs-dist";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
   import { EventBus, PDFFindController, PDFLinkService, PDFViewer } from "pdfjs-dist/web/pdf_viewer.mjs";
@@ -37,7 +38,7 @@
     onopen: (count: number) => void;
     /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
      *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
-    onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string) => void;
+    onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string, around: { before: string[]; after: string[] }) => void;
     /** the PDF's outline (its bookmarks), in order, each with its depth and the page it goes to (none: unknown) */
     onoutline?: (items: { level: number; title: string; page: number | null }[]) => void;
   } = $props();
@@ -180,7 +181,31 @@
     e.preventDefault();
     e.stopPropagation();
     const text = lineOf(span);
-    if (text) onsource(text, pointOf(e), wordAt(e));
+    if (text) onsource(text, pointOf(e), wordAt(e), aroundOf(e, span));
+  }
+
+  /** The words around the word under the pointer, in its line of the PDF and the lines before and after it (the
+   *  source has them around the same word): six before, six after. */
+  function aroundOf(e: MouseEvent, span: HTMLElement): { before: string[]; after: string[] } {
+    const layer = span.closest(".textLayer");
+    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    if (!layer || !range) return { before: [], after: [] };
+    // the text layer's spans in reading order, and the place of the pointer in their text
+    const spans = [...layer.querySelectorAll<HTMLElement>("span")].filter((s) => !s.querySelector("span") && s.textContent);
+    const placed = spans.map((s) => ({ s, r: s.getBoundingClientRect() })).sort((a, b) => Math.round(a.r.top - b.r.top) || a.r.left - b.r.left);
+    let text = "";
+    let at = -1;
+    for (const { s } of placed) {
+      if (s.contains(range.startContainer)) at = text.length + range.startOffset;
+      text += (s.textContent ?? "") + " ";
+    }
+    if (at < 0) return { before: [], after: [] };
+    const words = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+    // the word itself out of both sides
+    let [from, to] = [at, at];
+    while (from > 0 && /[\p{L}\p{N}_-]/u.test(text[from - 1])) from--;
+    while (to < text.length && /[\p{L}\p{N}_-]/u.test(text[to])) to++;
+    return { before: words(text.slice(Math.max(0, from - 160), from)).slice(-6), after: words(text.slice(to, to + 160)).slice(0, 6) };
   }
 
   /** A right-click on the text: Find in Source (as a ⌃-click), and Copy. */
@@ -189,13 +214,14 @@
     const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
     if (!span) return;
     e.preventDefault();
-    const [text, at, word] = [lineOf(span), pointOf(e), wordAt(e)];
+    const [text, at, word, around] = [lineOf(span), pointOf(e), wordAt(e), aroundOf(e, span)];
     const mac = navigator.userAgent.includes("Mac");
     const items = await Promise.all([
-      MenuItem.new({ text: `Find in Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word) }),
+      MenuItem.new({ text: `Find in Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word, around) }),
       PredefinedMenuItem.new({ item: "Copy" }),
     ]);
-    await (await Menu.new({ items })).popup();
+    // at the pointer (without a place, it opens elsewhere in the window)
+    await (await Menu.new({ items })).popup(new LogicalPosition(e.clientX, e.clientY));
   }
 
   /** The word under the pointer, in the text layer. */

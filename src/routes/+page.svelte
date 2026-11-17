@@ -398,10 +398,18 @@
     else if (what.startsWith("view-")) session.setView(what.slice(5) as ReviewView);
     else if (what === "panel") togglePanel();
     else if (what === "comment") comment();
+    else if (what === "accept-here" || what === "reject-here") changeHere(what === "accept-here" ? "accept" : "reject");
     else if (what === "accept-all") session.acceptAll().catch(() => {});
     else if (what === "reject-all") session.rejectAll().catch(() => {});
     else if (what === "cleanup") void session.cleanUp();
     else if (what === "next" || what === "previous") session.step(what === "next");
+  }
+
+  /** Review ▸ Accept Change and Reject Change: the suggestion at the cursor (the first, where several meet). */
+  function changeHere(action: "accept" | "reject") {
+    const here = editor?.itemsHere().find((i) => i.kind === "suggestion" && i.id && session.items.some((s) => s.id === i.id && s.state === "open"));
+    if (!here) return say("No suggestion at the cursor");
+    session.act(here.id, action).catch(() => {});
   }
 
   /** Add Comment…: the box beside the end of the selection. */

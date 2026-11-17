@@ -179,6 +179,14 @@
     // ⌃ let go: Switch to Recent Tab (⌃Tab) over, the tab it came to the most recent
     const ctrlUp = (e: KeyboardEvent) => e.key === "Control" && void invoke("recent_done").catch(() => {});
     window.addEventListener("keyup", ctrlUp);
+    // ⌃Tab and ⌃⇧Tab: GTK takes no Tab as a menu's key (the menu only shows it), so they are said from here
+    const ctrlTab = (e: KeyboardEvent) => {
+      if (e.key === "Tab" && e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        void invoke("recent_tab", { by: e.shiftKey ? -1 : 1 }).catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", ctrlTab, true);
     const unlisten = [
       listen("projects-changed", loadBar),
       listen("asking-project", askProject),
@@ -191,6 +199,7 @@
       clearTimeout(barTimer);
       window.removeEventListener("focus", loadBar);
       window.removeEventListener("keyup", ctrlUp);
+      window.removeEventListener("keydown", ctrlTab, true);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });

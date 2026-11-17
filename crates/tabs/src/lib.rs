@@ -1059,6 +1059,13 @@ pub mod commands {
         }
     }
 
+    /// ⌃Tab (`by` 1) or ⌃⇧Tab (-1) in a page: Switch to Recent Tab. GTK takes no Tab as a menu's key, so the page
+    /// says it.
+    #[tauri::command]
+    pub fn recent_tab(app: AppHandle, by: isize) {
+        super::recent(&app, by);
+    }
+
     /// ⌃ let go in a page: Switch to Recent Tab over.
     #[tauri::command]
     pub fn recent_done(app: AppHandle) {

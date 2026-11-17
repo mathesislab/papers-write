@@ -289,8 +289,14 @@ pub fn open_files(app: &AppHandle, paths: &[PathBuf]) {
 /// Open…: the files to choose.
 pub fn choose(app: &AppHandle) {
     let handle = app.clone();
-    app.dialog()
-        .file()
+    // the folder of the project of the text in front, else of its file (else the system's choice: the home folder)
+    let start = front(app).and_then(|page| crate::tabs::project_of_page(app, page.label()).or_else(|| path_of(app, page.label())?.parent().map(Path::to_path_buf)));
+    let dialog = app.dialog().file();
+    let dialog = match start {
+        Some(folder) => dialog.set_directory(folder),
+        None => dialog,
+    };
+    dialog
         .set_title("Open")
         .pick_files(move |files| {
             let paths: Vec<PathBuf> = files

@@ -12,6 +12,9 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager, Wry};
 
 use crate::documents;
 
+/// The keys of macOS, else those of Linux and Windows.
+const MAC: bool = cfg!(target_os = "macos");
+
 /// File ▸ Open Recent, kept to be filled again when the list of recent projects changes.
 pub struct RecentMenu(Submenu<Wry>);
 
@@ -260,6 +263,27 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &separator()?,
             &item("previous-tab", "Show Previous Tab", Some("Shift+CmdOrCtrl+["))?,
             &item("next-tab", "Show Next Tab", Some("Shift+CmdOrCtrl+]"))?,
+            // as Sublime and VS Code: the tab in front before (⌃ held, ⌃Tab again: the one before that), the tabs
+            // visited (as a browser's Back and Forward), a tab by its place
+            &item("recent-tab", "Switch to Recent Tab", Some("Ctrl+Tab"))?,
+            &item("recent-tab-back", "Switch to Recent Tab Backwards", Some("Shift+Ctrl+Tab"))?,
+            &item("tab-back", "Back to Previous Tab", if MAC { None } else { Some("Alt+Left") })?,
+            &item("tab-forward", "Forward to Next Tab", if MAC { None } else { Some("Alt+Right") })?,
+            &Submenu::with_items(
+                app,
+                "Tab",
+                true,
+                &(1..=9)
+                    .map(|n| {
+                        let name = if n == 9 { "Last Tab".to_string() } else { format!("Tab {n}") };
+                        let key = format!("{}+{n}", if MAC { "Cmd" } else { "Alt" });
+                        MenuItem::with_id(app, format!("tab-{n}"), name, true, Some(key.as_str()))
+                    })
+                    .collect::<tauri::Result<Vec<_>>>()?
+                    .iter()
+                    .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
+                    .collect::<Vec<_>>(),
+            )?,
         ],
     )?;
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
@@ -292,6 +316,11 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "close" => crate::tabs::close_front(app),
         "previous-tab" => crate::tabs::step(app, -1),
         "next-tab" => crate::tabs::step(app, 1),
+        "recent-tab" => crate::tabs::recent(app, 1),
+        "recent-tab-back" => crate::tabs::recent(app, -1),
+        "tab-back" => crate::tabs::history(app, true),
+        "tab-forward" => crate::tabs::history(app, false),
+        id if id.starts_with("tab-") && id[4..].parse::<usize>().is_ok() => crate::tabs::nth(app, id[4..].parse().unwrap_or(1)),
         // the page writes the document, then asks for the build
         "save" | "build" | "build-show" | "marked-up" => {
             if let Some(window) = documents::front(app) {

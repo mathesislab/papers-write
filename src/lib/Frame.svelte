@@ -176,6 +176,9 @@
     const stops = [side.start(), watchSettings((s) => (colourBar = s.project_colour_bar))];
     askProject();
     window.addEventListener("focus", loadBar);
+    // ⌃ let go: Switch to Recent Tab (⌃Tab) over, the tab it came to the most recent
+    const ctrlUp = (e: KeyboardEvent) => e.key === "Control" && void invoke("recent_done").catch(() => {});
+    window.addEventListener("keyup", ctrlUp);
     const unlisten = [
       listen("projects-changed", loadBar),
       listen("asking-project", askProject),
@@ -187,6 +190,7 @@
       stops.forEach((stop) => stop());
       clearTimeout(barTimer);
       window.removeEventListener("focus", loadBar);
+      window.removeEventListener("keyup", ctrlUp);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });

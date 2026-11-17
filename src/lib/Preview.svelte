@@ -151,11 +151,17 @@
         e.preventDefault();
         onsource(at.text, at.word, at.around);
       });
-      // a double-click: Go to Source, as ⌃-click (not one that selected several words: a selection by tap and drag)
+      // a double-click: Go to Source, as ⌃-click; one whose pointer moved before it was let go is a selection made by
+      // double-tap and drag, and stays one
+      let secondPress: { x: number; y: number } | null = null;
+      doc.addEventListener("mousedown", (e) => {
+        if (e.detail >= 2) secondPress = { x: e.clientX, y: e.clientY };
+      });
       doc.addEventListener("dblclick", (e) => {
         if (e.button !== 0) return;
-        const selected = doc.getSelection()?.toString().trim() ?? "";
-        if (/\s/.test(selected)) return;
+        const moved = secondPress && Math.hypot(e.clientX - secondPress.x, e.clientY - secondPress.y) > 4;
+        secondPress = null;
+        if (moved) return;
         const at = clicked(e);
         if (!at) return;
         doc.getSelection()?.removeAllRanges();

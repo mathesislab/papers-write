@@ -11,6 +11,7 @@
   import { onMount } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
   import PdfjsView from "$lib/PdfjsView.svelte";
+  import PdfTools from "$lib/PdfTools.svelte";
   import { listen } from "$lib/events";
 
   type At = { page: number; x: number; y: number };
@@ -105,56 +106,18 @@
 
   /** the PDF's outline (its bookmarks, pdf.js), each with its depth */
   let outline = $state.raw<{ level: number; title: string }[]>([]);
-  /** what is looked for in the PDF (the header's field), and whether it was found */
-  let query = $state("");
-  let lastQuery = "";
-  let notFound = $state(false);
+  /** the tools over the PDF (PdfTools, as a PDF's tab has them): Find is theirs */
+  let tools = $state<PdfTools>();
+  /** the pages in view, their count, and whether there is a page to go back to or forward */
+  let count = $state(0);
+  let history = $state({ back: false, forward: false });
 
-  /** The header's field: Enter the next match, ⇧Enter the one before, Esc clears it. */
-  async function search(e: KeyboardEvent) {
-    if (e.key === "Escape") return void ((query = ""), (notFound = false));
-    if (e.key !== "Enter" || !query.trim()) return;
-    e.preventDefault();
-    const again = query === lastQuery;
-    lastQuery = query;
-    notFound = !(await view?.find(query, again, e.shiftKey));
-  }
-
-  let findField = $state<HTMLInputElement>();
-
-  /** Find… with the PDF in front: its field, filled with the PDF's selection when there is one. */
-  export function focusFind() {
-    const selected = window.getSelection()?.toString().trim();
-    if (selected && !selected.includes("\n")) query = selected;
-    findField?.focus();
-    findField?.select();
-  }
-
-  /** Find Next and Find Previous with the PDF in front; the field asked first when it is empty. */
-  export async function findAgain(backwards: boolean) {
-    if (!query.trim()) return focusFind();
-    const again = query === lastQuery;
-    lastQuery = query;
-    notFound = !(await view?.find(query, again, backwards));
-  }
-
+  /** Find… with the PDF in front: its field, with the PDF's selection. */
+  export const focusFind = () => tools?.focusFind();
+  /** Find Next and Find Previous with the PDF in front. */
+  export const findAgain = (backwards: boolean) => tools?.findAgain(backwards);
   /** Use Selection for Find with the PDF in front. */
-  export function findSelection() {
-    const selected = window.getSelection()?.toString().trim();
-    if (selected) [query, lastQuery] = [selected, ""];
-    void findAgain(false);
-  }
-
-  /** The outline as a menu: a click goes to its place. */
-  async function outlineMenu(e: MouseEvent) {
-    const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const items = await Promise.all(
-      outline.slice(0, 200).map((o, i) =>
-        MenuItem.new({ text: `${"    ".repeat(Math.max(0, o.level - 1))}${o.title}`, action: () => (view as PdfjsView | undefined)?.goToOutline?.(i) }),
-      ),
-    );
-    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
-  }
+  export const findSelection = () => tools?.findSelection();
 
   /** Whether a PDF is shown. */
   export const showing = () => !!side?.pdf;
@@ -175,33 +138,14 @@
 </script>
 
 <aside class="side-pdf">
-  <!-- the PDF's tools, then which PDF it is, last before the page's × that closes the pane -->
-  <header>
-    {#if side?.pdf}
-      <span class="tools">
-        {#if outline.length}<button onclick={outlineMenu} title="Outline: the PDF's sections">Outline ▾</button>{/if}
-        <button onclick={() => view?.zoom(-1)} title="Zoom Out" aria-label="Zoom Out">−</button>
-        <button onclick={() => view?.zoom(0)} title="Fit Width">Fit</button>
-        <button onclick={() => view?.zoom(1)} title="Zoom In" aria-label="Zoom In">+</button>
-        <span class="find" class:missing={notFound}>
-          <input
-            bind:this={findField}
-            bind:value={query}
-            oninput={() => (notFound = false)}
-            onkeydown={search}
-            placeholder="Find"
-            aria-label="Find in the PDF"
-            spellcheck="false"
-          />
-          {#if query}
-            <button class="clear" onclick={() => ((query = ""), (notFound = false), findField?.focus())} title="Clear" aria-label="Clear">✕</button>
-          {/if}
-        </span>
-      </span>
-    {/if}
-    {#if status}<span class="status" title={status}>{status}</span>{/if}
-    <button class="name" onclick={changeMenu} disabled={!side} title="{side?.pdf ?? ''} (a click changes it)">{side?.pdf ? nameOf(side.pdf) : "PDF"} ▾</button>
-  </header>
+  <!-- the tools of a PDF as its tab has them, then what was done and which PDF it is, last before the page's × that
+       closes the pane -->
+  <PdfTools bind:this={tools} view={side?.pdf ? (view as never) : undefined} current={page} {count} {history} {outline} room={30}>
+    {#snippet trail()}
+      {#if status}<span class="status" title={status}>{status}</span>{/if}
+      <button class="name" onclick={changeMenu} disabled={!side} title="{side?.pdf ?? ''} (a click changes it)">{side?.pdf ? nameOf(side.pdf) : "PDF"} ▾</button>
+    {/snippet}
+  </PdfTools>
   <div class="body">
     {#if error}
       <p class="note error">{error}</p>
@@ -212,7 +156,8 @@
           path={side.pdf}
           {page}
           onpage={(p) => (page = p)}
-          onopen={(count) => (page = Math.min(page, count))}
+          onopen={(c: number) => ((count = c), (page = Math.min(page, c)))}
+          onhistory={(h: { back: boolean; forward: boolean }) => (history = h)}
           onoutline={(items: { level: number; title: string }[]) => (outline = items)}
           onsource={(text: string, at: At | null, word: string, around: Around) => side?.pdf && onsource(side.pdf, text, at, word, around)}
         />
@@ -237,16 +182,6 @@
     min-width: 0;
     background: var(--viewer, var(--sidebar));
   }
-  header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    /* room at the right for the page's × of the pane */
-    padding: 4px 34px 4px 8px;
-    border-bottom: 1px solid var(--line);
-    background: var(--bg);
-    font-size: 12px;
-  }
   .name {
     margin-left: auto;
     flex: 0 1 auto;
@@ -263,48 +198,8 @@
     color: var(--muted);
     font-size: 11.5px;
   }
-  .tools {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    flex: none;
-  }
-  .find {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-  }
-  .find input {
-    width: 9em;
-    font: inherit;
-    font-size: 12px;
-    padding: 1px 20px 1px 6px;
-    color: var(--fg);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-  }
-  .find.missing input {
-    border-color: var(--error);
-  }
   /* inside the field, at its right: clears it */
-  .find .clear {
-    position: absolute;
-    right: 3px;
-    width: 15px;
-    height: 15px;
-    padding: 0;
-    font-size: 9px;
-    line-height: 1;
-    color: var(--muted);
-    background: var(--chip);
-    border: none;
-    border-radius: 50%;
-  }
-  .find .clear:hover {
-    color: var(--fg);
-  }
-  header button,
+  .name,
   .pick {
     font: inherit;
     font-size: 12px;

@@ -13,6 +13,7 @@
   import { COLOURS, SHORT, initials, type Colour } from "papers-write/project";
   import "./card.css";
   import type { Card, Manifest } from "./projects";
+  import { overPage } from "$lib/overlay.svelte";
 
   let { root, onclose }: { /** the project's folder */ root: string; onclose: () => void } = $props();
 
@@ -143,7 +144,7 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && card?.defined && cancel()} />
 
-<div class="scrim" role="presentation"></div>
+<div class="scrim" role="presentation" {@attach overPage}></div>
 <form class="card" aria-label={fresh ? "New project" : "Project Info"} onsubmit={(e) => (e.preventDefault(), submit())}>
   {#if fresh}<h2>New project</h2>{/if}
   {#if card}

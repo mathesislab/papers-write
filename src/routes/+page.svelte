@@ -95,6 +95,7 @@
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Appearance, type Settings } from "$lib/settings";
   import "$lib/theme.css";
+  import { overPage } from "$lib/overlay.svelte";
 
   // The toolbar above the text (Toolbar): the formats (also the Format menu, `format`: ⌘B, ⌘I, ⌘K), Add Comment…, Find and Find and
   // Replace, the review panel and the mode.
@@ -1023,7 +1024,7 @@
   {/if}
   {#if checking}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div class="sheet" role="dialog" aria-label="Check Citations" tabindex="-1" onkeydown={(e) => e.key === "Escape" && closeCheck()} use:grab>
+    <div class="sheet" role="dialog" {@attach overPage} aria-label="Check Citations" tabindex="-1" onkeydown={(e) => e.key === "Escape" && closeCheck()} use:grab>
       <header>
         <b>Check Citations</b>
         <button onclick={closeCheck}>Close</button>

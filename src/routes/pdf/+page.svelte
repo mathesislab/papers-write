@@ -40,8 +40,6 @@
   /** the PDF's outline (its bookmarks), shown as the sidebar's Outline shows a text's headings */
   let outline = $state.raw<OutlineItem[]>([]);
   const headings = $derived(outline.map((o, i) => ({ level: o.level, title: o.title, from: i })));
-  /** a card of the frame over the page: the PDF makes way */
-  let carded = $state(false);
   /** what was just done or went wrong, for a moment */
   let note = $state("");
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
@@ -128,7 +126,6 @@
 
 <Frame
   bind:this={frame}
-  bind:covering={carded}
   {path}
   {headings}
   here={sectionAt(outline, current)}
@@ -147,7 +144,7 @@
           bind:this={view}
           {path}
           page={current}
-          covered={!front || carded}
+          covered={!front}
           onpage={(p) => (current = p)}
           onoutline={(items) => (outline = items)}
           onsource={toSource}

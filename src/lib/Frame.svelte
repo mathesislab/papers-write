@@ -38,7 +38,6 @@
     here = -1,
     outlined = false,
     offset = 0,
-    covering = $bindable(false),
     onheading,
     onsay,
     onproblem = onsay,
@@ -55,8 +54,6 @@
     outlined?: boolean;
     /** the height of what the page draws above the tabs (ProjectFrame) */
     offset?: number;
-    /** a card is over the page (what is drawn above the page, a PDF, makes way) */
-    covering?: boolean;
     onheading?: (heading: Heading) => void;
     /** what was done, or went wrong, for the page to say */
     onsay: (what: string) => void;
@@ -107,10 +104,6 @@
     slideTimer = setTimeout(() => (barOpen = false), 350);
   }
   const barColour = $derived(projects.current && colourBar ? cssOf(projects.current.colour) : null);
-  $effect(() => {
-    covering = !!(asking || carding);
-  });
-
   /** the bar read the first time */
   const barIn = part();
 

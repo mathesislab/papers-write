@@ -49,7 +49,8 @@ export type PdfViewProps = {
   path: string;
   /** the page to open at (from 1) */
   page?: number;
-  /** the page shows a card over the PDF: PDFKit's view, above all of the page, hides */
+  /** the page is not in front (a tab behind): PDFKit's view, above all of the page, hides; it hides too while a card is
+   *  shown over the page (`over`, overlay.svelte.ts) */
   covered?: boolean;
   /** the page in view */
   onpage: (page: number) => void;

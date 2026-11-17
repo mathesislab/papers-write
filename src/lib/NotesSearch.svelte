@@ -6,6 +6,7 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { overPage } from "$lib/overlay.svelte";
   import { keys as keyNames } from "papers-write/editor";
 
   let { name, onclose }: { name: string; onclose: () => void } = $props();
@@ -83,7 +84,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="veil" onclick={onclose}>
+<div class="veil" onclick={onclose} {@attach overPage}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="sheet" role="dialog" aria-label="Notes" tabindex="-1" onclick={(e) => e.stopPropagation()}>
     <header>

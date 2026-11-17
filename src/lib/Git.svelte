@@ -28,6 +28,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { keys } from "papers-write/editor";
   import { said, type Added, type Changed } from "$lib/git";
+  import { overPage } from "$lib/overlay.svelte";
 
   type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
   type Branch = { name: string; authors: string[]; count: number; last: string };
@@ -232,7 +233,7 @@
 
 {#if committing}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Commit" tabindex="-1" onkeydown={key}>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Commit" tabindex="-1" onkeydown={key}>
     <header>
       <b>Commit</b>
     </header>
@@ -259,7 +260,7 @@
 {/if}
 {#if comparing}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Compare with Commit" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Compare with Commit" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>Compare with Commit</b>
       <button onclick={close}>Cancel</button>
@@ -286,7 +287,7 @@
 {/if}
 {#if branching}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Review Branch" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Review Branch" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>Review Branch</b>
       <button onclick={close}>{branching.done ? "Close" : "Cancel"}</button>
@@ -322,7 +323,7 @@
 {#if recalling}
   {@const r = recalling}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Review Commits" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Review Commits" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>Review Commits</b>
       <button onclick={close}>{r.done ? "Close" : "Cancel"}</button>
@@ -363,7 +364,7 @@
 {/if}
 {#if failure}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label={failure.what} tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label={failure.what} tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>{failure.what}</b>
       <button onclick={close}>Close</button>

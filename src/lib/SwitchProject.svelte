@@ -6,6 +6,7 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { overPage } from "$lib/overlay.svelte";
   import { cssOf, type Colour } from "papers-write/project";
   import { matchIn, pieces } from "$lib/fuzzy";
 
@@ -61,7 +62,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="veil" onclick={onclose}>
+<div class="veil" onclick={onclose} {@attach overPage}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="sheet" role="dialog" aria-label="Switch Project" tabindex="-1" onclick={(e) => e.stopPropagation()}>
     <input bind:this={field} bind:value={query} onkeydown={keys} placeholder="Switch to a project" spellcheck="false" autocomplete="off" />

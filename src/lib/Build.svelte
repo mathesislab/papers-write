@@ -14,6 +14,7 @@
   import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { onMount } from "svelte";
   import { listen } from "$lib/events";
+  import { overPage } from "$lib/overlay.svelte";
 
   type LatexError = { message: string; line: number | null; file: string | null; here: boolean; context: string | null; md_line: number | null };
   type Status = {
@@ -209,7 +210,7 @@
 
 {#if sheet && status && status.state !== "building"}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Build errors" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Build errors" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>{status.state === "failed" ? (status.what === "diff" ? "Marked-up PDF failed" : "Build failed") : "LaTeX errors"}</b>
       <button onclick={close}>Close</button>
@@ -243,7 +244,7 @@
 
 {#if choosing}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Marked-up PDF" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Marked-up PDF" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>Marked-up PDF against…</b>
       <button onclick={close}>Cancel</button>

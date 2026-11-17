@@ -11,7 +11,7 @@
   import { pdfMenu } from "$lib/pdfMenu";
   import { over } from "$lib/overlay.svelte";
 
-  // `covered`: hidden while the page shows a card over it, as the view lies above all of the page
+  // `covered`: hidden while the tab is behind, as the view lies above all of the page (and while a card is over it)
   let { path, page = 1, covered = false, onpage, onhistory, onopen, onoutline, onsource, menuItem = null }: PdfViewProps = $props();
 
   let area: HTMLDivElement;
@@ -33,9 +33,12 @@
     send(() => pdfkit.zoom(step));
   }
 
+  /** The view hidden: the page shows a card over it (`covered`, or one of `over`'s). */
+  const hidden = $derived(covered || over.cards > 0);
+
   /** The keys to the PDF, unless a card covers it. */
   export function focus() {
-    if (!covered) send(() => pdfkit.cover(id, false));
+    if (!hidden) send(() => pdfkit.cover(id, false));
   }
 
   /** Back to the page the last link or jump left, and forward again. */
@@ -153,9 +156,9 @@
   // a card shown or gone after the PDF opened
   let opening = true;
   $effect(() => {
-    const hidden = covered;
+    const now = hidden;
     if (opening) opening = false;
-    else send(() => pdfkit.cover(id, hidden));
+    else send(() => pdfkit.cover(id, now));
   });
 
   onMount(() => {
@@ -167,7 +170,7 @@
     const unlistenHistory = pdfkit.onHistory((h) => onhistory?.(h));
     const unlistenClick = pdfkit.onClick(clicked);
     // the clicks are the page's: ⌘-click to the source, the menu of pdfMenu
-    send(() => pdfkit.open(id, shown, page, frame(), covered, true))
+    send(() => pdfkit.open(id, shown, page, frame(), hidden, true))
       .then(({ count, outline }) => {
         opened = true;
         onopen(count);

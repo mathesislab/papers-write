@@ -33,8 +33,9 @@
     onhistory?: (history: History) => void;
     /** the PDF open: its page count */
     onopen: (count: number) => void;
-    /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked, and the next when it is short */
-    onsource?: (text: string) => void;
+    /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
+     *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
+    onsource?: (text: string, at: { page: number; x: number; y: number } | null) => void;
   } = $props();
 
   let area: HTMLDivElement;
@@ -165,7 +166,21 @@
     e.preventDefault();
     e.stopPropagation();
     const text = lineOf(span);
-    if (text) onsource(text);
+    if (text) onsource(text, pointOf(e));
+  }
+
+  /** The place of a click in the PDF: its page, and its point in PDF points from the page's top left. */
+  function pointOf(e: MouseEvent): { page: number; x: number; y: number } | null {
+    const pageDiv = (e.target as HTMLElement).closest<HTMLElement>(".page[data-page-number]");
+    const page = Number(pageDiv?.dataset.pageNumber);
+    const pageView = page && viewer?.getPageView(page - 1);
+    if (!pageDiv || !pageView) return null;
+    const box = pageDiv.getBoundingClientRect();
+    const viewport = pageView.viewport;
+    const [x, y] = viewport.convertToPdfPoint(e.clientX - box.left - pageDiv.clientLeft, e.clientY - box.top - pageDiv.clientTop);
+    // PDF space is from the bottom left; SyncTeX's from the top left of the page's box
+    const [, , , top] = viewport.viewBox;
+    return { page, x, y: top - y };
   }
 
   onMount(() => {

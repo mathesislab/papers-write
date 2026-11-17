@@ -127,6 +127,12 @@ pub trait Host: Send + Sync + 'static {
         tab.to_string()
     }
 
+    /// Whether a page has changes not saved: its tab says so, and its window while it is in front, as the platform
+    /// does (macOS: the dot in the window's close button; elsewhere a star after the title).
+    fn edited(&self, _app: &AppHandle, _page: &str) -> bool {
+        false
+    }
+
     /// The project a file is of.
     fn project_of(&self, app: &AppHandle, file: &Path) -> Option<PathBuf>;
 
@@ -245,6 +251,8 @@ pub struct Tab {
     title: String,
     /// the file's path, for the tooltip
     path: Option<String>,
+    /// changes not saved
+    edited: bool,
 }
 
 fn host(app: &AppHandle) -> &dyn Host {
@@ -321,6 +329,28 @@ fn title_of(app: &AppHandle, page: &str) -> String {
 /// The title of the window of `page`, in front.
 fn window_title(app: &AppHandle, page: &str) -> String {
     host(app).window_title(app, page, &title_of(app, page))
+}
+
+/// A window titled after its tab in front, `page`, and showing whether it has changes not saved as the platform does
+/// (`Host::edited`).
+fn titled(app: &AppHandle, window: &Window, page: &str) {
+    let title = window_title(app, page);
+    let edited = host(app).edited(app, page);
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window.set_title(&title);
+        let shown = window.clone();
+        let _ = window.run_on_main_thread(move || {
+            // the window asked for again on the main thread: gone meanwhile, it has none
+            if let Ok(ns) = shown.ns_window() {
+                // SAFETY: the NSWindow of a window that is there, on the main thread
+                let ns = unsafe { &*(ns as *const objc2_app_kit::NSWindow) };
+                ns.setDocumentEdited(edited);
+            }
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = window.set_title(&if edited { format!("{title} *") } else { title });
 }
 
 /// A new window, empty.
@@ -579,7 +609,7 @@ pub fn select(app: &AppHandle, page: &str) {
         win.newly_shown()
     });
     if let Some(window) = app.get_window(&window_label) {
-        let _ = window.set_title(&window_title(app, page));
+        titled(app, &window, page);
         let _ = window.unminimize();
         // GTK shows a window with `show_all`, which shows again the pages hidden behind the one in front (`behind`):
         // a window shown already is not shown again
@@ -602,7 +632,7 @@ pub fn retitle(app: &AppHandle, window: &str) {
     if let Some(page) = front_of(app, window)
         && let Some(window) = app.get_window(window)
     {
-        let _ = window.set_title(&window_title(app, &page));
+        titled(app, &window, &page);
     }
 }
 
@@ -624,7 +654,7 @@ pub fn renamed(app: &AppHandle, page: &str) {
     if front_of(app, &window_label).as_deref() == Some(page)
         && let Some(window) = app.get_window(&window_label)
     {
-        let _ = window.set_title(&window_title(app, page));
+        titled(app, &window, page);
     }
     changed(app, &window_label);
 }
@@ -1009,6 +1039,7 @@ pub mod commands {
             .map(|label| Tab {
                 title: title_of(app, &label),
                 path: host(app).path(app, &label).map(|p| p.display().to_string()),
+                edited: host(app).edited(app, &label),
                 label,
             })
             .collect()

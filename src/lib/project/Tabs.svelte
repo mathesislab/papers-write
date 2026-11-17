@@ -9,7 +9,7 @@
   import { onMount, type Snippet } from "svelte";
   import TabStrip, { type TabItem } from "./TabStrip.svelte";
 
-  type Tab = { label: string; title: string; path: string | null };
+  type Tab = { label: string; title: string; path: string | null; edited: boolean };
 
   let { least = 2, extra }: { least?: number; extra?: Snippet<[TabItem]> } = $props();
 
@@ -19,7 +19,7 @@
   async function refresh() {
     try {
       const got = await invoke<Tab[]>("tab_strip");
-      tabs = got.map((t) => ({ id: t.label, title: t.title, tooltip: t.path }));
+      tabs = got.map((t) => ({ id: t.label, title: t.title, tooltip: t.path, edited: t.edited }));
     } catch {
       tabs = [];
     }

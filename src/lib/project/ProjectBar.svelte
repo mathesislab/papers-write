@@ -29,7 +29,8 @@
   // The project bar: a column of tiles, one per project in its colour with its short name or initials (bar.ts), the
   // current one marked, an optional detail line under the label and an optional level bar down its left side; a `+`
   // tile at the end. A click asks to switch (`onswitch`), a right-click for the tile's menu (`onmenu`), `+` for
-  // another project (`onadd`). What a tile says and does is the app's.
+  // another project (`onadd`); with `onmove`, a tile is dragged up or down to another place (the others making way),
+  // told when let go. What a tile says and does is the app's.
   //
   // The variables of the theme it uses: --sidebar (its background), --line (its right edge), --accent (the mark of
   // the current tile), --border, --muted and --chip (the + tile), --tile-none (a project of no colour), and
@@ -44,12 +45,15 @@
     onswitch,
     onmenu,
     onadd,
+    onmove,
     addTitle = "Open Project…",
   }: {
     items: Tile[];
     onswitch: (id: string) => void;
     onmenu: (id: string, event: MouseEvent) => void;
     onadd: () => void;
+    /** a tile dragged to place `to` (none: tiles are not dragged) */
+    onmove?: (id: string, to: number) => void;
     /** the tooltip of the + tile */
     addTitle?: string;
   } = $props();
@@ -59,14 +63,67 @@
 
   const tooltip = (item: Tile) => item.tooltip ?? [item.name, item.missing ? "not found" : (item.detail ?? "").replaceAll("\n", " · ")].filter(Boolean).join("\n");
 
+  /** How far the pointer goes before a press on a tile is a drag rather than a click. */
+  const SLOP = 4;
+  let column = $state<HTMLElement>();
+  /** the tile being dragged: where it started, how far it went, the tiles' places when it started, where it would go */
+  let drag = $state<{ id: string; from: number; y: number; dy: number; moved: boolean; spans: { top: number; height: number }[]; to: number } | null>(null);
+  /** a drag just ended: the click that follows it is not a switch */
+  let dragged = false;
+
+  function press(e: PointerEvent, id: string) {
+    if (!onmove || e.button !== 0) return;
+    const tiles = [...(column?.querySelectorAll<HTMLElement>(".tile[data-id]") ?? [])];
+    const from = tiles.findIndex((t) => t.dataset.id === id);
+    if (from < 0) return;
+    drag = { id, from, y: e.clientY, dy: 0, moved: false, spans: tiles.map((t) => ({ top: t.offsetTop, height: t.offsetHeight })), to: from };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function move(e: PointerEvent) {
+    if (!drag) return;
+    const dy = e.clientY - drag.y;
+    const moved = drag.moved || Math.abs(dy) > SLOP;
+    const own = drag.spans[drag.from];
+    const middle = own.top + own.height / 2 + dy;
+    let to = 0;
+    drag.spans.forEach((span, i) => {
+      if (i !== drag!.from && span.top + span.height / 2 < middle) to++;
+    });
+    drag = { ...drag, dy, moved, to };
+  }
+
+  function release() {
+    if (!drag) return;
+    const { id, from, to, moved } = drag;
+    drag = null;
+    if (!moved) return;
+    dragged = true;
+    setTimeout(() => (dragged = false), 0);
+    if (to !== from) onmove?.(id, to);
+  }
+
+  /** How far a tile is drawn from its place while another is dragged: the one dragged follows the pointer, those
+   *  between where it was and where it would go make way. */
+  function offset(i: number): number {
+    if (!drag?.moved) return 0;
+    const { from, to, dy, spans } = drag;
+    if (i === from) return dy;
+    const gap = spans.length > 1 ? Math.abs(spans[1].top - spans[0].top - spans[0].height) : 0;
+    const room = spans[from].height + gap;
+    if (from < to && i > from && i <= to) return -room;
+    if (to < from && i >= to && i < from) return room;
+    return 0;
+  }
+
   function menu(e: MouseEvent, item: Tile) {
     e.preventDefault();
     onmenu(item.id, e);
   }
 </script>
 
-<aside class="projects" aria-label="Projects">
-  {#each items as item (item.id)}
+<aside class="projects" aria-label="Projects" bind:this={column}>
+  {#each items as item, i (item.id)}
     {@const name = label(item.name, item.short)}
     <button
       class="tile"
@@ -75,7 +132,15 @@
       title={tooltip(item)}
       aria-label={item.name}
       aria-current={item.current ? "true" : undefined}
-      onclick={() => onswitch(item.id)}
+      data-id={item.id}
+      class:dragging={drag?.moved && drag.id === item.id}
+      class:sliding={drag?.moved && drag.id !== item.id}
+      style:transform={offset(i) ? `translateY(${offset(i)}px)` : undefined}
+      onpointerdown={(e) => press(e, item.id)}
+      onpointermove={move}
+      onpointerup={release}
+      onpointercancel={() => (drag = null)}
+      onclick={() => !dragged && onswitch(item.id)}
       oncontextmenu={(e) => menu(e, item)}
     >
       <span
@@ -96,6 +161,14 @@
 </aside>
 
 <style>
+  .tile.sliding {
+    transition: transform 120ms ease;
+  }
+  .tile.dragging {
+    position: relative;
+    z-index: 1;
+    opacity: 0.85;
+  }
   .projects {
     box-sizing: border-box;
     width: var(--project-bar-width, 92px);

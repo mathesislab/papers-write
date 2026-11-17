@@ -44,6 +44,17 @@ pub enum Indent {
     Tab,
 }
 
+/// The project bar at the left of the windows: always there, there while the pointer is at the window's left edge
+/// (over the page, as the Ubuntu dock), or not at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectBar {
+    #[default]
+    Shown,
+    Hover,
+    Hidden,
+}
+
 /// The number of colours of the review's authors (`--review-1` … `--review-6` of the editor).
 pub const REVIEW_COLOURS: u8 = 6;
 
@@ -102,6 +113,8 @@ pub struct Settings {
     pub tabs: bool,
     /// a thin bar in the project's colour along the top of its windows
     pub project_colour_bar: bool,
+    /// the project bar: always shown, shown on hover at the window's left edge, or hidden
+    pub project_bar: ProjectBar,
     /// look for updates at start and twice a day; they are installed only when asked
     pub check_updates: bool,
 }
@@ -134,6 +147,7 @@ impl Default for Settings {
             read_aloud: String::new(),
             tabs: true,
             project_colour_bar: false,
+            project_bar: ProjectBar::Shown,
             check_updates: true,
         }
     }
@@ -254,6 +268,7 @@ fn put(app: &AppHandle, settings: Settings) {
     if who_changed {
         crate::review::identity_changed(app);
     }
+    sync_menu(app, &settings);
     if let Err(e) = app.emit("settings-changed", settings) {
         eprintln!("settings-changed: {e}");
     }
@@ -266,6 +281,21 @@ const TEXT_STEP: f64 = 4.0;
 
 /// The column of text set to `width` (em), or none: as wide as the window (dragged at its edges, the toolbar's
 /// control).
+/// View ▸ Show Project Bar on Hover: the bar on hover, or always shown again.
+pub fn toggle_project_bar(app: &AppHandle) {
+    let mut settings = get();
+    settings.project_bar = if settings.project_bar == ProjectBar::Hover { ProjectBar::Shown } else { ProjectBar::Hover };
+    put(app, settings);
+}
+
+/// The check mark of View ▸ Show Project Bar on Hover, as the settings say.
+fn sync_menu(app: &AppHandle, settings: &Settings) {
+    if let Some(item) = app.menu().and_then(|m| m.get("project-bar")).and_then(|k| k.as_check_menuitem().cloned()) {
+        let _ = item.set_checked(settings.project_bar == ProjectBar::Hover);
+    }
+}
+
+/// The settings, for the Settings window and the document pages.
 #[tauri::command]
 pub fn set_text_width(app: AppHandle, width: Option<f64>) {
     let mut settings = get();
@@ -477,6 +507,7 @@ mod tests {
             read_aloud: "bard --text {text}".into(),
             tabs: false,
             project_colour_bar: true,
+            project_bar: ProjectBar::Hover,
             check_updates: false,
         };
         settings.save(&dir);

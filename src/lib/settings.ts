@@ -41,6 +41,8 @@ export type Settings = {
   /** the interface as large as the text asks (settings.rs `scale`) */
   interface_follows_text: boolean;
   project_colour_bar: boolean;
+  /** the project bar: always shown, shown on hover at the window's left edge, or hidden */
+  project_bar: "shown" | "hover" | "hidden";
   /** look for updates at start and twice a day; they are installed only when asked */
   check_updates: boolean;
 };

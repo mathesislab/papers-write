@@ -79,6 +79,20 @@
   let colourBar = $state(false);
   /** the folder the sidebar shows: the project's, else the file's */
   const sideRoot = $derived(projects.current?.root ?? (path ? path.slice(0, path.lastIndexOf("/")) : null));
+  /** the project bar's mode (Settings ▸ Window), and whether it is slid in (on hover) */
+  let barMode = $state<"shown" | "hover" | "hidden">("shown");
+  let barOpen = $state(false);
+  let slideTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The pointer at the left edge: the bar slides in after a moment (a pointer only passing by does not open it). */
+  function barNear() {
+    clearTimeout(slideTimer);
+    slideTimer = setTimeout(() => (barOpen = true), 250);
+  }
+  /** The pointer gone from the bar: it slides away, after a moment (a pointer straying out and back keeps it). */
+  function barAway() {
+    clearTimeout(slideTimer);
+    slideTimer = setTimeout(() => (barOpen = false), 350);
+  }
   const barColour = $derived(projects.current && colourBar ? cssOf(projects.current.colour) : null);
   $effect(() => {
     covering = !!(asking || carding);
@@ -138,6 +152,7 @@
   /** A click on a tile: the current project's shows or hides the sidebar, another's switches the window to it (or
    *  brings forward the window that shows it). */
   function switchProject(root: string) {
+    barOpen = false;
     if (root === projects.current?.root) return toggleSidebar();
     invoke("switch_project", { root }).catch((e) => onproblem(String(e)));
   }
@@ -174,7 +189,7 @@
   });
 
   onMount(() => {
-    const stops = [side.start(), watchSettings((s) => (colourBar = s.project_colour_bar))];
+    const stops = [side.start(), watchSettings((s) => ([colourBar, barMode] = [s.project_colour_bar, s.project_bar ?? "shown"]))];
     askProject();
     window.addEventListener("focus", loadBar);
     const unlisten = [
@@ -187,20 +202,35 @@
     return () => {
       stops.forEach((stop) => stop());
       clearTimeout(barTimer);
+      clearTimeout(slideTimer);
       window.removeEventListener("focus", loadBar);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });
 </script>
 
+{#snippet projectBar()}
+  <ProjectBar
+    items={projects.tiles}
+    onswitch={switchProject}
+    onmenu={tileMenu}
+    onmove={(root, to) => void invoke("move_in_bar", { root, to }).then(loadBar).catch((e) => onproblem(String(e)))}
+    onadd={() => invoke("choose_project")} addTitle={keys("Open Project… (⇧⌘O)")} />
+{/snippet}
 {#snippet tiles()}
   {#if projects.current && projects.tiles.length}
-    <ProjectBar
-      items={projects.tiles}
-      onswitch={switchProject}
-      onmenu={tileMenu}
-      onmove={(root, to) => void invoke("move_in_bar", { root, to }).then(loadBar).catch((e) => onproblem(String(e)))}
-      onadd={() => invoke("choose_project")} addTitle={keys("Open Project… (⇧⌘O)")} />
+    {#if barMode === "shown"}
+      {@render projectBar()}
+    {:else if barMode === "hover"}
+      <!-- a strip at the left edge in the project's colour; the bar slides in over the page while the pointer is on
+           it (as the Ubuntu dock), and away when it leaves or a project is chosen -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="hover-bar" class:open={barOpen} style:--strip={cssOf(projects.current.colour) ?? "var(--line)"} onmouseenter={barNear} onmouseleave={barAway}>
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div class="strip" onclick={() => (barOpen = true)} title="Projects"></div>
+        <div class="slide">{@render projectBar()}</div>
+      </div>
+    {/if}
   {/if}
 {/snippet}
 {#snippet files(root: string)}
@@ -232,6 +262,36 @@
 {/if}
 
 <style>
+  .hover-bar {
+    position: relative;
+    flex: none;
+    width: 5px;
+    height: 100%;
+    z-index: 40;
+  }
+  .strip {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--strip) 55%, transparent);
+    cursor: pointer;
+  }
+  .slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    display: flex;
+    transform: translateX(-100%);
+    transition: transform 0.16s ease-out;
+    box-shadow: 4px 0 18px rgba(0, 0, 0, 0.18);
+    background: var(--bg);
+  }
+  .hover-bar:not(.open) .slide {
+    box-shadow: none;
+  }
+  .hover-bar.open .slide {
+    transform: none;
+  }
   .write {
     display: contents;
     /* the tiles' detail: words and open suggestions, on two lines */

@@ -9,11 +9,14 @@
   import type { Click, Entry, Place, Turn } from "tauri-plugin-pdfkit-api";
   import { bestPlace, better, lineOfText, spoken, wordAround, type Found, type OutlineItem, type PdfViewProps, type Spot, type Target } from "$lib/pdf";
   import { pdfMenu } from "$lib/pdfMenu";
+  import { over } from "$lib/overlay.svelte";
 
   // `covered`: hidden while the page shows a card over it, as the view lies above all of the page
   let { path, page = 1, covered = false, onpage, onhistory, onopen, onoutline, onsource, menuItem = null }: PdfViewProps = $props();
 
   let area: HTMLDivElement;
+  /** the PDF is open: its view follows the area */
+  let opened = false;
   // names this view for `cover` and `close`: the PDF read again has a view made anew while the old one goes
   const id = crypto.randomUUID();
   let error = $state("");
@@ -128,6 +131,25 @@
     void pdfMenu(spot, selected.trim(), fromHere, { onsource, menuItem }, client.x, client.y);
   }
 
+  /** The area, less what of it the project bar covers while slid in (`over`): the view lies above all of the page, so
+   *  it makes way, the PDF fitting the rest, as Preview's does for its sidebar. */
+  function frame(): pdfkit.Frame {
+    const f = pdfkit.frameOf(area);
+    const left = Math.min(Math.max(f.x, over.left), f.x + f.width);
+    return { ...f, x: left, width: f.x + f.width - left };
+  }
+
+  /** The view moved to the area as it is now. */
+  function refit() {
+    if (opened) send(() => pdfkit.setFrame(frame()));
+  }
+
+  // the bar slid in or out
+  $effect(() => {
+    void over.left;
+    refit();
+  });
+
   // a card shown or gone after the PDF opened
   let opening = true;
   $effect(() => {
@@ -138,16 +160,13 @@
 
   onMount(() => {
     const shown = path;
-    let opened = false;
     // the area changes with the window and the bar above it
-    const resize = new ResizeObserver(() => {
-      if (opened) send(() => pdfkit.setFrame(pdfkit.frameOf(area)));
-    });
+    const resize = new ResizeObserver(refit);
     resize.observe(area);
     const unlisten = pdfkit.onPage((p) => onpage(p));
     const unlistenHistory = pdfkit.onHistory((h) => onhistory?.(h));
     const unlistenClick = pdfkit.onClick(clicked);
-    send(() => pdfkit.open(id, shown, page, pdfkit.frameOf(area), covered))
+    send(() => pdfkit.open(id, shown, page, frame(), covered))
       .then(({ count, outline }) => {
         opened = true;
         onopen(count);

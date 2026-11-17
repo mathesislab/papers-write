@@ -27,6 +27,7 @@
   import type { Bar } from "$lib/projects";
   import { listen } from "$lib/events";
   import { watchSettings } from "$lib/settings";
+  import { over } from "$lib/overlay.svelte";
 
   let {
     path,
@@ -84,6 +85,14 @@
   let barMode = $state<"shown" | "hover" | "hidden">("shown");
   let barOpen = $state(false);
   let slideTimer: ReturnType<typeof setTimeout> | undefined;
+  /** the strip and the bar that slides in from it */
+  let hoverBar = $state<HTMLDivElement>();
+  let slide = $state<HTMLDivElement>();
+  // the part of the window the bar covers while slid in, which PDFKit's view keeps clear of (`over`)
+  $effect(() => {
+    over.left = barMode === "hover" && barOpen && hoverBar && slide ? hoverBar.getBoundingClientRect().left + slide.offsetWidth : 0;
+    return () => (over.left = 0);
+  });
   /** The pointer at the left edge: the bar slides in after a moment (a pointer only passing by does not open it). */
   function barNear() {
     clearTimeout(slideTimer);
@@ -234,12 +243,13 @@
       {@render projectBar()}
     {:else if barMode === "hover"}
       <!-- a strip at the left edge in the project's colour; the bar slides in over the page while the pointer is on
-           it (as the Ubuntu dock), and away when it leaves or a project is chosen -->
+           it (as the Ubuntu dock), and away when it leaves or a project is chosen. PDFKit's view, above the page,
+           makes way for it (`over`) -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="hover-bar" class:open={barOpen} style:--strip={cssOf(projects.current.colour) ?? "var(--line)"} onmouseenter={barNear} onmouseleave={barAway}>
+      <div class="hover-bar" class:open={barOpen} bind:this={hoverBar} style:--strip={cssOf(projects.current.colour) ?? "var(--line)"} onmouseenter={barNear} onmouseleave={barAway}>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="strip" onclick={() => (barOpen = true)} title="Projects"></div>
-        <div class="slide">{@render projectBar()}</div>
+        <div class="slide" bind:this={slide}>{@render projectBar()}</div>
       </div>
     {/if}
   {/if}

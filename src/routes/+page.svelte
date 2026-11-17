@@ -369,7 +369,7 @@
     const what = e.payload;
     if (what.kind === "want") void sendPreview();
     else if (what.kind === "block") scrollToBlock(what.index ?? 0);
-    else if (what.kind === "pdf") pdfTab();
+    else if (what.kind === "pdf") void previewToPdf(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
     else if (what.kind === "source") {
       void invoke("bring_tab", { page: getCurrentWebview().label });
       void previewToSource(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
@@ -512,6 +512,15 @@
   async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null, word = "", around = { before: [] as string[], after: [] as string[] }) {
     const found = await invoke<boolean>("open_source_at", { pdf, text, at, word, around }).catch(() => false);
     if (!found) say("Not found in the project's sources");
+  }
+
+  /** Show in PDF from the preview: the place clicked found in the text (as Go to Source does), then shown in the PDF
+   *  from there (as Show in PDF from the text does: the build's map, else the words). */
+  async function previewToPdf(text: string, word: string, around: { before: string[]; after: string[] }) {
+    const place = await invoke<[number, number] | null>("place_in_text", { text: current(), query: text, word, around }).catch(() => null);
+    if (place) editor?.markFound(place[0], place[1]);
+    else say("Not found in the text: the PDF at the cursor");
+    await showInPdf();
   }
 
   /** The split dragged: the width of the preview, kept for the window. */
@@ -925,7 +934,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width}px` : "45%"}>
-      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? () => togglePdf() : undefined} />
+      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}

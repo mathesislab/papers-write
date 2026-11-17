@@ -57,7 +57,7 @@
       {block}
       onsource={(text, word, around) => void tell({ kind: "source", text, word, around })}
       onblock={(index) => void tell({ kind: "block", index })}
-      onpdf={() => void tell({ kind: "pdf" })}
+      onpdf={(text, word, around) => void tell({ kind: "pdf", text, word, around })}
     />
   </div>
 </Frame>

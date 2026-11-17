@@ -1,6 +1,6 @@
 # Build profiles: what Build does, and which PDF goes with a source
 
-Draft of an issue for mathesislab/papers-write (proposal). Not posted.
+Draft of an issue for mathesislab/papers-write (proposal). Not posted. Implemented as PR #16.
 
 ## Today
 
@@ -32,8 +32,7 @@ run = "build"               # "build": run by Build; "watch": started by the app
 - **Where the profiles live.** `.papers-write/` is already the app's folder (the review files are in
   `.papers-write/review/`), so profiles go next to them. This keeps `write.toml` short, and avoids its `build` key,
   which already names the output folder.
-- **No profile: the built-in `[document]` profile.** It builds `main` (else the file in front) with texmark, from
-  the document's own front matter, into `build/<name>.pdf`. That is what Build does today, from `main`.
+- **No profile: nothing changes.** Build builds the document in front, from its own front matter, as it does today.
 - **Priority.** The document's front matter is the base, read by texmark. A profile only adds a command, whose
   arguments override the front matter as texmark's command line does. The same document builds the same in any
   editor.
@@ -41,7 +40,8 @@ run = "build"               # "build": run by Build; "watch": started by the app
   configuration), not in the repository:
   - It is set per source file and becomes the project's current one.
   - A file never set follows the project's current profile, so the chapters of a book follow one choice.
-  - `write.toml` may name a default for a fresh checkout: `build = "synopsis"`.
+  - `write.toml` may name a default for a fresh checkout: `profile = "synopsis"` (not `build`, which already names the
+    output folder).
   - Build ▸ Profile lists them, and the active one is named beside the Build button.
 - **Build** does what the active profile says: run it, start its watch, or nothing.
 - **The PDF beside a source**, in order:

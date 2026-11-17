@@ -428,14 +428,12 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
     // behind the page in view till it says it is drawn (`page_ready`); one that never says so comes to the front
     // after a while all the same
     let on_top = app.state::<Tabs>().on_top.lock().unwrap().get(window.label()).cloned();
-    match on_top.and_then(|f| app.get_webview(&f)) {
-        Some(shown) => behind(&page, &shown),
+    if let Some(shown) = on_top.and_then(|f| app.get_webview(&f)) {
+        behind(&page, &shown);
+    } else if cfg!(not(target_os = "macos")) {
         // the first page of a window: outside macOS, hidden till it is drawn, the window's background shown
         // meanwhile rather than the page being drawn (`reveal` shows it)
-        None => {
-            #[cfg(not(target_os = "macos"))]
-            let _ = page.hide();
-        }
+        let _ = page.hide();
     }
     if !later {
         show_after_a_while(app, label);

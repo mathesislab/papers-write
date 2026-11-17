@@ -145,7 +145,10 @@ One app later is then a matter of windows, not code.
   first needed. It stays in the Dock when the last window closes, as
   papers-review does, so the next window is there at once; on Linux closing
   the last window quits, its windows kept for the next start. Tabs are dragged
-  to another place (or Window ▸ Move Tab Left, Right). At the start the tab in
+  to another place (or Window ▸ Move Tab Left, Right), and gone through as
+  Sublime and VS Code have it: ⌃Tab the tab in front before (again while ⌃ is
+  held, the one before that), Back and Forward among the tabs visited, ⌘1…⌘9
+  (Alt elsewhere) a tab by its place. At the start the tab in
   front of each window loads first and the others one at a time after it
   (twenty loading at once kept every one from showing for seconds).
 - Saving: a file is written half a second after the typing stops, unless
@@ -160,8 +163,11 @@ One app later is then a matter of windows, not code.
   front; A− A+), light, dark or as the system is (View ▸ Appearance), the
   windows' own background following it.
 - Go to File… (⌘P): a file of the project by the letters of its name in order,
-  `@` a heading of the text in front, `:42` a line. Open… starts in the
-  project's folder.
+  `@` a heading of the text in front, `:42` a line. Switch Project… (⌃⌘P, Ctrl+Alt+P
+  elsewhere) the same for the projects of the bar and the recent ones. Open…
+  starts in the project's folder.
+- Outside macOS the menus are as GNOME's apps have them: no menu of the app's
+  name, Quit in File, Preferences in Edit, About in Help.
 - A file alone already has most of it: its front matter says the
   bibliography and the journal, the papers library is found as papers-review
   finds it, the preview and the build work.
@@ -271,7 +277,9 @@ and `library` are kept but not yet used by the build and the references.
   data URIs (under 5 MB; no asset protocol or CSP to scope), in a sandboxed
   frame whose policy runs none of the document's scripts. Cross-references
   stay as pandoc leaves them. A chapter that names no bibliography is given
-  the main document's.
+  the main document's, and its references to the other chapters (a thesis's
+  `chapters:`) their numbers from a table of the whole document's labels, made
+  aside and kept till a file changes.
   A 9,400-word paper with 60 display equations takes 0.22 s, fast enough to
   run a moment after the typing stops. It follows the cursor.
 - Build with Quarto: a `.qmd`, or the Markdown of a project whose `write.toml`

@@ -167,10 +167,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
-            // the sidebar on a tab (pressed again: hidden); outside macOS O for the files (open), I for the outline (an
-            // index), as Ctrl+Shift+F is the search's
+            // the sidebar on a tab (pressed again: hidden); outside macOS O for the files (open), H for the outline (the
+            // headings), as Ctrl+Shift+F is the search's
             &item("sidebar", "Show Files", Some(if MAC { "Alt+CmdOrCtrl+S" } else { "Ctrl+Alt+O" }))?,
-            &item("outline", "Show Outline", Some(if MAC { "Alt+CmdOrCtrl+O" } else { "Ctrl+Alt+I" }))?,
+            &item("outline", "Show Outline", Some(if MAC { "Alt+CmdOrCtrl+O" } else { "Ctrl+Alt+H" }))?,
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)

@@ -197,7 +197,7 @@
 
   function changed(text: string) {
     typed = text;
-    if (previewing) later();
+    if (previewing || previewTab) later();
     session.reload(500);
     // the file is written half a second after the typing stops
     gitbar?.refresh(1500);
@@ -215,10 +215,11 @@
 
   /** One run at a time per window: a request while another runs supersedes it (the backend kills the old one). */
   async function refresh() {
-    if (!previewing) return;
+    if (!previewing && !previewTab) return;
     try {
       const made = await invoke<{ html: string; error: string | null }>("preview", { text: current() });
       [html, said] = [made.html, made.error ?? ""];
+      void sendPreview();
     } catch (e) {
       if (String(e) !== "superseded") said = String(e);
     }
@@ -229,7 +230,7 @@
   const HIDDEN_BLOCKS = new Set(["FrontMatter", "LinkReference", "CommentBlock", "LatexEnvironment"]);
   function follow() {
     const view = editor?.view();
-    if (!previewing || !view || !follows) return;
+    if ((!previewing && !previewTab) || !view || !follows) return;
     const { state } = view;
     const head = state.selection.main.head;
     const tree = ensureSyntaxTree(state, state.doc.length, 50);
@@ -287,7 +288,7 @@
     restoreNow();
   }
   function restoreNow() {
-    if (!path) return;
+    if (!path || inTabs) return;
     let pane: string | null = null;
     try {
       pane = localStorage.getItem(paneKey(path));
@@ -298,9 +299,8 @@
 
   function togglePreview(keep = true) {
     if (!markdown) return;
+    if (inTabs) return void (keep && openPreviewTab());
     previewing = !previewing;
-    // shown by a choice (not as the file opens): in view, one pane at a time
-    if (keep) onPane = previewing && onePane;
     if (previewing) {
       panel = false;
       pdfBeside = false;
@@ -311,22 +311,21 @@
   }
 
   /** View ▸ Show PDF: the PDF beside the text, in the preview's place. */
-  /** The panes (View ▸ Panes): the text and its preview or PDF side by side, or each the whole width one at a time
-   *  (a small screen), or so while the window is narrower than `NARROW`; `onPane` the pane in view then. The same in
-   *  every tab (the pages' storage, told to the others). */
-  type Panes = "side" | "one" | "auto";
+  /** The panes (View ▸ Panes): the text's preview or PDF beside it, or in tabs of their own (a small screen:
+   *  panetabs.rs), or so while the window is narrower than `NARROW`. The same in every tab (the pages' storage, told
+   *  to the others). */
+  type Panes = "side" | "tabs" | "auto";
   const PANES = "panes";
   /** narrower than this (points, as the page counts them): one pane at a time, in the automatic mode (a laptop's
    *  screen, maximised, is about 1400) */
   const NARROW = 1440;
   let panesMode = $state<Panes>(readPanes());
   let narrow = $state(window.innerWidth < NARROW);
-  const onePane = $derived(panesMode === "one" || (panesMode === "auto" && narrow));
-  let onPane = $state(false);
+  const inTabs = $derived(panesMode === "tabs" || (panesMode === "auto" && narrow));
   function readPanes(): Panes {
     try {
       const kept = localStorage.getItem(PANES);
-      return kept === "one" || kept === "auto" ? kept : "side";
+      return kept === "tabs" || kept === "one" ? "tabs" : kept === "auto" ? "auto" : "side";
     } catch {
       return "side";
     }
@@ -338,12 +337,48 @@
       else localStorage.setItem(PANES, mode);
     } catch {}
   }
-  /** The pane brought into view (Show in…), or the text (Go to Source); nothing while both are side by side. */
-  function flip(toPane: boolean) {
-    if (!onePane) return;
-    onPane = toPane;
-    if (!toPane) queueMicrotask(() => editor?.focus());
+  /** the preview's tab (in tabs: panetabs.rs), while it is open */
+  let previewTab = $state<string | null>(null);
+  /** The preview in its tab, brought forward or made; what pandoc made sent to it. */
+  async function openPreviewTab() {
+    if (!markdown) return;
+    try {
+      previewTab = await invoke<string>("preview_tab");
+      follow();
+      await refresh();
+    } catch (e) {
+      say(String(e));
+    }
   }
+  /** What pandoc made, and the cursor's block, sent to the preview's tab; forgotten when it is gone. */
+  async function sendPreview() {
+    if (!previewTab) return;
+    const there = await invoke<boolean>("relay", { to: previewTab, event: "preview-html", payload: { html, error: said, block } }).catch(() => false);
+    if (!there) previewTab = null;
+  }
+  $effect(() => {
+    const now = block;
+    if (previewTab) void invoke("relay", { to: previewTab, event: "preview-block", payload: now }).catch(() => {});
+  });
+  /** The PDF in its tab (in tabs), at `show` when given. */
+  function pdfTab(show: Record<string, unknown> | null = null) {
+    void invoke("pdf_tab_show", { show }).catch((e) => say(String(e)));
+  }
+  /** What the preview's tab tells: it wants what pandoc made, a click on a block, Go to Source, Show PDF. */
+  function fromPreviewTab(e: { payload: { kind: string; index?: number; text?: string; word?: string; around?: { before: string[]; after: string[] } } }) {
+    const what = e.payload;
+    if (what.kind === "want") void sendPreview();
+    else if (what.kind === "block") scrollToBlock(what.index ?? 0);
+    else if (what.kind === "pdf") pdfTab();
+    else if (what.kind === "source") {
+      void invoke("bring_tab", { page: getCurrentWebview().label });
+      void previewToSource(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
+    }
+  }
+  // in tabs: the panes beside the text closed (their tabs take their place)
+  $effect(() => {
+    if (inTabs && (previewing || pdfBeside)) [previewing, pdfBeside] = [false, false];
+  });
   $effect(() => {
     const changed = (e: StorageEvent) => e.key === PANES && (panesMode = readPanes());
     const resized = () => (narrow = window.innerWidth < NARROW);
@@ -356,9 +391,9 @@
   });
 
   function togglePdf(keep = true) {
+    if (inTabs) return void (keep && pdfTab());
     if (!path) return say("Save the document first, to show its PDF");
     pdfBeside = !pdfBeside;
-    if (keep) onPane = pdfBeside && onePane;
     if (pdfBeside) [previewing, panel] = [false, false];
     if (keep) keepPane();
   }
@@ -368,14 +403,18 @@
   /** ⌃-click in the text, or Show in … of its menu: where the cursor is, shown in the pane beside it: the preview's
    *  block when the preview is shown, else in the PDF (shown first when it is not). */
   function syncHere() {
-    if (previewing && markdown) showInPreview();
+    if ((previewing || previewTab) && markdown) void showInPreview();
     else void showInPdf();
   }
 
   /** Show in Preview: the preview shown (in place of the PDF), scrolled to the cursor's block, which flashes. */
   async function showInPreview() {
     if (!markdown) return;
-    flip(true);
+    if (inTabs) {
+      await openPreviewTab();
+      void invoke("relay", { to: previewTab, event: "preview-flash", payload: null }).catch(() => {});
+      return;
+    }
     if (!previewing) {
       togglePreview();
       // its HTML made first
@@ -408,10 +447,8 @@
   /** ⌃-click in the preview: the words of its block looked for in the text, the word clicked marked there. */
   async function previewToSource(text: string, word: string, around: { before: string[]; after: string[] }) {
     const place = await invoke<[number, number] | null>("place_in_text", { text: current(), query: text, word, around }).catch(() => null);
-    if (place) {
-      flip(false);
-      editor?.markFound(place[0], place[1]);
-    } else say("Not found in the text");
+    if (place) editor?.markFound(place[0], place[1]);
+    else say("Not found in the text");
   }
 
   // View ▸ Show Preview and Show PDF say Hide while shown: told as they change, and as the window comes to the front
@@ -437,8 +474,7 @@
   async function showInPdfNow() {
     const view = editor?.view();
     if (!view || !path) return;
-    flip(true);
-    if (!pdfBeside) {
+    if (!pdfBeside && !inTabs) {
       togglePdf();
       // the pane and its PDF read first
       await new Promise((r) => setTimeout(r, 800));
@@ -456,6 +492,10 @@
     const words = (t: string) => plainOf(t).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
     const before = words(line.text.slice(0, Math.min(from, head) - line.from)).slice(-6);
     const after = words(line.text.slice(Math.max(to, head) - line.from)).slice(0, 6);
+    if (inTabs) {
+      // the PDF's tab shows it, from the build's map, else by these phrases of the line
+      return pdfTab({ source: path, line: line.number, along, word, before, after, phrases: phrasesAt(line.text, head - line.from) });
+    }
     const page = await sidePdf?.showSource(path, line.number, word, along, before, after);
     if (page) return say(`Shown in the PDF: page ${page}`);
     for (const phrase of phrasesAt(line.text, head - line.from)) {
@@ -471,8 +511,7 @@
   /** ⌃-click in the PDF beside the text: its source there (this text, or another file in its tab). */
   async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null, word = "", around = { before: [] as string[], after: [] as string[] }) {
     const found = await invoke<boolean>("open_source_at", { pdf, text, at, word, around }).catch(() => false);
-    if (found) flip(false);
-    else say("Not found in the project's sources");
+    if (!found) say("Not found in the project's sources");
   }
 
   /** The split dragged: the width of the preview, kept for the window. */
@@ -790,6 +829,7 @@
       listen("preview", () => togglePreview()),
       listen("pdf-beside", () => togglePdf()),
       listen<string>("panes", (e) => setPanes(e.payload as Panes)),
+      listen("preview-tab", fromPreviewTab),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number; mark: boolean }>("go-to", (e) => goTo(e.payload)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -823,11 +863,9 @@
   onfocus={() => editor?.focus()}
 >
   <div class="body">
-  <!-- one pane at a time: the text and the pane each the whole width, the one not in view kept (its scroll) but hidden -->
-  <div class="panes" bind:this={panes} class:one={onePane && ((previewing && markdown) || (pdfBeside && !!path))} class:on-pane={onPane}>
+  <div class="panes" bind:this={panes}>
   <!-- the text's column: its toolbar above it, so that its tools stay with it when a pane is beside it -->
   <div class="text">
-  <button class="flip to-pane" onclick={() => flip(true)} title="The {previewing && markdown ? 'preview' : 'PDF'}, in place of the text (View ▸ Panes)">{previewing && markdown ? "Preview" : "PDF"} ›</button>
   <Toolbar
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
@@ -889,7 +927,6 @@
     <div class="pane" style:width={width ? `${width}px` : "45%"}>
       <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? () => togglePdf() : undefined} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
-      <button class="flip to-text" onclick={() => flip(false)} title="Back to the text (View ▸ Panes)">‹ Text</button>
     </div>
   {:else if pdfBeside && path}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -897,7 +934,6 @@
     <div class="pane" style:width={width ? `${width}px` : "45%"}>
       <SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} onpreview={markdown ? () => togglePreview() : undefined} />
       <button class="close-pane" onclick={() => togglePdf()} title="Hide PDF" aria-label="Hide PDF">×</button>
-      <button class="flip to-text" onclick={() => flip(false)} title="Back to the text (View ▸ Panes)">‹ Text</button>
     </div>
   {/if}
   {#if panel}
@@ -983,45 +1019,6 @@
     min-height: 0;
     display: flex;
     position: relative;
-  }
-  /* one pane at a time: the pane over the whole width, shown or hidden; what is hidden keeps its place and scroll */
-  .panes.one > .split {
-    display: none;
-  }
-  .panes.one > .pane:not(.review) {
-    position: absolute;
-    inset: 0;
-    width: auto !important;
-    max-width: none;
-    z-index: 5;
-  }
-  .panes.one:not(.on-pane) > .pane:not(.review),
-  .panes.one.on-pane > .text {
-    visibility: hidden;
-    pointer-events: none;
-  }
-  .flip {
-    display: none;
-    position: absolute;
-    z-index: 6;
-    font: inherit;
-    font-size: 12px;
-    padding: 1px 8px;
-    color: var(--fg);
-    background: var(--chip);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-  }
-  .panes.one .flip {
-    display: block;
-  }
-  /* in the bottom right corner, where neither the text's nor the PDF's tools are */
-  .flip.to-pane,
-  .flip.to-text {
-    bottom: 14px;
-    right: 18px;
-    padding: 4px 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
   footer {
     flex: none;

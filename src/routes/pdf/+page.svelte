@@ -6,6 +6,7 @@
   // changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last). A ⌃-click on its
   // text opens the source there (pdf.js only, not PDFKit yet: `open_source_at`).
 
+  import { showSourceIn } from "$lib/pdfPlace";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
@@ -60,6 +61,22 @@
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** ⌃-click on the PDF's text: its source opened there, found by its words in the project's Markdown and LaTeX. */
+  /** A place of a text to show here (Show in PDF with the panes in tabs: panetabs.rs), once the PDF is read: from the
+   *  build's map, else by the words of its line. */
+  async function showAsked() {
+    await opened.promise;
+    const asked = await invoke<{ source: string; line: number; along: number; word: string; before: string[]; after: string[]; phrases: string[] } | null>(
+      "take_show_source",
+    ).catch(() => null);
+    if (!asked || !view || !path) return;
+    if ("showBox" in view) {
+      const shown = await showSourceIn(view as unknown as PdfjsView, path, asked.source, asked.line, asked.word, asked.along, asked.before, asked.after);
+      if (shown.page) return say(shown.status);
+    }
+    for (const phrase of asked.phrases) if (await view.find(phrase)) return say(`Found by its words: “${phrase}”`);
+    say("Not found in the PDF");
+  }
+
   async function toSource(text: string, at: { page: number; x: number; y: number } | null = null, word = "", around = { before: [] as string[], after: [] as string[] }) {
     if (!path) return;
     try {
@@ -131,7 +148,8 @@
   onMount(() => {
     ready(opened.promise, frame?.loaded() ?? Promise.resolve());
     ask();
-    const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
+    void showAsked();
+    const unlisten = [listen("show-source", () => void showAsked()), listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
     return () => {
       clearTimeout(timer);
       clearTimeout(noteTimer);

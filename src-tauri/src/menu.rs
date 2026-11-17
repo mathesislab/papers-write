@@ -165,16 +165,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
             &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
-            // the text and its preview or PDF side by side, or each the whole width, one at a time (a small screen),
-            // or so only while the window is narrow; the one chosen checked by the page (`view_shown`)
+            // the text's preview and PDF beside it, or in tabs of their own (a small screen: panetabs.rs), or so only
+            // while the window is narrow; the one chosen checked by the page (`view_shown`)
             &Submenu::with_items(
                 app,
                 "Panes",
                 true,
                 &[
-                    &CheckMenuItem::with_id(app, "panes-side", "Side by Side", true, true, None::<&str>)?,
-                    &CheckMenuItem::with_id(app, "panes-one", "One at a Time", true, false, None::<&str>)?,
-                    &CheckMenuItem::with_id(app, "panes-auto", "One at a Time on a Narrow Window", true, false, None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, true, None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, false, None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, false, None::<&str>)?,
                 ],
             )?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
@@ -327,7 +327,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
-        "panes-side" | "panes-one" | "panes-auto" => {
+        "panes-side" | "panes-tabs" | "panes-auto" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "panes", id.trim_start_matches("panes-"));
             }
@@ -397,7 +397,7 @@ pub fn view_shown(app: AppHandle, preview: bool, pdf: bool, panes: String) {
             let _ = item.set_text(format!("{} {name}", if shown { "Hide" } else { "Show" }));
         }
     }
-    for mode in ["side", "one", "auto"] {
+    for mode in ["side", "tabs", "auto"] {
         if let Some(item) = app.menu().and_then(|m| m.get(&format!("panes-{mode}"))).and_then(|k| k.as_check_menuitem().cloned()) {
             let _ = item.set_checked(panes == mode);
         }

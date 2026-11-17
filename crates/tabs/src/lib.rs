@@ -213,6 +213,15 @@ pub struct Tabs {
     later: Mutex<Vec<(String, String)>>,
     /// the address of the app's pages, from the first page made (what `WebviewUrl::App` joins to)
     base: Mutex<Option<tauri::Url>>,
+    /// each window's tabs in the order they were last in front, and its tabs visited, to go back and forward to
+    visits: Mutex<HashMap<String, Visits>>,
+    /// Switch to Recent Tab going on (⌃Tab pressed again while ⌃ is held): the window, and how far down its recent
+    /// tabs; the order of the recent tabs stays as it was till it ends (`recent_done`)
+    cycling: Mutex<Option<(String, usize)>>,
+    /// the presses of Switch to Recent Tab, for the end of one after a while without a press or ⌃ let go
+    cycle_presses: AtomicUsize,
+    /// a tab brought back by Back or Forward: not itself a visit
+    stepping: AtomicBool,
     /// the folders open in the file tree of each project's sidebar (none: of the pages of no project), the same in
     /// all its pages; not saved: a project opens with its folders closed
     folders: Mutex<HashMap<Option<PathBuf>, Vec<String>>>,
@@ -237,11 +246,23 @@ impl Tabs {
             deferring: AtomicBool::new(false),
             later: Mutex::default(),
             base: Mutex::default(),
+            visits: Mutex::default(),
+            cycling: Mutex::default(),
+            cycle_presses: AtomicUsize::new(0),
+            stepping: AtomicBool::new(false),
             folders: Mutex::default(),
             ready: Mutex::default(),
             on_top: Mutex::default(),
         }
     }
+}
+
+/// A window's tabs as visited: the most recently in front first, and those left (Back) and come back from (Forward).
+#[derive(Default)]
+struct Visits {
+    recent: Vec<String>,
+    back: Vec<String>,
+    forward: Vec<String>,
 }
 
 /// A tab of the strip.
@@ -618,6 +639,7 @@ pub fn select(app: &AppHandle, page: &str) {
     let Some(window_label) = window_of(app, page) else {
         return;
     };
+    visited(app, &window_label, front_of(app, &window_label), page);
     let newly_shown = with_tabs(app, |w| {
         let win = w.get_mut(&window_label)?;
         win.bring(page);
@@ -640,6 +662,128 @@ pub fn select(app: &AppHandle, page: &str) {
     }
     host(app).focused(app, page);
     changed(app, &window_label);
+}
+
+/// The tab `page` brought to the front of `window` after `before`: the first of its recent tabs (unless Switch to
+/// Recent Tab goes on), and `before` the tab Back goes to (unless Back or Forward brought it).
+fn visited(app: &AppHandle, window: &str, before: Option<String>, page: &str) {
+    let state = app.state::<Tabs>();
+    let cycling = state.cycling.lock().unwrap().is_some();
+    let stepping = state.stepping.load(Ordering::SeqCst);
+    let mut visits = state.visits.lock().unwrap();
+    let v = visits.entry(window.to_string()).or_default();
+    if let Some(before) = before.filter(|b| b != page) {
+        if v.recent.is_empty() {
+            v.recent.push(before.clone());
+        }
+        if !stepping {
+            v.back.push(before);
+            v.forward.clear();
+        }
+    }
+    if !cycling {
+        v.recent.retain(|p| p != page);
+        v.recent.insert(0, page.to_string());
+    }
+}
+
+/// The pages of the set shown in `window` (the tab strip), for the tabs to go to.
+fn strip_of(app: &AppHandle, window: &str) -> Vec<String> {
+    with_tabs(app, |w| w.get(window).and_then(|win| win.sets.first()).map(|s| s.pages.clone()).unwrap_or_default())
+}
+
+/// Switch to Recent Tab (⌃Tab; `by` -1: ⌃⇧Tab): the tab in front before this one; pressed again while ⌃ is held,
+/// the one before that, and so on (the order kept till ⌃ is let go, `recent_done`, or a moment passes).
+pub fn recent(app: &AppHandle, by: isize) {
+    let Some(window) = front_window(app) else {
+        return;
+    };
+    let strip = strip_of(app, &window);
+    let state = app.state::<Tabs>();
+    let mut recent: Vec<String> = state.visits.lock().unwrap().get(&window).map(|v| v.recent.clone()).unwrap_or_default();
+    recent.retain(|p| strip.contains(p));
+    // the tabs never in front yet after those that were, in the strip's order
+    recent.extend(strip.iter().filter(|p| !recent.contains(p)).cloned().collect::<Vec<_>>());
+    if recent.len() < 2 {
+        return;
+    }
+    let target = {
+        let mut cycling = state.cycling.lock().unwrap();
+        let at = match cycling.as_ref() {
+            Some((w, i)) if *w == window => *i as isize,
+            _ => 0,
+        };
+        let next = (at + by).rem_euclid(recent.len() as isize) as usize;
+        *cycling = Some((window.clone(), next));
+        recent[next].clone()
+    };
+    select(app, &target);
+    // the end of it after a moment without a press, if ⌃ let go was not told
+    let press = state.cycle_presses.fetch_add(1, Ordering::SeqCst) + 1;
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        if handle.state::<Tabs>().cycle_presses.load(Ordering::SeqCst) == press {
+            recent_done(&handle);
+        }
+    });
+}
+
+/// Switch to Recent Tab over (⌃ let go): the tab it came to the first of the recent ones.
+pub fn recent_done(app: &AppHandle) {
+    let state = app.state::<Tabs>();
+    let Some((window, _)) = state.cycling.lock().unwrap().take() else {
+        return;
+    };
+    if let Some(front) = front_of(app, &window) {
+        visited(app, &window, None, &front);
+    }
+}
+
+/// Back (`back`) or Forward among the tabs visited in the window in front, as a browser goes through pages; tabs
+/// closed since are passed over.
+pub fn history(app: &AppHandle, back: bool) {
+    let Some(window) = front_window(app) else {
+        return;
+    };
+    let strip = strip_of(app, &window);
+    let Some(front) = front_of(app, &window) else {
+        return;
+    };
+    let state = app.state::<Tabs>();
+    let target = {
+        let mut visits = state.visits.lock().unwrap();
+        let v = visits.entry(window.clone()).or_default();
+        let (from, to) = if back { (&mut v.back, &mut v.forward) } else { (&mut v.forward, &mut v.back) };
+        let mut found = None;
+        while let Some(page) = from.pop() {
+            if strip.contains(&page) && page != front {
+                found = Some(page);
+                break;
+            }
+        }
+        if found.is_some() {
+            to.push(front);
+        }
+        found
+    };
+    if let Some(target) = target {
+        state.stepping.store(true, Ordering::SeqCst);
+        select(app, &target);
+        state.stepping.store(false, Ordering::SeqCst);
+    }
+}
+
+/// The `n`th tab of the strip (1 the first), 9 the last, as browsers have it.
+pub fn nth(app: &AppHandle, n: usize) {
+    let Some(window) = front_window(app) else {
+        return;
+    };
+    let strip = strip_of(app, &window);
+    let page = if n >= 9 { strip.last() } else { strip.get(n.saturating_sub(1)) };
+    if let Some(page) = page.cloned() {
+        select(app, &page);
+    }
 }
 
 /// A window titled again after its tab in front (its project renamed, say).
@@ -1100,6 +1244,19 @@ pub mod commands {
                 let _ = app.emit_to(EventTarget::webview(&other), "sidebar-changed", &sidebar);
             }
         }
+    }
+
+    /// ⌃Tab (`by` 1) or ⌃⇧Tab (-1) in a page: Switch to Recent Tab. GTK takes no Tab as a menu's key, so the page
+    /// says it.
+    #[tauri::command]
+    pub fn recent_tab(app: AppHandle, by: isize) {
+        super::recent(&app, by);
+    }
+
+    /// ⌃ let go in a page: Switch to Recent Tab over.
+    #[tauri::command]
+    pub fn recent_done(app: AppHandle) {
+        super::recent_done(&app);
     }
 
     /// The asking page is drawn: it may be shown (`ready`).

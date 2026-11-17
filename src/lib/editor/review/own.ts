@@ -241,7 +241,8 @@ const filter = EditorState.transactionFilter.of((tr) => {
 /** Undo (-1) or redo (1) in suggest mode: true there, whether or not there was a step; false in edit mode, for the
  *  history of the text. */
 export function stepSuggestions(view: EditorView, dir: -1 | 1): boolean {
-  if (!suggesting(view.state)) return false;
+  // not with the review in the text (CriticMarkup): its suggestions are edits of the text, undone as any
+  if (!suggesting(view.state) || !view.state.field(ownField, false)) return false;
   const spec = stepSpec(view.state, dir);
   if (spec) view.dispatch(spec);
   return true;

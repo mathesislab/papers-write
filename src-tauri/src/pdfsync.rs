@@ -48,7 +48,7 @@ fn offset_of(text: &str, line: u32, column: usize) -> usize {
 }
 
 /// Where the text clicked in `pdf` is in its sources: the file, and the UTF-16 offset of the words found.
-pub fn find(pdf: &Path, text: &str) -> Option<(PathBuf, usize)> {
+pub fn find(pdf: &Path, text: &str, word: &str) -> Option<(PathBuf, usize, usize)> {
     let root = root_of(pdf)?;
     let files = sources(&root);
     let texts: Vec<String> = files.iter().map(|f| std::fs::read_to_string(f).unwrap_or_default()).collect();
@@ -56,7 +56,29 @@ pub fn find(pdf: &Path, text: &str) -> Option<(PathBuf, usize)> {
     let places = srcmap::find_text(&refs, text);
     let modified = |p: &Place| std::fs::metadata(&files[p.text]).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
     let place = places.iter().max_by_key(|p| modified(p))?;
-    Some((files[place.text].clone(), offset_of(&texts[place.text], place.line, place.column)))
+    let (from, to) = span_of(&texts[place.text], place.line, place.column, word);
+    Some((files[place.text].clone(), from, to))
+}
+
+/// What to mark in line `line` (1-based) of `text`, from byte `column` of it on: the word clicked, where it is
+/// there (its first place from `column`, else from the line's start); else the word at `column`. Its start and end as
+/// UTF-16 offsets of `text`, as the editor counts.
+fn span_of(text: &str, line: u32, column: usize, word: &str) -> (usize, usize) {
+    let content = text.split('\n').nth(line.saturating_sub(1) as usize).unwrap_or("");
+    let column = column.min(content.len());
+    let word = word.trim_matches(|c: char| !c.is_alphanumeric());
+    let found = (!word.is_empty())
+        .then(|| content.get(column..).and_then(|rest| rest.find(word)).map(|i| column + i).or_else(|| content.find(word)))
+        .flatten();
+    let (start, end) = match found {
+        Some(i) => (i, i + word.len()),
+        None => {
+            let rest = content.get(column..).unwrap_or("");
+            let len = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
+            (column, column + len)
+        }
+    };
+    (offset_of(text, line, start), offset_of(text, line, end))
 }
 
 /// A place in a PDF: its page (from 1) and a point of it in PDF points from the page's top left, as SyncTeX takes it.
@@ -110,20 +132,22 @@ fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
 /// ⌃-click in a PDF: the source of the place clicked opened at it (as the sidebar's search opens a match), exactly
 /// from the build's map when there is one, else by the words clicked; false when it is found in none of the sources.
 #[tauri::command]
-pub async fn open_source_at(app: AppHandle, pdf: String, text: String, at: Option<At>) -> Result<bool, String> {
+pub async fn open_source_at(app: AppHandle, pdf: String, text: String, at: Option<At>, word: Option<String>) -> Result<bool, String> {
+    let word = word.unwrap_or_default();
     let found = tauri::async_runtime::spawn_blocking(move || {
         let pdf = Path::new(&pdf);
         if let Some((file, line)) = at.and_then(|at| exact(pdf, at)) {
             let source = std::fs::read_to_string(&file).unwrap_or_default();
-            return Some((file, offset_of(&source, line, 0)));
+            let (from, to) = span_of(&source, line, 0, &word);
+            return Some((file, from, to));
         }
-        find(pdf, &text)
+        find(pdf, &text, &word)
     })
     .await
     .map_err(|e| e.to_string())?;
     match found {
-        Some((path, at)) => {
-            crate::sidebar::open_at(app, path.to_string_lossy().into_owned(), at, at)?;
+        Some((path, from, to)) => {
+            crate::sidebar::open_marked(&app, &path, from, to)?;
             Ok(true)
         }
         None => Ok(false),
@@ -133,6 +157,19 @@ pub async fn open_source_at(app: AppHandle, pdf: String, text: String, at: Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_word_clicked_is_marked_where_it_is_in_the_line_found() {
+        let text = "intro\nThe sea level rises, as the sea warms.\n";
+        let line2 = 6;
+        // after the run found (from its column), else from the start
+        assert_eq!(span_of(text, 2, "The sea level rises, as ".len(), "sea"), (line2 + 28, line2 + 31));
+        assert_eq!(span_of(text, 2, 0, "level"), (line2 + 8, line2 + 13));
+        // a word not there: the word at the column
+        assert_eq!(span_of(text, 2, 4, "ocean"), (line2 + 4, line2 + 7));
+        // punctuation around the word clicked is not its
+        assert_eq!(span_of(text, 2, 0, "rises,"), (line2 + 14, line2 + 19));
+    }
 
     #[test]
     fn offsets_count_utf16_up_to_the_column() {

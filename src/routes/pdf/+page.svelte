@@ -3,7 +3,8 @@
   // Back and Forward (the page a link or a jump left: ⌘[ ⌘]), the page in view (and the field to go to one), the zoom
   // (⌘= ⌘- ⌘0, the PDF menu) and Find (⌘F, ⌘G; the menu says them as `pdf`). The Go menu comes as `go`: Back, Forward,
   // the previous, next, first and last page, Go to Page… (⌥⌘G). The PDF is read again, at the same page, when it
-  // changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last).
+  // changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last). A ⌃-click on its
+  // text opens the source there (pdf.js only, not PDFKit yet: `open_source_at`).
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
@@ -45,6 +46,17 @@
   /** what was just done or went wrong, for a moment */
   let note = $state("");
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** ⌃-click on the PDF's text: its source opened there, found by its words in the project's Markdown and LaTeX. */
+  async function toSource(text: string) {
+    if (!path) return;
+    try {
+      const found = await invoke<boolean>("open_source_at", { pdf: path, text });
+      if (!found) say("Not found in the project's sources");
+    } catch (e) {
+      say(String(e));
+    }
+  }
 
   function say(what: string) {
     note = what;
@@ -198,6 +210,7 @@
           covered={!front || carded}
           onpage={(p) => (current = p)}
           onhistory={(h) => (history = h)}
+          onsource={toSource}
           onopen={(c) => {
             count = c;
             current = Math.min(current, c);

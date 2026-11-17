@@ -166,6 +166,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
+            &item("figures-inline", "Show Figures in the Text", None)?,
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
@@ -314,6 +315,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
+        "figures-inline" => crate::settings::toggle_inline_figures(app),
         "preview" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());

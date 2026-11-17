@@ -299,8 +299,8 @@
       const detail = [item.title, item.container ?? item.server].filter(Boolean).join(". ");
       return { label: citation(item), detail };
     },
-    // a PDF figure drawn as an image (WebKitGTK does not draw a PDF in an <img>), kept on disk once drawn
-    image: figureImage,
+    // none in a tooltip while the figures are in the text
+    image: (path) => (inlineFigures ? Promise.resolve(null) : figureImage(path)),
   };
 
   /** The prose checked by the system's spell checker (the app's; the editor draws the misses), when Settings ▸ Editor ▸ Check spelling is on. */
@@ -465,6 +465,8 @@
   let follows = true;
   /** the system's spelling on the prose (Settings ▸ Editor) */
   let spelling = $state(true);
+  /** the figures in the text rather than in tooltips (Settings ▸ Editor, View) */
+  let inlineFigures = $state(false);
   let who = "";
   /** how often the colours were set: the text and the lists are drawn again with them */
   let coloured = $state(0);
@@ -472,6 +474,7 @@
   function apply(s: Settings) {
     prefs = applyEditor(s);
     spelling = s.spelling;
+    inlineFigures = s.inline_figures;
     symbols = s.symbols;
     colour = s.review_colour;
     follows = s.preview_follow;
@@ -597,6 +600,7 @@
         mono={!markdown && !latex}
         {latex}
         {prefs}
+        figures={inlineFigures && (markdown || latex) ? figureImage : undefined}
         {symbols}
         {completion}
         {hover}

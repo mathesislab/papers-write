@@ -11,6 +11,8 @@ export type Settings = {
   indent: Indent;
   readable_width: boolean;
   line_numbers: boolean;
+  /** the figures shown in the text, under their lines, rather than in a tooltip */
+  inline_figures: boolean;
   spelling: boolean;
   /** the user's own sequences typed that become symbols; an empty replacement turns off a default */
   symbols: [string, string][];

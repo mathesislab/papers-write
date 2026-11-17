@@ -30,6 +30,7 @@
     setReviewView,
     undoSuggestion,
   } from "./review/review";
+  import { inlineFigures } from "./figures";
   import type { ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "./review/types";
   import SymbolList from "./SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "./symbols";
@@ -50,6 +51,7 @@
     autofocus = false,
     symbols = [],
     prefs = PREFS,
+    figures,
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
@@ -91,6 +93,8 @@
     symbols?: [string, string][];
     /** what the editor takes from the settings */
     prefs?: EditorPrefs;
+    /** with it, the figures shown under their lines, their images from it (a data URI, none: not found) */
+    figures?: (path: string) => Promise<string | null>;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -168,6 +172,16 @@
   }
 
   /** the review in the editor: given as the app has it, which may be after the file is read */
+  /** the figures shown in the text, and the source they were shown with */
+  const figuresSlot = new Compartment();
+  let figured: typeof figures;
+  $effect(() => {
+    const now = figures;
+    if (!editor || now === figured) return;
+    figured = now;
+    editor.dispatch({ effects: figuresSlot.reconfigure(now ? inlineFigures(now) : []) });
+  });
+
   const reviewSlot = new Compartment();
   let reviewed: ReviewHandlers | undefined;
   $effect(() => {
@@ -196,7 +210,7 @@
         diagnostics,
         spelling,
         placeholder,
-        extensions: [...extensions, selection, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
+        extensions: [...extensions, selection, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : []), figuresSlot.of(figures ? inlineFigures(figures) : [])],
       });
     if (review && reviewed !== review) {
       reviewed = review;

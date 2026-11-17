@@ -47,6 +47,8 @@ pub struct Settings {
     /// the text a column of a readable width, a margin on each side down to a narrow window
     pub readable_width: bool,
     pub line_numbers: bool,
+    /// the figures shown in the text, under their lines, rather than in a tooltip
+    pub inline_figures: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
     /// the user's own sequences typed that become symbols, each with what it becomes; an empty replacement turns off
@@ -84,6 +86,7 @@ impl Default for Settings {
             indent: Indent::default(),
             readable_width: true,
             line_numbers: false,
+            inline_figures: false,
             spelling: true,
             symbols: Vec::new(),
             review_name: String::new(),
@@ -190,6 +193,13 @@ fn put(app: &AppHandle, settings: Settings) {
     if let Err(e) = app.emit("settings-changed", settings) {
         eprintln!("settings-changed: {e}");
     }
+}
+
+/// View ▸ Show Figures in the Text: the figures in the text, or in their tooltips.
+pub fn toggle_inline_figures(app: &AppHandle) {
+    let mut settings = get();
+    settings.inline_figures = !settings.inline_figures;
+    put(app, settings);
 }
 
 /// The settings, for the Settings window and the document pages.
@@ -315,6 +325,7 @@ mod tests {
             indent: Indent::Four,
             readable_width: false,
             line_numbers: true,
+            inline_figures: true,
             spelling: false,
             symbols: vec![("(c)".into(), "©".into()), ("->".into(), String::new())],
             review_name: "A. Reviewer".into(),

@@ -340,7 +340,22 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
-    Menu::with_items(app, &[&app_menu, &file, &edit, &format, &view, &go, &review, &git, &build, &pdf, &window])
+    if cfg!(target_os = "macos") {
+        return Menu::with_items(app, &[&app_menu, &file, &edit, &format, &view, &go, &review, &git, &build, &pdf, &window]);
+    }
+    // elsewhere, as GNOME's and Windows' apps have them: no menu of the app's name (macOS's), Quit at the end of
+    // File, Preferences at the end of Edit, About and the updates in Help; Services, Hide and Show All are macOS's
+    file.append(&separator()?)?;
+    file.append(&item("quit", "Quit", Some("CmdOrCtrl+Q"))?)?;
+    edit.append(&separator()?)?;
+    edit.append(&item("settings", "Preferences…", Some("CmdOrCtrl+,"))?)?;
+    let help = Submenu::with_items(
+        app,
+        "Help",
+        true,
+        &[&item("check-updates", "Check for Updates…", None)?, &separator()?, &PredefinedMenuItem::about(app, Some("About Papers Write"), None)?],
+    )?;
+    Menu::with_items(app, &[&file, &edit, &format, &view, &go, &review, &git, &build, &pdf, &window, &help])
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {

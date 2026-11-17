@@ -245,6 +245,7 @@ pub fn run() {
             // the files handed over while launching, or else a window of untitled text; files that come after this
             // take the blank window
             RunEvent::Ready => {
+                eprintln!("[papers-write] ready");
                 documents::ready(app);
                 package::sweep(app);
             }
@@ -261,9 +262,15 @@ pub fn run() {
                 api.prevent_exit();
             }
             // quitting: the windows close now, but stay saved as open for the next start
-            RunEvent::ExitRequested { .. } => tabs::quitting(app),
+            RunEvent::ExitRequested { code, .. } => {
+                eprintln!("[papers-write] exit requested (code {code:?}, {} windows)", app.windows().len());
+                tabs::quitting(app)
+            }
             // the commands of watch profiles stop with the app
-            RunEvent::Exit => profiles::stop_all(app),
+            RunEvent::Exit => {
+                eprintln!("[papers-write] exit");
+                profiles::stop_all(app)
+            }
             // the Dock icon clicked, no window open
             #[cfg(target_os = "macos")]
             RunEvent::Reopen {

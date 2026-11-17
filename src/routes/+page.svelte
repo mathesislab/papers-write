@@ -701,6 +701,8 @@
     view={session.view}
     open={inText ? marks.length : session.items.filter((item) => item.state === "open").length}
     where={inText ? "in the text" : "in notes"}
+    {store}
+    onstore={(s) => invoke("set_review_store", { store: s }).then(askStore).catch((e) => say(String(e)))}
     colour={userColour}
     {panel}
     reviewing={!!session.me}

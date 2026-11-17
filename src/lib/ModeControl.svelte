@@ -5,7 +5,7 @@
   // no review: it edits. Suggesting says where suggestions go (`where`: in the text as CriticMarkup, or in the review's
   // notes). The review panel is a button of its own (Toolbar).
 
-  import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
+  import { CheckMenuItem, Menu, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { keys } from "papers-write/editor";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import type { ReviewMode, ReviewView } from "papers-write/editor";
@@ -16,6 +16,8 @@
     colour,
     reviewing,
     where = "",
+    store,
+    onstore,
     onmode,
     onview,
   }: {
@@ -27,6 +29,9 @@
     reviewing: boolean;
     /** where suggestions go ("in the text", "in notes"), said after Suggesting while suggesting; none: not said */
     where?: string;
+    /** where the project keeps its suggestions, and its change (none: not offered) */
+    store?: "notes" | "in-file";
+    onstore?: (store: "notes" | "in-file") => void;
     onmode: (mode: ReviewMode) => void;
     onview: (view: ReviewView) => void;
   } = $props();
@@ -39,11 +44,18 @@
 
   async function menu(e: MouseEvent) {
     const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const items = await Promise.all(
-      VIEWS.map(([v, text, accelerator]) =>
+    const items = await Promise.all([
+      ...VIEWS.map(([v, text, accelerator]) =>
         CheckMenuItem.new({ text, checked: view === v, enabled: reviewing && mode === "edit", accelerator, action: () => onview(v) }),
       ),
-    );
+      ...(store && onstore
+        ? [
+            PredefinedMenuItem.new({ item: "Separator" }),
+            CheckMenuItem.new({ text: "Suggestions in Review Notes", checked: store === "notes", enabled: reviewing, action: () => onstore("notes") }),
+            CheckMenuItem.new({ text: "Suggestions in the Text (CriticMarkup)", checked: store === "in-file", enabled: reviewing, action: () => onstore("in-file") }),
+          ]
+        : []),
+    ]);
     await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
 
@@ -75,7 +87,7 @@
   >
     Suggesting{#if mode === "suggest" && where}<span class="view">· {where}</span>{/if}
   </button>
-  <button class="more" onclick={menu} disabled={!reviewing} title="View: All Markup, Accepted, Original" aria-label="View">
+  <button class="more" onclick={menu} disabled={!reviewing} title="View: All Markup, Accepted, Original; where suggestions are kept" aria-label="View">
     <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
   </button>
 </div>

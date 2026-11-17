@@ -198,6 +198,7 @@ pub fn run() {
             projects::remove_from_bar,
             projects::project_card,
             projects::set_project_info,
+            projects::set_review_store,
             projects::asking_project,
             projects::cancel_project,
             projects::create_project,

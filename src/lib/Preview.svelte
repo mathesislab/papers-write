@@ -53,7 +53,7 @@
     .csl-entry { padding-left: 2em; text-indent: -2em; margin: 0 0 .5em; text-align: left; }
     .footnotes { font-size: .85em; border-top: 1px solid var(--rule); margin-top: 2em; }
     .citation, .footnote-ref { white-space: nowrap; }
-    .synced { background: color-mix(in srgb, #2f6fde 18%, transparent); border-radius: 3px; transition: background 1.2s ease-out; }
+    .synced { background: rgba(255, 221, 0, 0.35); border-radius: 3px; transition: background 1.2s ease-out; }
   `;
 
   /** light or dark as the window is (`data-theme` of its root, Settings ▸ Appearance), else as the system is */

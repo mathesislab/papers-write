@@ -205,6 +205,7 @@
     path = (await invoke<{ path: string | null }>("document")).path;
     askStore();
     void askNotes();
+    restorePane();
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
     const going = await invoke<{ at: number; end: number; mark: boolean } | null>("pending_go_to").catch(() => null);
@@ -276,7 +277,28 @@
     following = setTimeout(follow, 150);
   });
 
-  function togglePreview() {
+  /** The pane beside a file (the preview, the PDF, or none), kept per file for when it opens again (localStorage: the
+   *  pages share it). */
+  const paneKey = (file: string) => `pane:${file}`;
+  function keepPane() {
+    if (!path) return;
+    try {
+      const pane = previewing ? "preview" : pdfBeside ? "pdf" : "";
+      if (pane) localStorage.setItem(paneKey(path), pane);
+      else localStorage.removeItem(paneKey(path));
+    } catch {}
+  }
+  function restorePane() {
+    if (!path) return;
+    let pane: string | null = null;
+    try {
+      pane = localStorage.getItem(paneKey(path));
+    } catch {}
+    if (pane === "pdf" && !pdfBeside) togglePdf(false);
+    else if (pane === "preview" && !previewing && markdown) togglePreview(false);
+  }
+
+  function togglePreview(keep = true) {
     if (!markdown) return;
     previewing = !previewing;
     if (previewing) {
@@ -285,13 +307,15 @@
       follow();
       refresh();
     }
+    if (keep) keepPane();
   }
 
   /** View ▸ Show PDF: the PDF beside the text, in the preview's place. */
-  function togglePdf() {
+  function togglePdf(keep = true) {
     if (!path) return say("Save the document first, to show its PDF");
     pdfBeside = !pdfBeside;
     if (pdfBeside) [previewing, panel] = [false, false];
+    if (keep) keepPane();
   }
 
   let previewPane = $state<Preview>();
@@ -782,8 +806,8 @@
       listen<string>("edit", (e) => edit(e.payload)),
       listen<string>("git-menu", (e) => git?.run(e.payload)),
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
-      listen("preview", togglePreview),
-      listen("pdf-beside", togglePdf),
+      listen("preview", () => togglePreview()),
+      listen("pdf-beside", () => togglePdf()),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number; mark: boolean }>("go-to", (e) => goTo(e.payload)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -900,14 +924,14 @@
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width * 100}%` : "45%"}>
       <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} />
-      <button class="close-pane" onclick={togglePreview} title="Hide Preview" aria-label="Hide Preview">×</button>
+      <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width * 100}%` : "45%"}>
       <SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} />
-      <button class="close-pane" onclick={togglePdf} title="Hide PDF" aria-label="Hide PDF">×</button>
+      <button class="close-pane" onclick={() => togglePdf()} title="Hide PDF" aria-label="Hide PDF">×</button>
     </div>
   {/if}
   {#if panel}

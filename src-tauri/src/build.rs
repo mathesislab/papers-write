@@ -34,6 +34,7 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use tauri_plugin_dialog::DialogExt;
+use write_core::profiles::{Profile, Run};
 use write_core::project;
 
 use crate::documents;
@@ -60,6 +61,8 @@ struct Queue {
 enum Job {
     Build { show: bool },
     Diff(Earlier),
+    /// a build profile's command, run in its project's folder (`profiles.rs`)
+    Profile { profile: Profile, root: PathBuf, show: bool },
 }
 
 /// The earlier version of a marked-up PDF.
@@ -768,6 +771,9 @@ fn request(app: &AppHandle, window: &Webview, file: PathBuf, job: Job) {
                 (Some(Job::Build { show: a }), Job::Build { show: b }) => {
                     Job::Build { show: a || b }
                 }
+                (Some(Job::Profile { show: a, .. }), Job::Profile { profile, root, show: b }) => {
+                    Job::Profile { profile, root, show: a || b }
+                }
                 (_, job) => job,
             });
             return;
@@ -778,7 +784,7 @@ fn request(app: &AppHandle, window: &Webview, file: PathBuf, job: Job) {
     tauri::async_runtime::spawn_blocking(move || {
         let mut job = job;
         loop {
-            let what = if matches!(job, Job::Build { .. }) {
+            let what = if matches!(job, Job::Build { .. } | Job::Profile { .. }) {
                 "build"
             } else {
                 "diff"
@@ -795,8 +801,9 @@ fn request(app: &AppHandle, window: &Webview, file: PathBuf, job: Job) {
             let status = match &job {
                 Job::Build { .. } => run_build(&file),
                 Job::Diff(earlier) => run_diff(&file, earlier),
+                Job::Profile { profile, root, .. } => run_profile(profile, root),
             };
-            let show = matches!(job, Job::Build { show: true } | Job::Diff(_));
+            let show = matches!(job, Job::Build { show: true } | Job::Diff(_) | Job::Profile { show: true, .. });
             if show
                 && status.state != "failed"
                 && let Some(pdf) = &status.pdf
@@ -829,12 +836,69 @@ fn document_of(window: &Webview) -> Result<PathBuf, String> {
     }
 }
 
-/// Build (⇧⌘B), or with `show` Build and Show PDF (⌥⇧⌘B). The page has written the document.
+/// Build (⇧⌘B), or with `show` Build and Show PDF (⌥⇧⌘B). The page has written the document. With a build profile
+/// active (`profiles.rs`), what it says: its command run (one at a time per project), or started and left running,
+/// or nothing but its PDF shown; without, the document in front built by texmark, Quarto or latexmk.
 #[tauri::command]
 pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> {
     let file = document_of(&window)?;
-    request(&app, &window, file, Job::Build { show });
+    let Some((profile, root)) = crate::profiles::active(&app, &file) else {
+        request(&app, &window, file, Job::Build { show });
+        return Ok(());
+    };
+    let pdf = profile.pdf.as_ref().map(|p| root.join(p));
+    let show_pdf = |pdf: &Option<PathBuf>| {
+        if show && let Some(pdf) = pdf.as_ref().filter(|p| p.is_file()) {
+            let _ = documents::open_file(&app, pdf);
+        }
+    };
+    match profile.run {
+        Run::Build => request(&app, &window, root.clone(), Job::Profile { profile, root, show }),
+        Run::Watch => {
+            let started = crate::profiles::start(&app, &root, &profile)?;
+            let log = crate::profiles::log_of(&root, &profile);
+            let message = if started { "started" } else { "running" };
+            show_pdf(&pdf);
+            tell(&app, window.label(), Status {
+                what: "build",
+                state: "watching",
+                pdf: pdf.map(|p| s(&p)),
+                log: Some(s(&log)),
+                message: Some(format!("{}: {message} ({})", profile.name, profile.command)),
+                ..Default::default()
+            });
+        }
+        Run::External => {
+            show_pdf(&pdf);
+            tell(&app, window.label(), Status {
+                what: "build",
+                state: "external",
+                pdf: pdf.map(|p| s(&p)),
+                message: Some(format!("{}: built elsewhere", profile.name)),
+                ..Default::default()
+            });
+        }
+    }
     Ok(())
+}
+
+/// A build profile's command run in its project's folder, waited for: the PDF it says, when the command made it now.
+fn run_profile(profile: &Profile, root: &Path) -> Status {
+    let start = SystemTime::now();
+    let out = crate::profiles::shell(&profile.command, root).output();
+    let seconds = Some(start.elapsed().map(|d| d.as_secs_f64()).unwrap_or(0.0));
+    let pdf = profile.pdf.as_ref().map(|p| root.join(p)).filter(|p| modified_since(p, start));
+    match out {
+        Ok(out) if out.status.success() => Status { what: "build", state: "done", seconds, pdf: pdf.map(|p| s(&p)), ..Default::default() },
+        Ok(out) => Status {
+            what: "build",
+            state: "failed",
+            seconds,
+            message: Some(format!("{} failed:\n{}", profile.command, tail(&out.stderr, &out.stdout))),
+            ..Default::default()
+        },
+        Err(e) => Status { what: "build", state: "failed", seconds, message: Some(format!("{}: {e}", profile.command)), ..Default::default() },
+    }
 }
 
 /// The marked-up PDF of the document against `earlier`.

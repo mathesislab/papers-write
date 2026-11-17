@@ -77,6 +77,7 @@
       // texmark and none set: unset still
       engine: was.engine === null && engine === "texmark" ? null : engine,
       library: blank(library),
+      profile: was.profile,
     };
   }
 

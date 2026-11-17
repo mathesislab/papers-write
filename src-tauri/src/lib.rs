@@ -10,6 +10,7 @@ mod menu;
 mod package;
 mod pdfsync;
 mod preview;
+mod profiles;
 mod projects;
 mod refs;
 mod review;
@@ -60,6 +61,7 @@ pub fn run() {
         .manage(documents::Documents::default())
         .manage(files::Watched::default())
         .manage(build::Builds::default())
+        .manage(profiles::Watches::default())
         .manage(refs::Loaded::default())
         .manage(preview::Runs::default())
         .manage(review::Reviews::default())
@@ -195,6 +197,9 @@ pub fn run() {
             sidebar::open_at,
             pdfsync::open_source_at,
             sidepdf::side_pdf,
+            profiles::build_profiles,
+            profiles::set_build_profile,
+            profiles::reveal_profiles,
             sidepdf::set_side_pdf,
             sidepdf::choose_side_pdf,
             sidepdf::hide_side_pdf,
@@ -229,6 +234,8 @@ pub fn run() {
             }
             // quitting: the windows close now, but stay saved as open for the next start
             RunEvent::ExitRequested { .. } => tabs::quitting(app),
+            // the commands of watch profiles stop with the app
+            RunEvent::Exit => profiles::stop_all(app),
             // the Dock icon clicked, no window open
             #[cfg(target_os = "macos")]
             RunEvent::Reopen {

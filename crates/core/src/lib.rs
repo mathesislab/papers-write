@@ -18,6 +18,7 @@ pub mod exchange;
 pub mod files;
 pub mod frontmatter;
 pub mod latex;
+pub mod profiles;
 pub mod project;
 pub mod refs;
 pub mod review;

@@ -27,6 +27,9 @@ pub struct Saved {
     pub windows: Vec<SavedWindow>,
     /// the PDF shown beside each source file (View ▸ Show PDF), as chosen
     pub pdfs: BTreeMap<PathBuf, PathBuf>,
+    /// the build profile chosen for each source file, and the last chosen for each project (by its folder); empty:
+    /// none, Build builds the document in front
+    pub profiles: BTreeMap<PathBuf, String>,
     /// the sidebar of each project, and the last one changed (`sidebars` and `sidebar` in the file)
     #[serde(flatten)]
     pub sidebars: Sidebars,

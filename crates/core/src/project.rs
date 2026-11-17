@@ -99,6 +99,9 @@ pub struct Manifest {
     pub engine: Option<Engine>,
     /// a `.bib` file or a papers library searched for references, beside the papers library of the user
     pub library: Option<PathBuf>,
+    /// the build profile (`.papers-write/build/<name>.toml`) a fresh checkout starts with; the user's choice takes over
+    #[serde(default)]
+    pub profile: Option<String>,
 }
 
 /// `main = "paper.md"` or `main = ["paper.md", "supplement.md"]`.
@@ -228,6 +231,9 @@ impl Project {
         if manifest.library != old.library {
             text(doc, "library", path(&manifest.library).as_deref());
         }
+        if manifest.profile != old.profile {
+            text(doc, "profile", manifest.profile.as_deref());
+        }
     }
 
     /// The name, else the folder's.
@@ -280,6 +286,7 @@ impl Manifest {
             build: path(&self.build),
             engine: self.engine,
             library: path(&self.library),
+            profile: text(&self.profile),
         }
     }
 }

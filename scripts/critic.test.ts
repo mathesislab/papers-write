@@ -135,3 +135,21 @@ test("a comment on a selection highlights it, the note after it with the initial
   const [m] = parseCritic(apply(commentOn(4, 13, "which one?", "MP")));
   assert.deepEqual([m.kind, m.author, m.note], ["comment", "MP", "which one?"]);
 });
+
+test("in the editor: suggest mode's marks are undone as any edit", async () => {
+  const { EditorState } = await import("@codemirror/state");
+  const { EditorView } = await import("@codemirror/view");
+  const { history, undo } = await import("@codemirror/commands");
+  const { criticReview } = await import("../src/lib/editor/review/criticMode.ts");
+  const { setMode } = await import("../src/lib/editor/review/mode.ts");
+  const { undoSuggestion } = await import("../src/lib/editor/review/review.ts");
+  let state = EditorState.create({ doc: "the line", extensions: [history(), criticReview(() => "MP")] });
+  state = state.update({ effects: setMode.of("suggest") }).state;
+  state = state.update({ changes: { from: 4, to: 8 }, userEvent: "delete.backward" }).state;
+  assert.equal(state.doc.toString(), "the {--line--}{>>@MP<<}");
+  // the notes' history of suggestions is not there: undo is the text's
+  const view = { state, dispatch: (tr: unknown) => (state = (tr as { state: typeof state }).state) } as unknown as InstanceType<typeof EditorView>;
+  assert.equal(undoSuggestion(view), false);
+  undo({ state, dispatch: (tr) => (state = tr.state) });
+  assert.equal(state.doc.toString(), "the line");
+});

@@ -352,6 +352,17 @@
           </span>
           <input type="checkbox" class="switch" bind:checked={settings.project_colour_bar} onchange={save} />
         </label>
+        <label class="row">
+          <span>
+            <span class="label">Project bar</span>
+            <span class="hint">The projects at the left of the windows. On hover: hidden till the pointer comes to the window's left edge (View ▸ Show Project Bar on Hover)</span>
+          </span>
+          <select bind:value={settings.project_bar} onchange={save}>
+            <option value="shown">Always shown</option>
+            <option value="hover">On hover</option>
+            <option value="hidden">Hidden</option>
+          </select>
+        </label>
       </section>
     </div>
 

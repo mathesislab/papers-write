@@ -25,6 +25,8 @@ export type Settings = {
   pandoc_path: string;
   tabs: boolean;
   project_colour_bar: boolean;
+  /** the project bar: always shown, shown on hover at the window's left edge, or hidden */
+  project_bar: "shown" | "hover" | "hidden";
   /** look for updates at start and twice a day; they are installed only when asked */
   check_updates: boolean;
 };

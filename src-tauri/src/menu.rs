@@ -166,6 +166,15 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
+            // the project bar hidden at the window's left edge till the pointer comes there (Settings ▸ Window)
+            &CheckMenuItem::with_id(
+                app,
+                "project-bar",
+                "Show Project Bar on Hover",
+                true,
+                crate::settings::get().project_bar == crate::settings::ProjectBar::Hover,
+                None::<&str>,
+            )?,
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
@@ -277,6 +286,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         "open" => documents::choose(app),
+        "project-bar" => crate::settings::toggle_project_bar(app),
         "open-project" => crate::projects::choose(app),
         // the page of the window in front shows the card of its document's project
         "project-info" => {

@@ -16,7 +16,8 @@
 
   import { indentLess, indentMore, redo as stepForward, undo as stepBack } from "@codemirror/commands";
   import { Compartment, Prec, type Extension } from "@codemirror/state";
-  import { EditorView, keymap } from "@codemirror/view";
+  import { Decoration, EditorView, keymap } from "@codemirror/view";
+  import { StateEffect, StateField } from "@codemirror/state";
   import { onMount } from "svelte";
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, setSpelling, type EditorPrefs } from "./editor";
   import type { Completion, Diagnostics, HoverSources, Spelling } from "./types";
@@ -63,6 +64,8 @@
     critic,
     onmarks,
     figures,
+    onsync,
+    oncontext,
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
@@ -116,6 +119,11 @@
     onmarks?: (marks: Mark[]) => void;
     /** with it, the figures shown under their lines, their images from it (a data URI, none: not found) */
     figures?: (path: string) => Promise<string | null>;
+    /** ⌃-click (⌘ on macOS) in the text: the cursor put there, then this (its place shown in the PDF or the preview);
+     *  extra cursors are made with ⌥-click instead */
+    onsync?: () => void;
+    /** a right-click in the text: the cursor put there (unless it is in the selection), then the app's menu */
+    oncontext?: (e: MouseEvent) => void;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -128,6 +136,50 @@
     /** what the find bar shows: none, Find, or Find and Replace */
     findbar?: FindBar;
   } = $props();
+
+  /** The place found from elsewhere (`markFound`), marked till the text changes or the cursor moves. */
+  const showFound = (from: number, to: number) => foundEffect.of({ from, to });
+  const foundEffect = StateEffect.define<{ from: number; to: number }>();
+  const foundMark = Decoration.mark({ class: "cm-found" });
+  const found = [
+    StateField.define({
+      create: () => Decoration.none,
+      update(set, tr) {
+        for (const e of tr.effects) if (e.is(foundEffect)) return e.value.from < e.value.to ? Decoration.set(foundMark.range(e.value.from, e.value.to)) : Decoration.none;
+        return tr.docChanged || tr.selection ? Decoration.none : set;
+      },
+      provide: (f) => EditorView.decorations.from(f),
+    }),
+    EditorView.baseTheme({
+      ".cm-found": { background: "color-mix(in srgb, var(--accent, #2f6fde) 28%, transparent)", borderRadius: "2px", outline: "1px solid color-mix(in srgb, var(--accent, #2f6fde) 55%, transparent)" },
+    }),
+  ];
+
+  /** ⌃-click: the place shown elsewhere (`onsync`); a right-click: the app's menu (`oncontext`). */
+  const clicks = [
+    EditorView.clickAddsSelectionRange.of((e) => e.altKey),
+    EditorView.domEventHandlers({
+      mousedown(e, view) {
+        if (!onsync || e.button !== 0 || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        if (pos == null) return false;
+        e.preventDefault();
+        view.dispatch({ selection: { anchor: pos } });
+        view.focus();
+        onsync();
+        return true;
+      },
+      contextmenu(e, view) {
+        if (!oncontext) return false;
+        e.preventDefault();
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        const { from, to } = view.state.selection.main;
+        if (pos != null && (pos < from || pos > to)) view.dispatch({ selection: { anchor: pos } });
+        oncontext(e);
+        return true;
+      },
+    }),
+  ];
 
   let host: HTMLElement;
   let editor: EditorView | undefined;
@@ -253,6 +305,8 @@
         extensions: [
           ...extensions,
           selection,
+          found,
+          clicks,
           ...(mono || latex ? [] : [listKey]),
           reviewSlot.of(review ? reviewOf(review) : []),
           criticSlot.of(critic ? criticOf() : []),
@@ -273,9 +327,9 @@
     }
     readHeadings();
     if (selecting) {
-      const { from, to } = selecting;
+      const { from, to, mark } = selecting;
       selecting = null;
-      queueMicrotask(() => select(from, to));
+      queueMicrotask(() => (mark ? markFound(from, to) : select(from, to)));
     }
     onchange?.(shown);
     [status, error] = [draft ? "editing" : "saved", ""];
@@ -444,7 +498,7 @@
   }
 
   /** the range to select once the file is read, when asked before */
-  let selecting: { from: number; to: number } | null = null;
+  let selecting: { from: number; to: number; mark?: boolean } | null = null;
 
   /** The range [from, to] (UTF-16) selected, in view, with the keys; once the file is read if it is not yet. */
   export function select(from: number, to: number) {
@@ -452,6 +506,15 @@
     const end = editor.state.doc.length;
     const range = { anchor: Math.min(from, end), head: Math.min(to, end) };
     editor.dispatch({ selection: range, effects: EditorView.scrollIntoView(range.anchor, { y: "center" }) });
+    editor.focus();
+  }
+
+  /** A place found elsewhere (from a PDF): the cursor at its start, the place marked till the user types or moves. */
+  export function markFound(from: number, to: number) {
+    if (!editor) return void (selecting = { from, to, mark: true });
+    const end = editor.state.doc.length;
+    [from, to] = [Math.min(from, end), Math.min(to, end)];
+    editor.dispatch({ selection: { anchor: from }, effects: [EditorView.scrollIntoView(from, { y: "center" }), showFound(from, to)] });
     editor.focus();
   }
 

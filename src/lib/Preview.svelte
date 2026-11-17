@@ -6,7 +6,21 @@
 
   import { showPdfImages } from "$lib/pdfImage";
 
-  let { html, error = "", block = 0 }: { html: string; error?: string; block?: number } = $props();
+  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  const keysOf = (k: string) => (navigator.userAgent.includes("Mac") ? k : "Ctrl");
+
+  let {
+    html,
+    error = "",
+    block = 0,
+    onsource,
+  }: {
+    html: string;
+    error?: string;
+    block?: number;
+    /** ⌃-click (⌘ on macOS) on the preview, or Find in Source in its menu: the text of the block clicked, and the word */
+    onsource?: (text: string, word: string) => void;
+  } = $props();
 
   let frame: HTMLIFrameElement;
 
@@ -39,6 +53,7 @@
     .csl-entry { padding-left: 2em; text-indent: -2em; margin: 0 0 .5em; text-align: left; }
     .footnotes { font-size: .85em; border-top: 1px solid var(--rule); margin-top: 2em; }
     .citation, .footnote-ref { white-space: nowrap; }
+    .synced { background: color-mix(in srgb, #2f6fde 18%, transparent); border-radius: 3px; transition: background 1.2s ease-out; }
   `;
 
   /** light or dark as the window is (`data-theme` of its root, Settings ▸ Appearance), else as the system is */
@@ -51,13 +66,6 @@
   const doc = $derived(`<!doctype html><html${theme ? ` data-theme="${theme}"` : ""}><meta charset="utf-8"><style>${SHEET}</style><body>${html}</body></html>`);
 
   /** The frame scrolled so that the block is a little below its top. */
-  /** The frame loaded: its PDF figures drawn as images (WebKitGTK does not draw them), the block in view. */
-  function loaded() {
-    const body = frame?.contentDocument?.body;
-    if (body) void showPdfImages(body);
-    reveal();
-  }
-
   function reveal() {
     const body = frame?.contentDocument?.body;
     if (!body) return;
@@ -69,6 +77,63 @@
     block;
     reveal();
   });
+
+  /** The block the cursor is in brought into view and marked a moment (Show in Preview). */
+  export function flash() {
+    reveal();
+    const body = frame?.contentDocument?.body;
+    const el = body?.children[Math.min(block, body.children.length - 1)] as HTMLElement | undefined;
+    if (!el) return;
+    el.classList.add("synced");
+    setTimeout(() => el.classList.remove("synced"), 1400);
+  }
+
+  /** What was clicked in the frame: the text of its block (a paragraph, an item, a heading, a caption) and the word. */
+  function clicked(e: MouseEvent): { text: string; word: string } | null {
+    const doc = frame?.contentDocument;
+    const target = e.target as Element | null;
+    const block = target?.closest?.("p, li, h1, h2, h3, h4, h5, h6, figcaption, td, th, blockquote, dd, dt");
+    if (!doc || !block) return null;
+    const range = doc.caretRangeFromPoint?.(e.clientX, e.clientY);
+    const node = range?.startContainer;
+    let word = "";
+    if (range && node?.nodeType === Node.TEXT_NODE) {
+      const t = node.textContent ?? "";
+      const isWord = (c: string) => /[\p{L}\p{N}_-]/u.test(c);
+      let [a, b] = [range.startOffset, range.startOffset];
+      while (a > 0 && isWord(t[a - 1])) a--;
+      while (b < t.length && isWord(t[b])) b++;
+      word = t.slice(a, b);
+    }
+    return { text: (block.textContent ?? "").replace(/\s+/g, " ").trim(), word };
+  }
+
+  /** The frame loaded: its PDF figures drawn as images (WebKitGTK does not draw them), ⌃-click and its menu taken to
+   *  the source, the block in view. */
+  function loaded() {
+    const doc = frame?.contentDocument;
+    if (doc?.body) void showPdfImages(doc.body);
+    if (doc && onsource) {
+      doc.addEventListener("click", (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return;
+        const at = clicked(e);
+        if (!at) return;
+        e.preventDefault();
+        onsource(at.text, at.word);
+      });
+      doc.addEventListener("contextmenu", async (e) => {
+        const at = clicked(e);
+        if (!at) return;
+        e.preventDefault();
+        const items = await Promise.all([
+          MenuItem.new({ text: `Find in Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word) }),
+          PredefinedMenuItem.new({ item: "Copy" }),
+        ]);
+        await (await Menu.new({ items })).popup();
+      });
+    }
+    reveal();
+  }
 </script>
 
 <aside>

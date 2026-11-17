@@ -5,6 +5,7 @@
   // text gives the line clicked (`onsource`), for the page to open its source there.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { GlobalWorkerOptions, getDocument, type PDFDocumentLoadingTask } from "pdfjs-dist";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
   import { EventBus, PDFFindController, PDFLinkService, PDFViewer } from "pdfjs-dist/web/pdf_viewer.mjs";
@@ -36,7 +37,7 @@
     onopen: (count: number) => void;
     /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
      *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
-    onsource?: (text: string, at: { page: number; x: number; y: number } | null) => void;
+    onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string) => void;
     /** the PDF's outline (its bookmarks), in order, each with its depth and the page it goes to (none: unknown) */
     onoutline?: (items: { level: number; title: string; page: number | null }[]) => void;
   } = $props();
@@ -179,7 +180,35 @@
     e.preventDefault();
     e.stopPropagation();
     const text = lineOf(span);
-    if (text) onsource(text, pointOf(e));
+    if (text) onsource(text, pointOf(e), wordAt(e));
+  }
+
+  /** A right-click on the text: Find in Source (as a ⌃-click), and Copy. */
+  async function sourceMenu(e: MouseEvent) {
+    if (!onsource) return;
+    const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
+    if (!span) return;
+    e.preventDefault();
+    const [text, at, word] = [lineOf(span), pointOf(e), wordAt(e)];
+    const mac = navigator.userAgent.includes("Mac");
+    const items = await Promise.all([
+      MenuItem.new({ text: `Find in Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word) }),
+      PredefinedMenuItem.new({ item: "Copy" }),
+    ]);
+    await (await Menu.new({ items })).popup();
+  }
+
+  /** The word under the pointer, in the text layer. */
+  function wordAt(e: MouseEvent): string {
+    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    const node = range?.startContainer;
+    if (!range || !node || node.nodeType !== Node.TEXT_NODE) return "";
+    const text = node.textContent ?? "";
+    const isWord = (c: string) => /[\p{L}\p{N}_-]/u.test(c);
+    let [from, to] = [range.startOffset, range.startOffset];
+    while (from > 0 && isWord(text[from - 1])) from--;
+    while (to < text.length && isWord(text[to])) to++;
+    return text.slice(from, to);
   }
 
   /** A box of the PDF (SyncTeX's: its page, its left and baseline in PDF points from the page's top left, its width
@@ -219,6 +248,7 @@
   onMount(() => {
     let task: PDFDocumentLoadingTask | null = null;
     container.addEventListener("click", sourceClick, true);
+    container.addEventListener("contextmenu", sourceMenu);
     const pages = document.createElement("div");
     pages.className = "pdfViewer";
     container.append(pages);
@@ -294,6 +324,7 @@
     })();
     return () => {
       container.removeEventListener("click", sourceClick, true);
+      container.removeEventListener("contextmenu", sourceMenu);
       resize.disconnect();
       task?.destroy();
     };

@@ -280,22 +280,31 @@ const tab = (view: EditorView) => {
   return true;
 };
 
-/** What the editors take from the settings: what Tab puts in, whether the text is a column of a readable width, and
- *  whether its lines are numbered. */
-export type EditorPrefs = { indent: Indent; readable: boolean; lineNumbers: boolean };
-export const PREFS: EditorPrefs = { indent: "two", readable: true, lineNumbers: false };
+/** What the editors take from the settings: what Tab puts in, whether the text is a column of a readable width and
+ *  how wide (em), and whether its lines are numbered. */
+export type EditorPrefs = { indent: Indent; readable: boolean; width: number; lineNumbers: boolean };
+export const PREFS: EditorPrefs = { indent: "two", readable: true, width: 46, lineNumbers: false };
 
 /** What `prefsFrom` reads: the editor's part of the app's settings (a structural type, the app's own fits it). */
-export type EditorSettings = { indent: Indent; readable_width: boolean; line_numbers: boolean };
+export type EditorSettings = { indent: Indent; readable_width: boolean; text_width?: number; line_numbers: boolean };
 
 export const prefsFrom = (s: EditorSettings): EditorPrefs => ({
   indent: s.indent ?? PREFS.indent,
   readable: s.readable_width ?? PREFS.readable,
+  width: s.text_width ?? PREFS.width,
   lineNumbers: s.line_numbers ?? PREFS.lineNumbers,
 });
 
-/** The width of the column of text when it is readable, and the room the line numbers take beside it. */
-const COLUMN = "46em";
+/** The narrowest and widest column of text (em), as the app keeps it. */
+export const TEXT_WIDTH = { least: 24, most: 120 };
+
+/** The event an editor's element sends (bubbling) when the column of text was dragged to a new width: `detail` the
+ *  width (em), for the app to keep. */
+export const COLUMN_WIDTH_EVENT = "columnwidth";
+
+/** The width of the column of text when it is readable (`--column`, set from the prefs), and the room the line
+ *  numbers take beside it. */
+const COLUMN = "var(--column, 46em)";
 const GUTTER = "3.5em";
 
 /** The numbers of the lines, quiet, on the page's background. */
@@ -336,10 +345,86 @@ const readable = EditorView.theme({
   ".cm-gutters ~ .cm-content .cm-line": { paddingLeft: "18px" },
 });
 
+/** How near a margin line (px) the pointer takes it to drag. */
+const GRAB = 5;
+
+/** The thin lines down each side of the column dragged to make it wider or narrower, both at once, the column staying
+ *  in the middle: shown at once, then told (`COLUMN_WIDTH_EVENT`) when let go. */
+const columnDrag = ViewPlugin.fromClass(
+  class {
+    dragging = false;
+    width = 0;
+    constructor(readonly view: EditorView) {
+      const scroller = view.scrollDOM;
+      scroller.addEventListener("pointermove", this.move);
+      scroller.addEventListener("pointerdown", this.press);
+      scroller.addEventListener("pointerup", this.release);
+      scroller.addEventListener("pointercancel", this.release);
+    }
+
+    /** The places of the lines (px from the scroller's left), the size of an em, the room beside the column. */
+    measure() {
+      const scroller = this.view.scrollDOM;
+      const em = parseFloat(getComputedStyle(this.view.contentDOM).fontSize) || 16;
+      const room = 24;
+      const aside = this.view.dom.querySelector(".cm-gutters") ? 3.5 * em : 0;
+      const total = scroller.clientWidth;
+      const column = parseFloat(getComputedStyle(this.view.dom).getPropertyValue("--column")) * em || 46 * em;
+      const margin = (total - column) / 2;
+      return { em, room, aside, total, left: margin - aside - room, right: total - margin + room };
+    }
+
+    near(e: PointerEvent): boolean {
+      const m = this.measure();
+      if (m.left < 0) return false;
+      const x = e.clientX - this.view.scrollDOM.getBoundingClientRect().left;
+      return Math.abs(x - m.left) <= GRAB || Math.abs(x - m.right) <= GRAB;
+    }
+
+    move = (e: PointerEvent) => {
+      const scroller = this.view.scrollDOM;
+      if (!this.dragging) {
+        scroller.style.cursor = this.near(e) ? "col-resize" : "";
+        return;
+      }
+      const m = this.measure();
+      const x = e.clientX - scroller.getBoundingClientRect().left;
+      // the margin each side, from whichever line is held
+      const margin = x < m.total / 2 ? x + m.aside + m.room : m.total - x + m.room;
+      const most = Math.min(TEXT_WIDTH.most, (m.total - 36) / m.em);
+      this.width = Math.round(Math.max(TEXT_WIDTH.least, Math.min(most, (m.total - 2 * margin) / m.em)));
+      this.view.dom.style.setProperty("--column", `${this.width}em`);
+    };
+
+    press = (e: PointerEvent) => {
+      if (e.button !== 0 || !this.near(e)) return;
+      e.preventDefault();
+      this.dragging = true;
+      this.width = 0;
+      this.view.scrollDOM.setPointerCapture(e.pointerId);
+    };
+
+    release = () => {
+      if (!this.dragging) return;
+      this.dragging = false;
+      if (this.width) this.view.dom.dispatchEvent(new CustomEvent(COLUMN_WIDTH_EVENT, { detail: this.width, bubbles: true }));
+    };
+
+    destroy() {
+      const scroller = this.view.scrollDOM;
+      scroller.removeEventListener("pointermove", this.move);
+      scroller.removeEventListener("pointerdown", this.press);
+      scroller.removeEventListener("pointerup", this.release);
+      scroller.removeEventListener("pointercancel", this.release);
+      scroller.style.cursor = "";
+    }
+  },
+);
+
 const prefsSlot = new Compartment();
 const prefsOf = (prefs: EditorPrefs): Extension => [
   indentUnit.of(INDENTS[prefs.indent] ?? INDENTS.two),
-  prefs.readable ? readable : [],
+  prefs.readable ? [readable, columnDrag, EditorView.editorAttributes.of({ style: `--column: ${prefs.width}em` })] : [],
   prefs.lineNumbers ? numbered : [],
 ];
 

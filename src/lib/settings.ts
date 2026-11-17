@@ -10,6 +10,8 @@ export type Settings = {
   editor_size: number;
   indent: Indent;
   readable_width: boolean;
+  /** the width of the column of text (em) */
+  text_width: number;
   line_numbers: boolean;
   spelling: boolean;
   /** a file written as it is typed; off: only when saved (⌘S), the text typed kept meanwhile as a draft */

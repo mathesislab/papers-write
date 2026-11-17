@@ -166,6 +166,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
+            &separator()?,
+            &item("text-wider", "Text Width +", None)?,
+            &item("text-narrower", "Text Width −", None)?,
+            &item("text-full", "Full Width", None)?,
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
@@ -318,6 +322,9 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
+        "text-wider" => crate::settings::step_text_width(app, 1.0),
+        "text-narrower" => crate::settings::step_text_width(app, -1.0),
+        "text-full" => crate::settings::toggle_full_width(app),
         "preview" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());

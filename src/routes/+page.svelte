@@ -283,7 +283,9 @@
 
   /** A click in the preview: the text scrolled to the block clicked (the `index`th block pandoc shows, as `follow`
    *  counts them), its start a little below the top; the cursor stays where it is. */
-  function scrollToBlock(index: number) {
+  /** a paragraph to light as the text's tab comes back to the front (a click in the preview's tab) */
+  let toFlash: { from: number; to: number } | null = null;
+  function scrollToBlock(index: number, later = false) {
     const view = editor?.view();
     if (!view) return;
     const tree = ensureSyntaxTree(view.state, view.state.doc.length, 50);
@@ -292,6 +294,9 @@
     for (let n = tree.topNode.firstChild; n; n = n.nextSibling) {
       if (HIDDEN_BLOCKS.has(n.name) || ++i < index) continue;
       view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: 48 }) });
+      // the paragraph lit a moment, for the eye to find it (in tabs: as the text comes back to the front)
+      if (later) toFlash = { from: n.from, to: n.to };
+      else editor?.flash(n.from, n.to);
       return;
     }
   }
@@ -409,7 +414,7 @@
   function fromPreviewTab(e: { payload: { kind: string; index?: number; text?: string; word?: string; around?: { before: string[]; after: string[] } } }) {
     const what = e.payload;
     if (what.kind === "want") void sendPreview();
-    else if (what.kind === "block") scrollToBlock(what.index ?? 0);
+    else if (what.kind === "block") scrollToBlock(what.index ?? 0, true);
     else if (what.kind === "pdf") void previewToPdf(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
     else if (what.kind === "source") {
       void invoke("bring_tab", { page: getCurrentWebview().label });
@@ -990,6 +995,12 @@
       listen("go-to-file", () => (goingToFile = true)),
       listen<string>("panes", (e) => setPanes(e.payload as Panes)),
       listen("preview-tab", fromPreviewTab),
+      listen<boolean>("tab-shown", (e) => {
+        if (!e.payload || !toFlash) return;
+        const { from, to } = toFlash;
+        toFlash = null;
+        setTimeout(() => editor?.flash(from, to), 150);
+      }),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number; mark: boolean }>("go-to", (e) => goTo(e.payload)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),

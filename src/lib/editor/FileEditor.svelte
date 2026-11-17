@@ -16,7 +16,8 @@
 
   import { indentLess, indentMore, redo as stepForward, undo as stepBack } from "@codemirror/commands";
   import { Compartment, Prec, type Extension } from "@codemirror/state";
-  import { EditorView, keymap } from "@codemirror/view";
+  import { Decoration, EditorView, keymap } from "@codemirror/view";
+  import { StateEffect, StateField } from "@codemirror/state";
   import { onMount } from "svelte";
   import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, setSpelling, type EditorPrefs } from "./editor";
   import type { Completion, Diagnostics, HoverSources, Spelling } from "./types";
@@ -116,6 +117,26 @@
     findbar?: FindBar;
   } = $props();
 
+  /** The place found from elsewhere (`markFound`), marked till the text changes or the cursor moves. */
+  const showFound = (from: number, to: number) => foundEffect.of({ from, to });
+  const foundEffect = StateEffect.define<{ from: number; to: number }>();
+  const foundMark = Decoration.mark({ class: "cm-found" });
+  const found = [
+    StateField.define({
+      create: () => Decoration.none,
+      update(set, tr) {
+        for (const e of tr.effects) if (e.is(foundEffect)) return e.value.from < e.value.to ? Decoration.set(foundMark.range(e.value.from, e.value.to)) : Decoration.none;
+        return tr.docChanged || tr.selection ? Decoration.none : set;
+      },
+      provide: (f) => EditorView.decorations.from(f),
+    }),
+    EditorView.baseTheme({
+      // a highlighter's yellow: the text's own colours (links, citations, review) are often blue
+      ".cm-found": { background: "rgba(255, 214, 0, 0.45)", borderRadius: "2px" },
+      "&dark .cm-found": { background: "rgba(255, 214, 0, 0.32)" },
+    }),
+  ];
+
   let host: HTMLElement;
   let editor: EditorView | undefined;
   /** the text as last read or written */
@@ -212,7 +233,7 @@
         diagnostics,
         spelling,
         placeholder,
-        extensions: [...extensions, selection, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
+        extensions: [...extensions, selection, found, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });
     if (review && reviewed !== review) {
       reviewed = review;
@@ -222,9 +243,9 @@
     }
     readHeadings();
     if (selecting) {
-      const { from, to } = selecting;
+      const { from, to, mark } = selecting;
       selecting = null;
-      queueMicrotask(() => select(from, to));
+      queueMicrotask(() => (mark ? markFound(from, to) : select(from, to)));
     }
     onchange?.(shown);
     [status, error] = [draft ? "editing" : "saved", ""];
@@ -376,7 +397,7 @@
   }
 
   /** the range to select once the file is read, when asked before */
-  let selecting: { from: number; to: number } | null = null;
+  let selecting: { from: number; to: number; mark?: boolean } | null = null;
 
   /** The range [from, to] (UTF-16) selected, in view, with the keys; once the file is read if it is not yet. */
   export function select(from: number, to: number) {
@@ -384,6 +405,15 @@
     const end = editor.state.doc.length;
     const range = { anchor: Math.min(from, end), head: Math.min(to, end) };
     editor.dispatch({ selection: range, effects: EditorView.scrollIntoView(range.anchor, { y: "center" }) });
+    editor.focus();
+  }
+
+  /** A place found elsewhere (from a PDF): the cursor at its start, the place marked till the user types or moves. */
+  export function markFound(from: number, to: number) {
+    if (!editor) return void (selecting = { from, to, mark: true });
+    const end = editor.state.doc.length;
+    [from, to] = [Math.min(from, end), Math.min(to, end)];
+    editor.dispatch({ selection: { anchor: from }, effects: [EditorView.scrollIntoView(from, { y: "center" }), showFound(from, to)] });
     editor.focus();
   }
 

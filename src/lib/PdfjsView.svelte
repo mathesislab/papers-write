@@ -1,7 +1,8 @@
 <script lang="ts">
   // A PDF by pdf.js, where PDFKit is not (Linux), as Papers Desktop shows them there: the props and the commands of
   // PdfView (zoom, back and forward, a page, a turn, find), in the page itself, so a card over it covers it as any
-  // element. Back and Forward are the pages the links and the jumps (Go to Page, first, last) left.
+  // element. Back and Forward are the pages the links and the jumps (Go to Page, first, last) left. A ⌃-click on the
+  // text gives the line clicked (`onsource`), for the page to open its source there.
 
   import { invoke } from "@tauri-apps/api/core";
   import { GlobalWorkerOptions, getDocument, type PDFDocumentLoadingTask } from "pdfjs-dist";
@@ -19,6 +20,7 @@
     onpage,
     onhistory,
     onopen,
+    onsource,
   }: {
     path: string;
     /** the page to open at (from 1) */
@@ -31,6 +33,9 @@
     onhistory?: (history: History) => void;
     /** the PDF open: its page count */
     onopen: (count: number) => void;
+    /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
+     *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
+    onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string, around: { before: string[]; after: string[] }) => void;
   } = $props();
 
   let area: HTMLDivElement;
@@ -127,8 +132,123 @@
     return found;
   }
 
+  /** The text of the line of the text layer that `span` is on (the spans whose middle is level with its own), in
+   *  order; with the next line when it has fewer than six words, for enough of them to find. */
+  function lineOf(span: HTMLElement): string {
+    const layer = span.closest(".textLayer");
+    if (!layer) return span.textContent ?? "";
+    const middle = (r: DOMRect) => r.top + r.height / 2;
+    const spans = [...layer.querySelectorAll<HTMLElement>("span")].filter((s) => !s.querySelector("span") && s.textContent?.trim());
+    const rects = spans.map((s) => s.getBoundingClientRect());
+    const own = span.getBoundingClientRect();
+    const level = (r: DOMRect, y: number) => Math.abs(middle(r) - y) < Math.max(own.height, 4) / 2;
+    const textAt = (y: number) =>
+      spans
+        .map((s, i) => ({ s, r: rects[i] }))
+        .filter(({ r }) => level(r, y))
+        .sort((a, b) => a.r.left - b.r.left)
+        .map(({ s }) => s.textContent)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    let text = textAt(middle(own));
+    if (text.split(" ").length < 6) {
+      const below = rects.map(middle).filter((y) => y > middle(own) + own.height / 2).sort((a, b) => a - b)[0];
+      if (below !== undefined) text = `${text}\n${textAt(below)}`;
+    }
+    return text;
+  }
+
+  function sourceClick(e: MouseEvent) {
+    if (!onsource || !(e.ctrlKey || e.metaKey) || e.button !== 0) return;
+    const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
+    if (!span) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const text = lineOf(span);
+    const around = aroundOf(e, span);
+    // the word as the line reads, its pieces joined (P4 of P and 4), else as the pointer is over it
+    if (text) onsource(text, pointOf(e), around.word || wordAt(e), around);
+  }
+
+  /** The words around the word under the pointer, in its line of the PDF and the lines before and after it (the
+   *  source has them around the same word): six before, six after. */
+  /** The text of spans in reading order, with where each starts: a space between them, except between two that touch
+   *  on a line (a word the PDF writes in pieces: P and 4 in another font, a ligature). */
+  function joined(spans: { s: HTMLElement; r: DOMRect }[]): { text: string; starts: number[] } {
+    let text = "";
+    const starts: number[] = [];
+    spans.forEach(({ s, r }, i) => {
+      const prev = spans[i - 1]?.r;
+      const touching = prev && Math.abs(prev.top + prev.height / 2 - (r.top + r.height / 2)) < r.height / 2 && r.left - prev.right < r.height * 0.2;
+      if (i > 0 && !touching) text += " ";
+      starts.push(text.length);
+      text += s.textContent ?? "";
+    });
+    return { text, starts };
+  }
+
+  function aroundOf(e: MouseEvent, span: HTMLElement): { before: string[]; after: string[]; word?: string } {
+    const layer = span.closest(".textLayer");
+    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    if (!layer || !range) return { before: [], after: [] };
+    // the text layer's spans in reading order, and the place of the pointer in their text
+    const spans = [...layer.querySelectorAll<HTMLElement>("span")].filter((s) => !s.querySelector("span") && s.textContent);
+    // in reading order: grouped in lines (middles within half a line: a citation, a figure in another font sit a
+    // little higher or lower), each line from left to right
+    const mid = (r: DOMRect) => r.top + r.height / 2;
+    const bySide = spans.map((s) => ({ s, r: s.getBoundingClientRect() })).sort((a, b) => mid(a.r) - mid(b.r));
+    const lines: (typeof bySide)[] = [];
+    for (const p of bySide) {
+      const last = lines[lines.length - 1];
+      if (last && Math.abs(mid(last[0].r) - mid(p.r)) < Math.max(p.r.height, last[0].r.height) / 2) last.push(p);
+      else lines.push([p]);
+    }
+    const placed = lines.flatMap((line) => line.sort((a, b) => a.r.left - b.r.left));
+    const { text, starts } = joined(placed);
+    let at = -1;
+    placed.forEach(({ s }, i) => {
+      if (s.contains(range.startContainer)) at = starts[i] + range.startOffset;
+    });
+    if (at < 0) return { before: [], after: [] };
+    const words = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+    // the word itself out of both sides
+    let [from, to] = [at, at];
+    while (from > 0 && /[\p{L}\p{N}_-]/u.test(text[from - 1])) from--;
+    while (to < text.length && /[\p{L}\p{N}_-]/u.test(text[to])) to++;
+    return { before: words(text.slice(Math.max(0, from - 160), from)).slice(-6), after: words(text.slice(to, to + 160)).slice(0, 6), word: text.slice(from, to) };
+  }
+
+  /** The word under the pointer, in the text layer. */
+  function wordAt(e: MouseEvent): string {
+    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    const node = range?.startContainer;
+    if (!range || !node || node.nodeType !== Node.TEXT_NODE) return "";
+    const text = node.textContent ?? "";
+    const isWord = (c: string) => /[\p{L}\p{N}_-]/u.test(c);
+    let [from, to] = [range.startOffset, range.startOffset];
+    while (from > 0 && isWord(text[from - 1])) from--;
+    while (to < text.length && isWord(text[to])) to++;
+    return text.slice(from, to);
+  }
+
+  /** The place of a click in the PDF: its page, and its point in PDF points from the page's top left. */
+  function pointOf(e: MouseEvent): { page: number; x: number; y: number } | null {
+    const pageDiv = (e.target as HTMLElement).closest<HTMLElement>(".page[data-page-number]");
+    const page = Number(pageDiv?.dataset.pageNumber);
+    const pageView = page && viewer?.getPageView(page - 1);
+    if (!pageDiv || !pageView) return null;
+    const box = pageDiv.getBoundingClientRect();
+    const viewport = pageView.viewport;
+    const [x, y] = viewport.convertToPdfPoint(e.clientX - box.left - pageDiv.clientLeft, e.clientY - box.top - pageDiv.clientTop);
+    // PDF space is from the bottom left; SyncTeX's from the top left of the page's box
+    const [, , , top] = viewport.viewBox;
+    return { page, x, y: top - y };
+  }
+
   onMount(() => {
     let task: PDFDocumentLoadingTask | null = null;
+    container.addEventListener("click", sourceClick, true);
     const pages = document.createElement("div");
     pages.className = "pdfViewer";
     container.append(pages);
@@ -177,6 +297,7 @@
       }
     })();
     return () => {
+      container.removeEventListener("click", sourceClick, true);
       resize.disconnect();
       task?.destroy();
     };

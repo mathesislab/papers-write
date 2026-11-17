@@ -46,7 +46,7 @@
   const choose = (pdf: string | null) => ask(invoke<Side>("set_side_pdf", { pdf }));
   const other = () => ask(invoke<Side | null>("choose_side_pdf"));
 
-  /** Change…: the project's PDFs, Other…, and back to the one found. */
+  /** The PDF's name in the header, a click on it: the project's PDFs, Other…, and back to the one found. */
   async function changeMenu(e: MouseEvent) {
     const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const offered = await Promise.all(
@@ -77,6 +77,34 @@
   }
   type Box = { page: number; x: number; y: number; width: number; height: number };
 
+  /** the PDF's outline (its bookmarks, pdf.js), each with its depth */
+  let outline = $state.raw<{ level: number; title: string }[]>([]);
+  /** what is looked for in the PDF (the header's field), and whether it was found */
+  let query = $state("");
+  let lastQuery = "";
+  let notFound = $state(false);
+
+  /** The header's field: Enter the next match, ⇧Enter the one before, Esc clears it. */
+  async function search(e: KeyboardEvent) {
+    if (e.key === "Escape") return void ((query = ""), (notFound = false));
+    if (e.key !== "Enter" || !query.trim()) return;
+    e.preventDefault();
+    const again = query === lastQuery;
+    lastQuery = query;
+    notFound = !(await view?.find(query, again, e.shiftKey));
+  }
+
+  /** The outline as a menu: a click goes to its place. */
+  async function outlineMenu(e: MouseEvent) {
+    const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const items = await Promise.all(
+      outline.slice(0, 200).map((o, i) =>
+        MenuItem.new({ text: `${"    ".repeat(Math.max(0, o.level - 1))}${o.title}`, action: () => (view as PdfjsView | undefined)?.goToOutline?.(i) }),
+      ),
+    );
+    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+  }
+
   /** Whether a PDF is shown. */
   export const showing = () => !!side?.pdf;
 
@@ -97,8 +125,25 @@
 
 <aside>
   <header>
-    <span class="name" title={side?.pdf ?? ""}>{side?.pdf ? nameOf(side.pdf) : "PDF"}</span>
-    <button onclick={changeMenu} disabled={!side}>Change…</button>
+    <button class="name" onclick={changeMenu} disabled={!side} title="{side?.pdf ?? ''} (a click changes it)">{side?.pdf ? nameOf(side.pdf) : "PDF"} ▾</button>
+    {#if side?.pdf}
+      <span class="tools">
+        {#if outline.length}<button onclick={outlineMenu} title="Outline: the PDF's sections">Outline ▾</button>{/if}
+        <button onclick={() => view?.zoom(-1)} title="Zoom Out" aria-label="Zoom Out">−</button>
+        <button onclick={() => view?.zoom(0)} title="Fit Width">Fit</button>
+        <button onclick={() => view?.zoom(1)} title="Zoom In" aria-label="Zoom In">+</button>
+        <input
+          class="find"
+          class:missing={notFound}
+          bind:value={query}
+          oninput={() => (notFound = false)}
+          onkeydown={search}
+          placeholder="Find"
+          aria-label="Find in the PDF"
+          spellcheck="false"
+        />
+      </span>
+    {/if}
   </header>
   <div class="body">
     {#if error}
@@ -111,6 +156,7 @@
           {page}
           onpage={(p) => (page = p)}
           onopen={(count) => (page = Math.min(page, count))}
+          onoutline={(items: { level: number; title: string }[]) => (outline = items)}
           onsource={(text: string, at: At | null, word: string) => side?.pdf && onsource(side.pdf, text, at, word)}
         />
       {/key}
@@ -145,12 +191,31 @@
     font-size: 12px;
   }
   .name {
-    flex: 1;
-    min-width: 0;
+    flex: 0 1 auto;
+    min-width: 3em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--muted);
+  }
+  .tools {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex: none;
+  }
+  .find {
+    width: 9em;
+    font: inherit;
+    font-size: 12px;
+    padding: 1px 6px;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+  }
+  .find.missing {
+    border-color: var(--error);
   }
   header button,
   .pick {

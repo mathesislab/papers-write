@@ -136,61 +136,28 @@ pub fn start(app: &AppHandle, root: &Path, profile: &Profile) -> Result<bool, St
     let mut cmd = shell(&profile.command, root);
     cmd.stdout(log.try_clone().map_err(|e| e.to_string())?).stderr(log);
     // a group of its own, stopped whole
-    #[cfg(unix)]
-    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
-    let child = cmd.spawn().map_err(|e| format!("{}: {e}", profile.command))?;
-    if let Some((_, old)) = watches.insert(root.to_path_buf(), (profile.name.clone(), child)) {
-        kill(old);
+    let child = crate::group::own(&mut cmd).spawn().map_err(|e| format!("{}: {e}", profile.command))?;
+    if let Some((_, mut old)) = watches.insert(root.to_path_buf(), (profile.name.clone(), child)) {
+        crate::group::stop(&mut old);
     }
     Ok(true)
 }
 
 /// The command left running in `root`, stopped.
 pub fn stop(app: &AppHandle, root: &Path) {
-    if let Some((_, child)) = app.state::<Watches>().0.lock().unwrap().remove(root) {
-        kill(child);
+    if let Some((_, mut child)) = app.state::<Watches>().0.lock().unwrap().remove(root) {
+        crate::group::stop(&mut child);
     }
 }
 
 /// Every command left running, stopped (the app quits).
 pub fn stop_all(app: &AppHandle) {
-    for (_, (_, child)) in app.state::<Watches>().0.lock().unwrap().drain() {
-        kill(child);
+    for (_, (_, mut child)) in app.state::<Watches>().0.lock().unwrap().drain() {
+        crate::group::stop(&mut child);
     }
-}
-
-/// A command and all it started (its process group), stopped.
-fn kill(mut child: Child) {
-    #[cfg(unix)]
-    {
-        let _ = Command::new("kill").args(["-TERM", &format!("-{}", child.id())]).status();
-    }
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 /// The log of a profile's command left running.
 pub fn log_of(root: &Path, profile: &Profile) -> PathBuf {
     profiles::dir_of(root).join(format!("{}.log", profile.name))
-}
-
-#[cfg(all(test, unix))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_command_is_stopped_with_what_it_started() {
-        let dir = std::env::temp_dir().join(format!("profile-kill-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let marker = dir.join("still-running");
-        // the shell starts a child that would write the marker after a second
-        let mut cmd = shell(&format!("(sleep 1; touch {}) & wait", marker.display()), &dir);
-        std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
-        let child = cmd.spawn().unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        kill(child);
-        std::thread::sleep(std::time::Duration::from_millis(1500));
-        assert!(!marker.exists(), "the child of the command was not stopped");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }

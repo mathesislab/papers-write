@@ -6,6 +6,7 @@ mod drafts;
 mod exchange;
 mod files;
 mod git;
+mod group;
 mod hover;
 mod menu;
 mod notes;

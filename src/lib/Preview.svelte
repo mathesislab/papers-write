@@ -123,7 +123,16 @@
   /** The frame loaded: ⌃-click and its menu taken to the source. */
   function loaded() {
     const doc = frame?.contentDocument;
-    if (doc) followButtons(doc);
+    if (doc) {
+      followButtons(doc);
+      // the keys typed in the frame given to the page too (its own keys: ⌃Tab, ⌃+, ⌃ let go), which a frame's keep
+      for (const type of ["keydown", "keyup"] as const) {
+        doc.addEventListener(type, (e) => {
+          const { key, code, ctrlKey, shiftKey, altKey, metaKey, repeat } = e;
+          window.dispatchEvent(new KeyboardEvent(type, { key, code, ctrlKey, shiftKey, altKey, metaKey, repeat }));
+        });
+      }
+    }
     if (doc && onsource) {
       doc.addEventListener("click", (e) => {
         if (e.button !== 0) return;

@@ -149,27 +149,31 @@
 </script>
 
 <aside class="side-pdf">
+  <!-- the PDF's tools, then which PDF it is, last before the page's × that closes the pane -->
   <header>
-    <button class="name" onclick={changeMenu} disabled={!side} title="{side?.pdf ?? ''} (a click changes it)">{side?.pdf ? nameOf(side.pdf) : "PDF"} ▾</button>
     {#if side?.pdf}
       <span class="tools">
         {#if outline.length}<button onclick={outlineMenu} title="Outline: the PDF's sections">Outline ▾</button>{/if}
         <button onclick={() => view?.zoom(-1)} title="Zoom Out" aria-label="Zoom Out">−</button>
         <button onclick={() => view?.zoom(0)} title="Fit Width">Fit</button>
         <button onclick={() => view?.zoom(1)} title="Zoom In" aria-label="Zoom In">+</button>
-        <input
-          bind:this={findField}
-          class="find"
-          class:missing={notFound}
-          bind:value={query}
-          oninput={() => (notFound = false)}
-          onkeydown={search}
-          placeholder="Find"
-          aria-label="Find in the PDF"
-          spellcheck="false"
-        />
+        <span class="find" class:missing={notFound}>
+          <input
+            bind:this={findField}
+            bind:value={query}
+            oninput={() => (notFound = false)}
+            onkeydown={search}
+            placeholder="Find"
+            aria-label="Find in the PDF"
+            spellcheck="false"
+          />
+          {#if query}
+            <button class="clear" onclick={() => ((query = ""), (notFound = false), findField?.focus())} title="Clear" aria-label="Clear">✕</button>
+          {/if}
+        </span>
       </span>
     {/if}
+    <button class="name" onclick={changeMenu} disabled={!side} title="{side?.pdf ?? ''} (a click changes it)">{side?.pdf ? nameOf(side.pdf) : "PDF"} ▾</button>
   </header>
   <div class="body">
     {#if error}
@@ -217,6 +221,7 @@
     font-size: 12px;
   }
   .name {
+    margin-left: auto;
     flex: 0 1 auto;
     min-width: 3em;
     overflow: hidden;
@@ -224,24 +229,45 @@
     white-space: nowrap;
   }
   .tools {
-    margin-left: auto;
     display: flex;
     align-items: center;
     gap: 3px;
     flex: none;
   }
   .find {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .find input {
     width: 9em;
     font: inherit;
     font-size: 12px;
-    padding: 1px 6px;
+    padding: 1px 20px 1px 6px;
     color: var(--fg);
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 5px;
   }
-  .find.missing {
+  .find.missing input {
     border-color: var(--error);
+  }
+  /* inside the field, at its right: clears it */
+  .find .clear {
+    position: absolute;
+    right: 3px;
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    font-size: 9px;
+    line-height: 1;
+    color: var(--muted);
+    background: var(--chip);
+    border: none;
+    border-radius: 50%;
+  }
+  .find .clear:hover {
+    color: var(--fg);
   }
   header button,
   .pick {

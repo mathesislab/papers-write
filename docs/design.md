@@ -54,12 +54,18 @@ What to take rather than make:
 - The text is edited as text. Previews show the result; nothing is edited in
   a rendered view.
 - Plain files, no database. A project is a folder, usually a git repository.
-- Suggestions and comments never touch the manuscript. It changes only when
-  someone edits it directly or accepts a suggestion.
+- Suggestions and comments stay out of the manuscript: it changes only when
+  someone edits it directly or accepts a suggestion. A project may choose
+  otherwise, its suggestions kept in the text as CriticMarkup for co-authors
+  whose tools read it (In the text, below); the review's notes are the
+  default.
 - Every file the app writes merges in git without conflicts in normal use,
   and reads in a diff.
 - Co-authors without git, or without the app, are not shut out.
-- Tauri 2 and SvelteKit, macOS first, as the rest of the family.
+- Tauri 2 and SvelteKit, macOS first, as the rest of the family; Linux next.
+  What macOS has natively has its counterpart there behind one interface:
+  PDFKit and pdf.js (the PDF views, `pdf.ts`), the Finder and the file
+  manager, ⌘ and Ctrl (`platform.ts`: the keys shown, the Trash's keys).
 
 ## The family: what is shared
 
@@ -137,7 +143,25 @@ One app later is then a matter of windows, not code.
   this works the same on Linux and Windows.
   Opens in well under a second: the library, pandoc and git are loaded when
   first needed. It stays in the Dock when the last window closes, as
-  papers-review does, so the next window is there at once.
+  papers-review does, so the next window is there at once; on Linux closing
+  the last window quits, its windows kept for the next start. Tabs are dragged
+  to another place (or Window ▸ Move Tab Left, Right). At the start the tab in
+  front of each window loads first and the others one at a time after it
+  (twenty loading at once kept every one from showing for seconds).
+- Saving: a file is written half a second after the typing stops, unless
+  Settings ▸ Editor ▸ Save automatically is off (then ⌘S, and before a build,
+  a commit or an export). Text not saved is kept as a draft in the app's cache
+  (`unsaved/`) and comes back with its tab after a quit or a crash. A tab with
+  changes not saved has a star; its window shows it as the platform does (the
+  dot in the close button on macOS, a star after the title elsewhere:
+  papers-tabs' `Host::edited`).
+- The column of text: its width dragged at its margins or set in the
+  toolbar (View ▸ Text Width), the whole window zoomed (⌘= ⌘− ⌘0 with a text in
+  front; A− A+), light, dark or as the system is (View ▸ Appearance), the
+  windows' own background following it.
+- Go to File… (⌘P): a file of the project by the letters of its name in order,
+  `@` a heading of the text in front, `:42` a line. Open… starts in the
+  project's folder.
 - A file alone already has most of it: its front matter says the
   bibliography and the journal, the papers library is found as papers-review
   finds it, the preview and the build work.
@@ -152,12 +176,21 @@ One app later is then a matter of windows, not code.
   and the windows open as the app quits are kept in `state.json` and opened
   again at the next start. The sidebar is the project's, the same in all its
   tabs and kept (shown, its width, its tab); so are the folders open in its
-  tree, which are not kept: a project opens with its folders closed.
+  tree, which are not kept: a project opens with its folders closed. The tree
+  keeps the keys (arrows, Enter, and the Trash's keys as the file manager has
+  them: ⌘⌫ on macOS, Delete elsewhere). The project bar is always shown, shown
+  on hover at the window's left edge (sliding in over the page; PDFKit's view,
+  above the page, makes way), or hidden; its tiles are dragged to another
+  place.
 - What differs from papers-review is what a project says. No due date: the
   tile shows the main document's words and its open suggestions (whether the
   last build passed, later). The info card asks for the name, short name,
   colour, main file, build folder and library, not a manuscript ID; the
   journal and the bib stay in the front matter.
+- A project may be a folder of notes (`kind = "notes"`; offered for a folder
+  that Obsidian, Logseq, Foam, Zettlr or Dendron keeps): no main document, it
+  opens on the note changed last, and Find in Project is a search of the notes
+  by title, name and text, which makes a new note of a query.
 
 ## The project
 
@@ -185,6 +218,9 @@ main = "paper.md"        # or an array
 build = "build"
 engine = "quarto"        # optional: texmark without; a .qmd is Quarto's
 library = "refs.bib"     # optional
+kind = "paper"           # or "notes" (a folder of notes)
+review = "notes"         # or "in-file": suggestions as CriticMarkup in the text
+profile = "synopsis"     # the build profile a fresh checkout starts with
 ```
 
 It is read as written and changed key by key (`toml_edit`), so comments and
@@ -213,6 +249,13 @@ and `library` are kept but not yet used by the build and the references.
   reference's citation, a label's target.
 - Outline of the sections; diagnostics for undefined labels and keys;
   spelling from the system. Grammar (Harper, a local Rust checker) later.
+- Figures in the text (an option): each figure under its line, a PDF figure
+  as its first page drawn by pdf.js (WebKitGTK draws no PDF in an `<img>`).
+- Read Aloud (when Settings names a command): the selection, the paragraph,
+  or a PDF's page from the line clicked, given to that command.
+- Outside macOS the keys follow the editors there (Ctrl+G Go to Line, F3 Find
+  Next, Ctrl+H Replace, Ctrl+/ Toggle Comment); every text that shows a key
+  goes through `keys()`, which writes ⌘ as Ctrl there.
 - `.tex` files: a LaTeX mode (`lang/tex.ts`, a stream language with the tags
   of the Markdown mode; no typed symbols, the file stays ASCII), the same
   completion (every command name; keys from the `\bibliography` and
@@ -226,7 +269,9 @@ and `library` are kept but not yet used by the build and the references.
   parser texmark uses, so what shows is what the build reads. One pandoc run
   per window at a time (a newer request kills the old), images embedded as
   data URIs (under 5 MB; no asset protocol or CSP to scope), in a sandboxed
-  frame without scripts. Cross-references stay as pandoc leaves them.
+  frame whose policy runs none of the document's scripts. Cross-references
+  stay as pandoc leaves them. A chapter that names no bibliography is given
+  the main document's.
   A 9,400-word paper with 60 display equations takes 0.22 s, fast enough to
   run a moment after the typing stops. It follows the cursor.
 - Build with Quarto: a `.qmd`, or the Markdown of a project whose `write.toml`
@@ -257,6 +302,26 @@ and `library` are kept but not yet used by the build and the references.
   accepted, two commits. For a `.tex` document: latexdiff of the earlier and
   the current file directly, `diff.tex` compiled by latexmk from the document's
   folder into `build/diff/`.
+- Build profiles: what Build does, as files of the project
+  (`.papers-write/build/<name>.toml`: a command, the PDF it makes, and whether
+  Build runs it, starts it as a watch process, or only shows its PDF). One is
+  active, chosen in the Build button's menu; without one Build builds the
+  document in front, as above.
+- The PDF beside the text (View ▸ Show PDF): the one chosen for the file,
+  else the one built from it, read again when it changes on disk. Both ways
+  between text and PDF: ⌘-click (Ctrl elsewhere) in the PDF opens the source
+  at the words clicked, ⌘-click in the text (Show in PDF) shows its place in
+  the PDF. Exact where the build left a map beside the PDF (texmark's
+  `.srcmap.json`, SyncTeX's `.synctex.gz`); else by the words around the
+  place.
+- The PDF views: PDFKit's on macOS (tauri-plugin-pdfkit, a native view over
+  the page), pdf.js's elsewhere. Both take the same props and answer the same
+  commands (`PdfViewer`, `pdf.ts`): zoom, pages, back and forward, find, the
+  outline (the sidebar's Outline and the PDF's tools), ⌘-click to the source,
+  the right-click menu, Show in PDF marking the word where its neighbours are
+  most like the source's. What reads a click or picks the place is shared; each
+  view only gives a page's text and a place in it (pdf.js's text layer,
+  PDFKit's `place`) and marks a stretch of it.
 - TeX: the one installed (MacTeX / TeX Live), through latexmk; the app says
   so when there is none. Not tectonic: latexdiff and the journals' classes
   need a full TeX anyway, and texmark already calls the installed engine.
@@ -267,7 +332,8 @@ and `library` are kept but not yet used by the build and the references.
 
 1. CriticMarkup in the file: plain text, readable everywhere. But the
    manuscript itself changes with every suggestion, the build must strip
-   it, and it fights with math and LaTeX. Kept as an export.
+   it, and it fights with math and LaTeX. Kept as an export, and as an
+   option of a project whose writers' tools read it (In the text, below).
 2. A whole copy of the document per reviewer (or a git branch): the
    reviewer edits freely, and the copy is compared with the manuscript.
    But each copy drifts from the manuscript as the author works, so every
@@ -448,6 +514,23 @@ text both show; accepting one leaves the other outdated, to be dealt with.
 - The review folder is watched while a window shows its document; the page
   reloads the items (also after its own appends) 100 ms after the last change.
 
+### In the text, as CriticMarkup (an option)
+
+A project may keep its suggestions in the text itself (`review = "in-file"`,
+chosen in Project Info or the mode control's menu), for writers whose tools
+read CriticMarkup (texmark renders it with the LaTeX `changes` package). The
+review's notes stay the default; suggestions are not moved between the two
+(Export as CriticMarkup… and Import Review… do that).
+
+- The marks are drawn as the notes' suggestions are, in their author's colour
+  (`@XY` at the start of the note after a mark; Settings ▸ Review ▸ Initials
+  adds it to the user's own).
+- Suggest mode writes what is typed as marks: an insertion, a replacement, a
+  deletion that grows; typing inside a mark's new text edits it.
+- Accept, Reject and Resolve are edits of the text, undone as any. The panel
+  lists the marks; the Review menu acts on them as on the notes (one
+  `Reviewer`: `reviewer.ts`); the views and Clean Up are the notes' only.
+
 ### In the editor
 
 - Edit mode: typing changes the file.
@@ -462,7 +545,8 @@ text both show; accepting one leaves the other outdated, to be dealt with.
   it too.
 - Comments: on a selection, in the margin, with replies; resolved ones
   hidden.
-- Accept or reject one, a selection, all of a person or a round, all.
+- Accept or reject one (in its tooltip, the panel, or Review ▸ Accept Change
+  for the one at the cursor), a selection, all of a person or a round, all.
   Accepting writes the file and appends the decision; with git the next
   commit's message says it ("Accept 12 suggestions of Jane Doe", Git below).
 - Views: All Markup, Accepted (as if all were accepted), Original.
@@ -600,6 +684,12 @@ shown as tracked changes between two commits. Nothing is rewritten.
 - The app (Tauri): windows, projects, previews and builds (pandoc, texmark,
   latexdiff), git (the `git` command), import and export. A small CLI on the
   review crate (`pw review list|accept|export`).
+- The windows and tabs: papers-tabs, told by the app what its pages are
+  (`Host`: their titles, whether edited, the windows' background).
+- One file system watcher for the app (`watch.rs`): each folder watched once
+  for all who ask, as Linux allows few watchers per user.
+- Where the platforms differ, one interface and an implementation each: the
+  PDF views (`pdf.ts`), the keys and the file manager (`platform.ts`).
 
 ## Steps
 

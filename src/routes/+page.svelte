@@ -649,6 +649,9 @@
   onfocus={() => editor?.focus()}
 >
   <div class="body">
+  <div class="panes" bind:this={panes}>
+  <!-- the text's column: its toolbar above it, so that its tools stay with it when a pane is beside it -->
+  <div class="text">
   <Toolbar
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
@@ -665,8 +668,7 @@
     onmode={(m) => m !== session.mode && session.toggleMode()}
     onview={(v) => session.setView(v)}
   />
-  <div class="panes" bind:this={panes}>
-  <div class="text">
+  <div class="editor">
   {#if path !== undefined}
     {#key path}
       {@const file = path}
@@ -703,6 +705,7 @@
       />
     {/key}
   {/if}
+  </div>
   </div>
   {#if previewing && markdown}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -826,10 +829,16 @@
     color: var(--error);
   }
   .text {
-    position: relative;
     flex: 1;
     min-width: 0;
     height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .editor {
+    position: relative;
+    flex: 1;
+    min-height: 0;
   }
   .split {
     flex: none;

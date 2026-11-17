@@ -1,11 +1,15 @@
 <script module lang="ts">
   /** Where a file stands: what is in the editor is in the file, is not yet, or could not be read or written. */
   export type Status = "saved" | "editing" | "error";
+  /** A file read, and the draft of it typed and not saved, if any (`current`: typed over what the file holds now). */
+  export type FileRead = { path: string; text: string; draft?: { text: string; current: boolean } | null };
 </script>
 
 <script lang="ts">
   // A text file edited in place (CodeMirror): the review in its pane, and a file open in a tab of the page. It is
-  // written half a second after the typing stops, and as the editor loses the keys. Changed elsewhere (an editor, a
+  // written half a second after the typing stops, and as the editor loses the keys; with `autosave` off, only when
+  // asked (`flush`), the text typed kept meanwhile as a draft (`drafts`), which the file read may come with (`load`):
+  // shown as typed, not saved. Changed elsewhere (an editor, a
   // sync client: the owner calls `changedOnDisk`), it is read again; with changes of its own not yet written, the bar
   // asks which to keep. Where the file is read from and written to is the owner's: `load` and `save`. With `review`,
   // the suggestions and comments are drawn over the text and typing in suggest mode makes the user's suggestions.
@@ -50,6 +54,8 @@
     autofocus = false,
     symbols = [],
     prefs = PREFS,
+    autosave = true,
+    drafts,
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
@@ -57,8 +63,9 @@
     selected = $bindable(0),
     findbar = $bindable(null),
   }: {
-    /** the file read: its path, and its text */
-    load: () => Promise<{ path: string; text: string }>;
+    /** the file read: its path, its text, and the draft of it typed and not saved, if any (`current`: typed over
+     *  what the file holds now) */
+    load: () => Promise<FileRead>;
     /** the text written to the file of `path` */
     save: (path: string, text: string) => Promise<void>;
     /** plain text in monospace, not Markdown */
@@ -91,6 +98,10 @@
     symbols?: [string, string][];
     /** what the editor takes from the settings */
     prefs?: EditorPrefs;
+    /** the file written as it is typed; off: only by `flush` */
+    autosave?: boolean;
+    /** where the text typed and not saved is kept, with `autosave` off (`base`: the file's text it was typed over) */
+    drafts?: { write: (path: string, text: string, base: string) => Promise<void>; drop: (path: string) => Promise<void> };
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -156,6 +167,8 @@
     if (editor) setPrefs(editor, now);
   });
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** a draft of the text is kept (`drafts`), to drop once it is saved or back to what the file holds */
+  let drafted = false;
   /** the review's items and mode given before the file was read */
   let items: ReviewItem[] | undefined;
   let mode: ReviewMode = "edit";
@@ -183,10 +196,12 @@
   });
 
   /** The file read, into the editor: made the first time. */
-  function show(file: { path: string; text: string }) {
-    [path, written, conflict] = [file.path, file.text, false];
-    if (editor) replaceText(editor, file.text);
-    else editor = makeEditor(host, file.text, typed, {
+  function show(file: FileRead) {
+    const draft = file.draft && file.draft.text !== file.text ? file.draft : null;
+    const shown = draft ? draft.text : file.text;
+    [path, written, conflict, drafted] = [file.path, file.text, !!draft && !draft.current, !!draft];
+    if (editor) replaceText(editor, shown);
+    else editor = makeEditor(host, shown, typed, {
         mono,
         latex,
         rules,
@@ -210,8 +225,8 @@
       selecting = null;
       queueMicrotask(() => select(from, to));
     }
-    onchange?.(file.text);
-    [status, error] = ["saved", ""];
+    onchange?.(shown);
+    [status, error] = [draft ? "editing" : "saved", ""];
     if (autofocus && !editor.hasFocus) editor.focus();
   }
 
@@ -227,9 +242,33 @@
 
   function typed(now: string) {
     onchange?.(now);
-    status = "editing";
     clearTimeout(timer);
-    timer = setTimeout(write, 500);
+    // typed back to what the file holds (undone)
+    if (now === written && !conflict) {
+      status = "saved";
+      dropDraft();
+      return;
+    }
+    status = "editing";
+    if (autosave) timer = setTimeout(write, 500);
+    else if (drafts) timer = setTimeout(keepDraft, 300);
+  }
+
+  /** The text typed and not saved, kept as a draft. */
+  async function keepDraft() {
+    const now = text();
+    if (!drafts || gone || now === written) return;
+    try {
+      await drafts.write(path, now, written);
+      drafted = true;
+    } catch {
+      // the draft is a safety net: the text is still in the editor
+    }
+  }
+
+  function dropDraft() {
+    if (drafted && drafts) drafts.drop(path).catch(() => {});
+    drafted = false;
   }
 
   /** What was typed, written to the file it was read from. */
@@ -240,15 +279,30 @@
     try {
       await save(path, now);
       written = now;
-      if (text() === now) status = "saved";
+      if (text() === now) {
+        status = "saved";
+        dropDraft();
+      }
     } catch (e) {
       failed(e);
     }
   }
 
-  /** What is typed and not yet written, written now. */
+  /** What is typed and not yet written, written now (File ▸ Save, and before a build or a commit). */
   export function flush() {
     return write();
+  }
+
+  /** The editor losing the keys: what is typed written, when it is as it is typed. */
+  function left() {
+    if (autosave) write();
+  }
+
+  /** The file read again, what was typed dropped (Reload of the bar). */
+  async function discard() {
+    if (drafted && drafts) await drafts.drop(path).catch(() => {});
+    drafted = false;
+    await reload();
   }
 
   /** The file changed on disk: read again, unless it is what was written, or changes typed are not written yet. */
@@ -260,7 +314,7 @@
       if (file.text === text()) {
         written = file.text;
         [status, error] = ["saved", ""];
-      } else if (text() === written) show(file);
+      } else if (text() === written) show({ ...file, draft: null });
       else conflict = true;
     } catch (e) {
       failed(e);
@@ -352,8 +406,8 @@
   onMount(() => {
     reload();
     return () => {
-      // what is typed goes out before the editor does
-      write();
+      // what is typed goes out before the editor does (unless it is saved only when asked: the tab closed has asked)
+      if (autosave) write();
       gone = true;
       clearTimeout(timer);
       editor?.destroy();
@@ -361,11 +415,11 @@
   });
 </script>
 
-<div class="file" onfocusout={write} role="presentation">
+<div class="file" onfocusout={left} role="presentation">
   {#if conflict}
     <div class="conflict">
       <span>{path.split("/").pop()} changed on disk.</span>
-      <button onclick={reload}>Reload</button>
+      <button onclick={discard}>Reload</button>
       <button
         onclick={() => {
           conflict = false;

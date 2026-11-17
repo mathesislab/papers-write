@@ -27,7 +27,9 @@ impl Host for Write {
     }
 
     fn title(&self, app: &AppHandle, page: &str) -> String {
-        crate::documents::title(crate::documents::path_of(app, page).as_deref())
+        let title = crate::documents::title(crate::documents::path_of(app, page).as_deref());
+        // changes typed that are not saved yet
+        if crate::documents::is_modified(app, page) { format!("{title} *") } else { title }
     }
 
     fn project_of(&self, _app: &AppHandle, file: &Path) -> Option<PathBuf> {

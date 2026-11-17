@@ -2,6 +2,7 @@
 
 mod build;
 mod documents;
+mod drafts;
 mod exchange;
 mod files;
 mod git;
@@ -107,6 +108,10 @@ pub fn run() {
             settings::choose_tool,
             documents::document,
             documents::set_blank,
+            documents::set_modified,
+            drafts::draft_read,
+            drafts::draft_write,
+            drafts::draft_drop,
             documents::save_untitled,
             tabs::commands::tab_strip,
             tabs::commands::select_tab,

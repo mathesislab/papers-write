@@ -22,6 +22,8 @@ pub struct Documents {
     paths: Mutex<HashMap<String, Option<PathBuf>>>,
     /// the untitled windows with no text in them, which a file opened takes over
     blank: Mutex<HashSet<String>>,
+    /// the pages whose file has changes typed that are not saved yet (its tab and window titled with a star)
+    modified: Mutex<HashSet<String>>,
     /// the number of the next page
     next: AtomicUsize,
     /// the app has finished launching: before, files handed over by macOS wait in `pending`
@@ -128,6 +130,7 @@ pub fn closed(app: &AppHandle, label: &str) {
     let state = app.state::<Documents>();
     state.paths.lock().unwrap().remove(label);
     state.blank.lock().unwrap().remove(label);
+    state.modified.lock().unwrap().remove(label);
     let mut focused = state.focused.lock().unwrap();
     if focused.as_deref() == Some(label) {
         *focused = None;
@@ -150,6 +153,25 @@ pub fn set_blank(window: Webview, blank: bool) {
     } else {
         set.remove(window.label());
     }
+}
+
+/// Whether the file of the page has changes typed that are not saved yet, as its page says each time that changes:
+/// its tab and window titled again.
+#[tauri::command]
+pub fn set_modified(window: Webview, modified: bool) {
+    let state = window.state::<Documents>();
+    let changed = {
+        let mut set = state.modified.lock().unwrap();
+        if modified { set.insert(window.label().to_string()) } else { set.remove(window.label()) }
+    };
+    if changed {
+        crate::tabs::renamed(window.app_handle(), window.label());
+    }
+}
+
+/// Whether the file of the page has changes typed that are not saved yet.
+pub fn is_modified(app: &AppHandle, label: &str) -> bool {
+    app.state::<Documents>().modified.lock().unwrap().contains(label)
 }
 
 /// A page that came to the front (its tab chosen, its window focused): the one in front from now on.
@@ -363,6 +385,9 @@ fn unsaved(app: &AppHandle, page: &str) -> bool {
 /// A tab to close: with untitled text never saved, a sheet asks first (Discard closes it) and this is true; false
 /// when there is nothing to ask.
 pub fn asks_before_closing(app: &AppHandle, page: &str) -> bool {
+    if is_modified(app, page) {
+        return ask_to_save(app, page);
+    }
     if !unsaved(app, page) {
         return false;
     }
@@ -379,6 +404,36 @@ pub fn asks_before_closing(app: &AppHandle, page: &str) -> bool {
             if button.as_deref() == Some("Discard") {
                 crate::tabs::remove(&handle, &label);
             }
+        },
+    );
+    true
+}
+
+/// A tab whose file has changes not saved, to close: a sheet asks whether to save them. Save: the page saves, then
+/// closes its tab (`save-and-close`); Don't Save: the changes and their draft go with the tab.
+fn ask_to_save(app: &AppHandle, page: &str) -> bool {
+    let webview = app.get_webview(page);
+    let name = title(path_of(app, page).as_deref());
+    let (handle, label) = (app.clone(), page.to_string());
+    sheet::ask_then(
+        app,
+        webview.as_ref(),
+        "Close",
+        format!("{name} has changes that are not saved. Save them before closing?"),
+        Level::Warning,
+        &["Save", "Don't Save", "Cancel"],
+        move |button| match button.as_deref() {
+            Some("Save") => {
+                let _ = handle.emit_to(EventTarget::webview(&label), "save-and-close", ());
+            }
+            Some("Don't Save") => {
+                if let Some(path) = path_of(&handle, &label) {
+                    crate::drafts::drop_draft(&handle, &path);
+                }
+                handle.state::<Documents>().modified.lock().unwrap().remove(&label);
+                crate::tabs::remove(&handle, &label);
+            }
+            _ => {}
         },
     );
     true

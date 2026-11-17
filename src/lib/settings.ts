@@ -12,6 +12,8 @@ export type Settings = {
   readable_width: boolean;
   line_numbers: boolean;
   spelling: boolean;
+  /** a file written as it is typed; off: only when saved (⌘S), the text typed kept meanwhile as a draft */
+  autosave: boolean;
   /** the user's own sequences typed that become symbols; an empty replacement turns off a default */
   symbols: [string, string][];
   review_name: string;

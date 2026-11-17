@@ -38,7 +38,7 @@ fn key_of(label: &str) -> String {
 }
 
 /// The PDF a source shows beside it: the one chosen, else `<build>/<name>.pdf` when it exists.
-fn pdf_of(app: &AppHandle, source: &Path) -> Option<PathBuf> {
+pub(crate) fn pdf_of(app: &AppHandle, source: &Path) -> Option<PathBuf> {
     let chosen = projects::with_saved(app, |saved| saved.pdfs.get(source).cloned());
     if let Some(pdf) = chosen.filter(|p| p.is_file()) {
         return Some(pdf);

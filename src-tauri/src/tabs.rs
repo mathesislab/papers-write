@@ -73,6 +73,7 @@ impl Host for Write {
     fn closed(&self, app: &AppHandle, page: &str) {
         crate::documents::closed(app, page);
         crate::git::closed(app, page);
+        crate::panetabs::closed(app, page);
         crate::spelling::closed(app, page);
     }
 

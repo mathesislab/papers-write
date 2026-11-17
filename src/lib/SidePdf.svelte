@@ -5,6 +5,7 @@
   // recent first; Other…; the one found). A ⌃-click on its text opens the source there (`onsource`); `find` looks for
   // words in it (Show in PDF).
 
+  import { showSourceIn } from "$lib/pdfPlace";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -84,24 +85,9 @@
   export async function showSource(source: string, line: number, word = "", along = 0, before: string[] = [], after: string[] = []): Promise<number | null> {
     if (!side?.pdf || !view || !("showBox" in view)) return null;
     status = "Looking it up in the build's map…";
-    const boxes = await invoke<Box[] | null>("pdf_boxes", { pdf: side.pdf, source, line }).catch((e) => ((status = String(e)), null));
-    if (!boxes?.length) {
-      status = "No map from the build beside the PDF: by the words";
-      return null;
-    }
-    // the lines of the PDF the source line made, in reading order; the one as far through them as the cursor is
-    // through the source line (a paragraph is often one source line)
-    const lines = [...boxes].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
-    const box = lines[Math.min(lines.length - 1, Math.max(0, Math.round(along * (lines.length - 1))))];
-    // the paragraph's band on each page, from its first line (one more above: the map can miss it) to its last
-    const regions = [...new Set(lines.map((l) => l.page))].map((page) => {
-      const own = lines.filter((l) => l.page === page);
-      const height = Math.max(...own.map((l) => l.height));
-      return { page, top: Math.min(...own.map((l) => l.y)) - height * 2.6, bottom: Math.max(...own.map((l) => l.y)) + height * 0.4 };
-    });
-    const how = (view as PdfjsView).showBox(box, word, regions, before, after);
-    status = `→ page ${box.page}: ${how}`;
-    return box.page;
+    const shown = await showSourceIn(view as PdfjsView, side.pdf, source, line, word, along, before, after);
+    status = shown.status;
+    return shown.page;
   }
 
   /** What Show in PDF did last, said in the header a moment. */
@@ -113,7 +99,6 @@
     statusTimer = setTimeout(() => (status = ""), 8000);
   });
   export const tell = (what: string) => (status = what);
-  type Box = { page: number; x: number; y: number; width: number; height: number };
 
   /** the PDF's outline (its bookmarks, pdf.js), each with its depth */
   let outline = $state.raw<{ level: number; title: string; page: number | null }[]>([]);

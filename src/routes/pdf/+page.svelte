@@ -45,7 +45,7 @@
   let frame = $state<Frame>();
   /** the PDF's outline (its bookmarks: pdf.js only), the page of each, and the one the page in view is under */
   let outline = $state.raw<Heading[]>([]);
-  let outlinePages: (number | null)[] = [];
+  let outlinePages = $state.raw<(number | null)[]>([]);
   const hereInOutline = $derived.by(() => {
     let at = -1;
     outlinePages.forEach((p, i) => {
@@ -164,8 +164,8 @@
           covered={!front || carded}
           onpage={(p) => (current = p)}
           onoutline={(items: { level: number; title: string; page: number | null }[]) => {
-            outline = items.map((it, i) => ({ level: it.level, title: it.title, from: i }));
             outlinePages = items.map((it) => it.page);
+            outline = items.map((it, i) => ({ level: it.level, title: it.title, from: i }));
           }}
           onhistory={(h) => (history = h)}
           onsource={toSource}

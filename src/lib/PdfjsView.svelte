@@ -19,6 +19,7 @@
     onpage,
     onhistory,
     onopen,
+    onoutline,
   }: {
     path: string;
     /** the page to open at (from 1) */
@@ -31,6 +32,8 @@
     onhistory?: (history: History) => void;
     /** the PDF open: its page count */
     onopen: (count: number) => void;
+    /** the PDF's outline (its bookmarks), in order, each with its depth and the page it goes to (none: unknown) */
+    onoutline?: (items: { level: number; title: string; page: number | null }[]) => void;
   } = $props();
 
   let area: HTMLDivElement;
@@ -93,6 +96,16 @@
   /** To a page (from 1). */
   export function pageTo(to: number) {
     jump(to);
+  }
+
+  /** The destinations of the outline's items, in the order told (`onoutline`). */
+  let destinations: unknown[] = [];
+  let following: ((dest: unknown) => Promise<void>) | undefined;
+
+  /** To the item `i` of the outline, the page in view kept to come back to. */
+  export function goToOutline(i: number) {
+    const dest = destinations[i];
+    if (dest) void following?.(dest);
   }
 
   /** To the first, previous, next or last page. */
@@ -172,6 +185,32 @@
         view.setDocument(doc);
         links.setDocument(doc);
         onopen(count);
+        following = (dest) => links.goToDestination(dest as Parameters<typeof links.goToDestination>[0]);
+        if (onoutline) {
+          // the bookmarks, depth first, with the page each goes to
+          type Node = { title: string; dest: unknown; items: Node[] };
+          const items: { level: number; title: string; page: number | null }[] = [];
+          destinations = [];
+          const pageOf = async (dest: unknown): Promise<number | null> => {
+            try {
+              const explicit = typeof dest === "string" ? await doc.getDestination(dest) : (dest as unknown[] | null);
+              const ref = explicit?.[0];
+              if (ref == null) return null;
+              return typeof ref === "number" ? ref + 1 : (await doc.getPageIndex(ref as Parameters<typeof doc.getPageIndex>[0])) + 1;
+            } catch {
+              return null;
+            }
+          };
+          const walk = async (nodes: Node[], level: number) => {
+            for (const n of nodes) {
+              destinations.push(n.dest);
+              items.push({ level, title: n.title, page: await pageOf(n.dest) });
+              if (n.items?.length) await walk(n.items, level + 1);
+            }
+          };
+          await walk(((await doc.getOutline()) ?? []) as Node[], 1);
+          onoutline(items);
+        }
       } catch (e) {
         error = String(e);
       }

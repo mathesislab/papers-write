@@ -203,6 +203,15 @@
     const stops = [side.start(), watchSettings((s) => ([colourBar, barMode] = [s.project_colour_bar, s.project_bar ?? "shown"]))];
     askProject();
     window.addEventListener("focus", loadBar);
+    // ⌃+ where + is a key of its own (Italian, German): the menu's Zoom In is ⌃= (⌃⇧0 there), so said here; where
+    // the menu took the key the page does not see it
+    const plus = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === "+") {
+        e.preventDefault();
+        void invoke("zoom_key", { step: 1 }).catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", plus);
     const unlisten = [
       listen("projects-changed", loadBar),
       listen("asking-project", askProject),
@@ -215,6 +224,7 @@
       clearTimeout(barTimer);
       clearTimeout(slideTimer);
       window.removeEventListener("focus", loadBar);
+      window.removeEventListener("keydown", plus);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });

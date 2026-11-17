@@ -118,6 +118,7 @@ pub fn run() {
             panetabs::relay,
             panetabs::bring_tab,
             panetabs::page_path,
+            menu::zoom_key,
             settings::settings,
             readaloud::read_aloud,
             readaloud::stop_reading,

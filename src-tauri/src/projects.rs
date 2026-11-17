@@ -185,6 +185,39 @@ fn tile(root: &Path, current: bool) -> Tile {
     }
 }
 
+/// A project offered by Switch Project (⌃⌥P): its folder, name and colour, whether it is the asking tab's.
+#[derive(Serialize)]
+pub struct Offered {
+    root: String,
+    name: String,
+    colour: Colour,
+    current: bool,
+}
+
+/// Switch Project's list: the projects of the bar, then the others opened recently; each once, those that are there.
+#[tauri::command]
+pub fn project_list(app: AppHandle, window: Webview) -> Vec<Offered> {
+    let current = crate::tabs::project_of_page(&app, window.label());
+    let mut roots = with_saved(&app, |saved| saved.bar.clone());
+    for root in recent(&app) {
+        if !roots.contains(&root) {
+            roots.push(root);
+        }
+    }
+    roots
+        .into_iter()
+        .filter_map(|root| {
+            let project = Project::read(&root).ok()?;
+            Some(Offered {
+                root: s(&root),
+                name: project.name(),
+                colour: project.manifest.colour.unwrap_or(Colour::None),
+                current: current.as_deref() == Some(root.as_path()),
+            })
+        })
+        .collect()
+}
+
 /// The project bar of a tab: its project (papers-tabs: a text's, a PDF's, a history's), and the tiles of the bar
 /// (that project's at the end when it is not in the bar).
 #[tauri::command]

@@ -93,6 +93,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("open", "Open…", Some("CmdOrCtrl+O"))?,
             &recent,
             &item("open-project", "Open Project…", Some("Shift+CmdOrCtrl+O"))?,
+            // as Sublime's Quick Switch Project: the projects of the bar and the recent ones, in a list over the page
+            &item("switch-project", "Switch Project…", Some("Alt+CmdOrCtrl+P"))?,
             &separator()?,
             &item("save", "Save", Some("CmdOrCtrl+S"))?,
             &item("close", "Close", Some("CmdOrCtrl+W"))?,
@@ -278,6 +280,11 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         }
         "open" => documents::choose(app),
         "open-project" => crate::projects::choose(app),
+        "switch-project" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "switch-project", ());
+            }
+        }
         // the page of the window in front shows the card of its document's project
         "project-info" => {
             if let Some(window) = documents::front(app) {

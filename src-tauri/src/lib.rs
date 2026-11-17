@@ -101,6 +101,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            projects::project_list,
             settings::settings,
             settings::set_settings,
             settings::tools_found,

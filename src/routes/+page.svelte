@@ -78,6 +78,8 @@
   import Toolbar from "$lib/Toolbar.svelte";
   import Frame from "$lib/Frame.svelte";
   import { figureImage } from "$lib/pdfImage";
+  import SidePdf from "$lib/SidePdf.svelte";
+  import { phrasesAt } from "$lib/pdfSearch";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Appearance, type Settings } from "$lib/settings";
@@ -142,6 +144,9 @@
   let checking = $state<{ check?: Check; error?: string } | null>(null);
   /** the pane of the preview: shown, what pandoc made of the text, the block of the cursor, its width */
   let previewing = $state(false);
+  /** the PDF beside the text rather than the preview (View ▸ Show PDF), and its pane */
+  let pdfBeside = $state(false);
+  let sidePdf = $state<SidePdf>();
   let html = $state("");
   let said = $state("");
   let block = $state(0);
@@ -255,9 +260,41 @@
     previewing = !previewing;
     if (previewing) {
       panel = false;
+      pdfBeside = false;
       follow();
       refresh();
     }
+  }
+
+  /** View ▸ Show PDF: the PDF beside the text, in the preview's place. */
+  function togglePdf() {
+    if (!path) return say("Save the document first, to show its PDF");
+    pdfBeside = !pdfBeside;
+    if (pdfBeside) [previewing, panel] = [false, false];
+  }
+
+  /** View ▸ Show in PDF: the words around the cursor looked for in the PDF beside the text (shown first if it is
+   *  not), the longest phrase of them first. */
+  async function showInPdf() {
+    const view = editor?.view();
+    if (!view || !path) return;
+    if (!pdfBeside) {
+      togglePdf();
+      // the pane and its PDF read first
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    const head = view.state.selection.main.head;
+    const line = view.state.doc.lineAt(head);
+    for (const phrase of phrasesAt(line.text, head - line.from)) {
+      if (await sidePdf?.find(phrase)) return;
+    }
+    say(sidePdf?.showing() ? "Not found in the PDF" : "Choose the PDF to show beside the text");
+  }
+
+  /** ⌃-click in the PDF beside the text: its source there (this text, or another file in its tab). */
+  async function toSource(pdf: string, text: string) {
+    const found = await invoke<boolean>("open_source_at", { pdf, text }).catch(() => false);
+    if (!found) say("Not found in the project's sources");
   }
 
   /** The split dragged: the width of the preview, kept for the window. */
@@ -406,7 +443,7 @@
 
   function togglePanel() {
     panel = !panel;
-    if (panel) previewing = false;
+    if (panel) [previewing, pdfBeside] = [false, false];
   }
 
   /** A choice of the Review menu. */
@@ -623,6 +660,8 @@
       listen<string>("git-menu", (e) => git?.run(e.payload)),
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", togglePreview),
+      listen("pdf-beside", togglePdf),
+      listen("show-in-pdf", () => void showInPdf()),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number }>("go-to", (e) => editor?.select(e.payload.at, e.payload.end)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -731,6 +770,10 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width}px` : "45%"}><Preview {html} error={said} {block} /></div>
+  {:else if pdfBeside && path}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="split" onpointerdown={drag}></div>
+    <div class="pane" style:width={width ? `${width}px` : "45%"}><SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} /></div>
   {/if}
   {#if panel}
     <div class="pane review">

@@ -164,6 +164,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
+            &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
+            &item("show-in-pdf", "Show in PDF", Some("Alt+CmdOrCtrl+J"))?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
             &separator()?,
@@ -342,7 +344,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),
         "appearance-dark" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Dark),
         "figures-inline" => crate::settings::toggle_inline_figures(app),
-        "preview" | "outline" | "sidebar" => {
+        "preview" | "pdf-beside" | "show-in-pdf" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
             }

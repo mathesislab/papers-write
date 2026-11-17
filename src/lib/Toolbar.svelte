@@ -2,7 +2,7 @@
   // The toolbar above a text, under the tabs: the formats (bold, italic, code, a link; a heading, bullets, numbers, a
   // quotation: Markdown, or LaTeX in a .tex file; none in plain text), a comment on the selection, Find and Find and
   // Replace (the one the bar shows is pressed, and a click on it closes the bar); in the middle how the text is shown:
-  // its size (A− A+), light or dark (a click switches to the other, a right-click offers Match System), the width of its column (a slider and Full Width, in a popover); at the right the
+  // the zoom of the whole window (A− A+), light or dark (a click switches to the other, a right-click offers Match System), the width of its column (a slider and Full Width, in a popover); at the right the
   // review panel, shown or hidden, with the number of open suggestions and comments, and the
   // mode, Editing or Suggesting (ModeControl). Each button says its key, where it has one (the menus give them).
 
@@ -57,7 +57,7 @@
     onwidth: (width: number | null) => void;
     /** light, dark or as the system is */
     appearance: Appearance;
-    /** the text a step larger (1) or smaller (-1) */
+    /** the window zoomed a step in (1) or out (-1), text and all */
     onsize: (by: number) => void;
     onappearance: (appearance: Appearance) => void;
     onmode: (mode: ReviewMode) => void;
@@ -220,8 +220,8 @@
   </div>
   <!-- in the middle, how the text is shown -->
   <div class="middle">
-    <button class="size" onclick={() => onsize(-1)} title="Smaller Text (the whole window: ⌘−)" aria-label="Smaller Text">A<sup>−</sup></button>
-    <button class="size" onclick={() => onsize(1)} title="Larger Text (the whole window: ⌘=)" aria-label="Larger Text">A<sup>+</sup></button>
+    <button class="size" onclick={() => onsize(-1)} title="Zoom Out: the whole window, text and all (⌘−)" aria-label="Zoom Out">A<sup>−</sup></button>
+    <button class="size" onclick={() => onsize(1)} title="Zoom In: the whole window, text and all (⌘=)" aria-label="Zoom In">A<sup>+</sup></button>
     <button
       onclick={() => onappearance(other)}
       oncontextmenu={appearanceMenu}

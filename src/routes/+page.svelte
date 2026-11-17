@@ -580,7 +580,7 @@
     width={prefs.readable ? prefs.width : null}
     onwidth={(w) => invoke("set_text_width", { width: w })}
     {appearance}
-    onsize={(by) => invoke("step_editor_size", { by })}
+    onsize={(by) => invoke("zoom_window", { by })}
     onappearance={(a) => invoke("set_appearance", { appearance: a })}
   />
   <!-- the column of text dragged at its edges: its width kept (COLUMN_WIDTH_EVENT) -->

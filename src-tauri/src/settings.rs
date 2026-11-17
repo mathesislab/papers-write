@@ -260,18 +260,10 @@ pub fn step_text_width(app: &AppHandle, by: f64) {
     put(app, settings);
 }
 
-/// The size of the editors' text (points) a step larger (`by` > 0) or smaller: View ▸ Text Size + and −, the
-/// toolbar's A+ and A−.
-pub fn step_text_size(app: &AppHandle, by: f64) {
-    let mut settings = get();
-    settings.editor_size += by;
-    put(app, settings);
-}
-
-/// The text a step larger or smaller (the toolbar).
+/// The window zoomed a step in or out (the toolbar's A+ and A−), all it shows.
 #[tauri::command]
-pub fn step_editor_size(app: AppHandle, by: f64) {
-    step_text_size(&app, by);
+pub fn zoom_window(app: AppHandle, by: f64) {
+    step_zoom(&app, by);
 }
 
 /// Light, dark, or as the system is (View ▸ Appearance, the toolbar).
@@ -302,7 +294,8 @@ pub fn settings(webview: tauri::Webview) -> Settings {
 /// The least and most zoom of the windows.
 const ZOOM: (f64, f64) = (0.5, 2.0);
 
-/// ⌘= and ⌘− on a text (`by` 1 or −1): the windows zoomed a step in or out, all they show; ⌘0 (`by` 0): as designed.
+/// ⌘= and ⌘− on a text, View ▸ Zoom In and Zoom Out, the toolbar's A+ and A− (`by` 1 or −1): the windows zoomed a
+/// step in or out, all they show (text, icons, fields); ⌘0, View ▸ Actual Size (`by` 0): as designed.
 pub fn step_zoom(app: &AppHandle, by: f64) {
     let mut settings = get();
     settings.zoom = if by == 0.0 { 1.0 } else { ((settings.zoom + by * 0.1) * 10.0).round() / 10.0 };

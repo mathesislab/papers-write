@@ -225,70 +225,72 @@
     viewer.scrollPageIntoView({ pageNumber: box.page, destArray: [null, { name: "XYZ" }, x1, y2 + 40, null] });
     // marked once the page is drawn, and again each time pdf.js draws it anew, till the next click in the PDF: the
     // word in that line of the text layer, else the line
+    clearMarks();
     marked = { page: box.page, line: [x1, y1, x2, y2], word };
     drawMark();
+  }
+
+  /** The marks of Show in PDF taken off: the word's highlight unwrapped, the line's spans let go. */
+  function clearMarks() {
+    for (const mark of container.querySelectorAll<HTMLElement>(".synced-word")) mark.replaceWith(...mark.childNodes);
+    for (const span of container.querySelectorAll<HTMLElement>(".synced-line")) span.classList.remove("highlight", "selected", "synced-line");
+  }
+
+  /** The mark drawn on its page's text layer, as pdf.js marks what Find found (a box laid over the page is not drawn
+   *  over its canvas by WebKitGTK): the word, wrapped in a highlight where it is in the line, else the line's spans. */
+  function drawMark() {
+    if (!marked) return;
+    const pageView = viewer?.getPageView(marked.page - 1);
+    const pageDiv = pageView?.div as HTMLElement | undefined;
+    const spans = [...(pageDiv?.querySelectorAll<HTMLElement>(".textLayer span:not(.synced-word)") ?? [])];
+    if (!pageView || !spans.length || pageView.div.querySelector(".synced-word, .synced-line")) return;
+    const [a, b, c, d] = pageView.viewport.convertToViewportRectangle(marked.line);
+    const origin = pageView.div.getBoundingClientRect();
+    const middle = origin.top + pageView.div.clientTop + (b + d) / 2;
+    const height = Math.abs(d - b);
+    const near = (r: DOMRect, slack: number) => Math.abs(r.top + r.height / 2 - middle) <= slack;
+    if (marked.word) {
+      const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${marked.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
+      let best: { range: Range; distance: number } | null = null;
+      for (const span of spans) {
+        const node = span.firstChild;
+        if (!node || node.nodeType !== Node.TEXT_NODE) continue;
+        const found = pattern.exec(node.textContent ?? "");
+        if (!found) continue;
+        const range = document.createRange();
+        range.setStart(node, found.index);
+        range.setEnd(node, found.index + found[0].length);
+        const r = range.getBoundingClientRect();
+        if (!near(r, height * 1.5 + 8)) continue;
+        const distance = Math.abs(r.top + r.height / 2 - middle);
+        if (!best || distance < best.distance) best = { range, distance };
+      }
+      if (best) {
+        const mark = document.createElement("span");
+        mark.className = "highlight selected synced-word";
+        best.range.surroundContents(mark);
+        return;
+      }
+    }
+    for (const span of spans) if (near(span.getBoundingClientRect(), height / 2 + 2)) span.classList.add("highlight", "selected", "synced-line");
+  }
+
+  /** A page's text layer drawn anew (pdf.js makes it again as it draws the page): the mark drawn on it again. */
+  function redrawn({ pageNumber }: { pageNumber: number }) {
+    if (marked?.page === pageNumber) drawMark();
   }
 
   /** The place marked by Show in PDF: its page, its line (PDF space), the word looked for in it. */
   let marked: { page: number; line: number[]; word: string } | null = null;
 
-  /** The mark drawn on its page, if the page is drawn and the mark is not on it yet. */
-  function drawMark() {
-    if (!marked) return;
-    const pageView = viewer?.getPageView(marked.page - 1);
-    if (!pageView?.div || pageView.div.querySelector(".synced")) return;
-    const [a, b, c, d] = pageView.viewport.convertToViewportRectangle(marked.line);
-    const line = { left: Math.min(a, c), top: Math.min(b, d), width: Math.abs(c - a), height: Math.abs(d - b) };
-    const hasText = !!pageView.div.querySelector(".textLayer span");
-    markRect(pageView.div, (hasText && marked.word && wordRect(pageView.div, marked.word, line)) || line);
-    // the text layer drawn later: the word looked for again
-    if (!hasText) pageView.div.querySelector(".synced")?.setAttribute("data-line", "1");
-  }
 
-  type Rect = { left: number; top: number; width: number; height: number };
 
-  /** Where `word` is in the text layer of the page `pageDiv`, within the band of `line` (rectangles in the page's CSS
-   *  pixels); the occurrence nearest the line's middle; none when it is not there. */
-  function wordRect(pageDiv: HTMLElement, word: string, line: Rect): Rect | null {
-    const origin = pageDiv.getBoundingClientRect();
-    const middle = line.top + line.height / 2;
-    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
-    let best: { rect: Rect; distance: number } | null = null;
-    for (const span of pageDiv.querySelectorAll<HTMLElement>(".textLayer span")) {
-      const node = span.firstChild;
-      if (!node || node.nodeType !== Node.TEXT_NODE) continue;
-      const found = pattern.exec(node.textContent ?? "");
-      if (!found) continue;
-      const range = document.createRange();
-      range.setStart(node, found.index);
-      range.setEnd(node, found.index + found[0].length);
-      const r = range.getBoundingClientRect();
-      const rect = { left: r.left - origin.left - pageDiv.clientLeft, top: r.top - origin.top - pageDiv.clientTop, width: r.width, height: r.height };
-      const distance = Math.abs(rect.top + rect.height / 2 - middle);
-      if (distance > line.height * 1.5 + 8) continue;
-      if (!best || distance < best.distance) best = { rect, distance };
-    }
-    return best?.rect ?? null;
-  }
 
-  /** A rectangle of a page marked (the one before it gone). */
-  function markRect(pageDiv: HTMLElement, rect: Rect) {
-    container.querySelectorAll(".synced").forEach((m) => m.remove());
-    const mark = document.createElement("div");
-    mark.className = "synced";
-    Object.assign(mark.style, { left: `${rect.left - 2}px`, top: `${rect.top - 1}px`, width: `${rect.width + 4}px`, height: `${rect.height + 2}px` });
-    pageDiv.append(mark);
-  }
 
-  /** A page drawn anew (pdf.js clears what was added to it): the mark drawn on it again; its text layer drawn: the
-   *  word looked for in it, where only the line was marked. */
-  function redrawn({ pageNumber }: { pageNumber: number }) {
-    if (marked?.page !== pageNumber) return;
-    const pageView = viewer?.getPageView(pageNumber - 1);
-    const line = pageView?.div.querySelector(".synced[data-line]");
-    line?.remove();
-    drawMark();
-  }
+
+
+
+
 
   /** The place of a click in the PDF: its page, and its point in PDF points from the page's top left. */
   function pointOf(e: MouseEvent): { page: number; x: number; y: number } | null {
@@ -332,12 +334,11 @@
       if (page > 1) view.currentPageNumber = Math.min(page, count);
     });
     bus.on("pagechanging", ({ pageNumber }: { pageNumber: number }) => onpage(pageNumber));
-    bus.on("pagerendered", redrawn);
     bus.on("textlayerrendered", redrawn);
     // a click in the PDF: the mark of Show in PDF gone
     container.addEventListener("pointerdown", () => {
       marked = null;
-      container.querySelectorAll(".synced").forEach((m) => m.remove());
+      clearMarks();
     });
     // FOUND 0, NOT_FOUND 1, WRAPPED 2, PENDING 3
     bus.on("updatefindcontrolstate", ({ state }: { state: number }) => {
@@ -420,15 +421,6 @@
   .pdf :global(.textLayer .highlight) {
     --highlight-bg-color: rgba(255, 221, 0, 0.45);
     --highlight-selected-bg-color: rgba(255, 170, 0, 0.6);
-  }
-  /* the place Show in PDF found, marked till the next click in the PDF */
-  .pdf :global(.synced) {
-    position: absolute;
-    z-index: 5;
-    /* a highlighter's yellow: the PDF's links and citations are often blue already */
-    background: rgba(255, 221, 0, 0.42);
-    border-radius: 2px;
-    pointer-events: none;
   }
   .error {
     position: absolute;

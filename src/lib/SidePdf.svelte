@@ -70,15 +70,30 @@
    *  (texmark's, or SyncTeX's for LaTeX), shown and marked; false without a map, or when it says nothing there. */
   export async function showSource(source: string, line: number, word = "", along = 0): Promise<number | null> {
     if (!side?.pdf || !view || !("showBox" in view)) return null;
-    const boxes = await invoke<Box[] | null>("pdf_boxes", { pdf: side.pdf, source, line }).catch(() => null);
-    if (!boxes?.length) return null;
+    status = "Looking it up in the build's map…";
+    const boxes = await invoke<Box[] | null>("pdf_boxes", { pdf: side.pdf, source, line }).catch((e) => ((status = String(e)), null));
+    if (!boxes?.length) {
+      status = "No map from the build beside the PDF: by the words";
+      return null;
+    }
     // the lines of the PDF the source line made, in reading order; the one as far through them as the cursor is
     // through the source line (a paragraph is often one source line)
     const lines = [...boxes].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
     const box = lines[Math.min(lines.length - 1, Math.max(0, Math.round(along * (lines.length - 1))))];
-    (view as PdfjsView).showBox(box, word);
+    const how = (view as PdfjsView).showBox(box, word);
+    status = `→ page ${box.page}: ${how}`;
     return box.page;
   }
+
+  /** What Show in PDF did last, said in the header a moment. */
+  let status = $state("");
+  let statusTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    if (!status) return;
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => (status = ""), 8000);
+  });
+  export const tell = (what: string) => (status = what);
   type Box = { page: number; x: number; y: number; width: number; height: number };
 
   /** the PDF's outline (its bookmarks, pdf.js), each with its depth */
@@ -177,6 +192,7 @@
         </span>
       </span>
     {/if}
+    {#if status}<span class="status" title={status}>{status}</span>{/if}
     <button class="name" onclick={changeMenu} disabled={!side} title="{side?.pdf ?? ''} (a click changes it)">{side?.pdf ? nameOf(side.pdf) : "PDF"} ▾</button>
   </header>
   <div class="body">
@@ -231,6 +247,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .status {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-size: 11.5px;
   }
   .tools {
     display: flex;

@@ -21,6 +21,19 @@ export function keys(text: string, onMac = mac): string {
     .replace(/↵/g, "Enter");
 }
 
+/** The keys of a key press, as `trashKey` reads them. */
+type Press = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean };
+
+/** What a key does to the file chosen in a list of files, as the file manager has it: moves it to the Trash asked first
+ *  ("ask") or at once ("now": it is in the Trash still), or nothing (null). On macOS ⌘⌫ at once, as the Finder does,
+ *  and ⌫ (or ⌦) alone asked first; elsewhere Delete (or Backspace) asked first, ⇧Delete at once. */
+export function trashKey(e: Press, onMac = mac): "ask" | "now" | null {
+  if ((e.key !== "Delete" && e.key !== "Backspace") || e.altKey || e.ctrlKey) return null;
+  if (onMac) return e.shiftKey ? null : e.metaKey ? "now" : "ask";
+  if (e.metaKey) return null;
+  return e.shiftKey ? "now" : "ask";
+}
+
 /** What showing a file in the file manager is called: the Finder's on macOS, the folder's elsewhere. */
 export const REVEAL = mac ? "Reveal in Finder" : "Show in Folder";
 /** The project's folder opened in the file manager. */

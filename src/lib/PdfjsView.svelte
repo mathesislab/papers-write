@@ -266,7 +266,9 @@
         range.setStart(node, found.index);
         range.setEnd(node, found.index + found[0].length);
         const r = range.getBoundingClientRect();
-        if (!near(r, height * 1.5 + 8)) continue;
+        // a few lines either way: the map can miss a paragraph's first line (SyncTeX gives it to the TeX line before), the
+        // nearest place of the word wins
+        if (!near(r, height * 3.5 + 8)) continue;
         const distance = Math.abs(r.top + r.height / 2 - middle);
         if (!best || distance < best.distance) best = { range, distance };
       }

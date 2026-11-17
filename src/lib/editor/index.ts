@@ -1,7 +1,9 @@
 // The public API of the editor: what an app imports as `papers-write/editor`.
 
 export {
+  COLUMN_WIDTH_EVENT,
   PREFS,
+  TEXT_WIDTH,
   inCode,
   literalIn,
   insertSymbol,

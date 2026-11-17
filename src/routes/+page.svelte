@@ -67,6 +67,7 @@
     type Format,
     type FileRead,
     type Status,
+    COLUMN_WIDTH_EVENT,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
@@ -610,8 +611,16 @@
     onpanel={togglePanel}
     onmode={(m) => m !== session.mode && session.toggleMode()}
     onview={(v) => session.setView(v)}
+    width={prefs.readable ? prefs.width : null}
+    onwidth={(w) => invoke("set_text_width", { width: w })}
   />
-  <div class="panes" bind:this={panes}>
+  <!-- the column of text dragged at its edges: its width kept (COLUMN_WIDTH_EVENT) -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="panes" bind:this={panes} {@attach (el) => {
+    const kept = (e: Event) => invoke("set_text_width", { width: (e as CustomEvent<number>).detail });
+    el.addEventListener(COLUMN_WIDTH_EVENT, kept);
+    return () => el.removeEventListener(COLUMN_WIDTH_EVENT, kept);
+  }}>
   <div class="text">
   {#if path !== undefined}
     {#key path}

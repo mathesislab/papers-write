@@ -68,12 +68,12 @@
 
   /** The place `line` (1-based) of the source `source` is at in the PDF, from the map its build left beside it
    *  (texmark's, or SyncTeX's for LaTeX), shown and marked; false without a map, or when it says nothing there. */
-  export async function showSource(source: string, line: number, word = ""): Promise<boolean> {
-    if (!side?.pdf || !view || !("showBox" in view)) return false;
+  export async function showSource(source: string, line: number, word = ""): Promise<number | null> {
+    if (!side?.pdf || !view || !("showBox" in view)) return null;
     const boxes = await invoke<Box[] | null>("pdf_boxes", { pdf: side.pdf, source, line }).catch(() => null);
-    if (!boxes?.length) return false;
+    if (!boxes?.length) return null;
     (view as PdfjsView).showBox(boxes[0], word);
-    return true;
+    return boxes[0].page;
   }
   type Box = { page: number; x: number; y: number; width: number; height: number };
 

@@ -337,9 +337,10 @@
     // exactly, from the map the build left beside the PDF; else by the words around the cursor
     const range = view.state.wordAt(head);
     const word = range ? view.state.sliceDoc(range.from, range.to) : "";
-    if (await sidePdf?.showSource(path, line.number, word)) return;
+    const page = await sidePdf?.showSource(path, line.number, word);
+    if (page) return say(`Shown in the PDF: page ${page}`);
     for (const phrase of phrasesAt(line.text, head - line.from)) {
-      if (await sidePdf?.find(phrase)) return;
+      if (await sidePdf?.find(phrase)) return say("Found in the PDF by its words (no map from the build beside it)");
     }
     say(sidePdf?.showing() ? "Not found in the PDF" : "Choose the PDF to show beside the text");
   }

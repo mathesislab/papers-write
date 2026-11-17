@@ -1130,16 +1130,24 @@ fn save(app: &AppHandle) {
     if state.restoring.load(Ordering::SeqCst) || state.quitting.load(Ordering::SeqCst) {
         return;
     }
-    let sets: Vec<(PathBuf, Vec<String>, Option<String>)> = with_tabs(app, |w| {
-        w.values()
-            .flat_map(|win| win.sets.iter())
-            .filter_map(|set| Some((set.project.clone()?, set.pages.clone(), set.front.clone())))
+    let sets: Vec<(String, PathBuf, Vec<String>, Option<String>)> = with_tabs(app, |w| {
+        w.iter()
+            .flat_map(|(label, win)| win.sets.iter().map(move |set| (label, set)))
+            .filter_map(|(label, set)| Some((label.clone(), set.project.clone()?, set.pages.clone(), set.front.clone())))
             .collect()
     });
     let path = |page: &String| state.host.path(app, page);
+    let recent: HashMap<String, Vec<String>> = state.visits.lock().unwrap().iter().map(|(w, v)| (w.clone(), v.recent.clone())).collect();
     let layouts = sets
         .into_iter()
-        .map(|(root, pages, front)| (root, Layout { files: pages.iter().filter_map(path).collect(), front: front.as_ref().and_then(path) }))
+        .map(|(window, root, pages, front)| {
+            // a tab in front with no file of its own (a preview, a history): the tab of a file in front last, for
+            // the project to open on it again
+            let front = front.as_ref().and_then(path).or_else(|| {
+                recent.get(&window)?.iter().filter(|p| pages.contains(p)).find_map(path)
+            });
+            (root, Layout { files: pages.iter().filter_map(path).collect(), front })
+        })
         .collect();
     state.host.save_layouts(app, layouts);
     save_windows(app);

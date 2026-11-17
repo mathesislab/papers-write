@@ -164,9 +164,12 @@
           </select>
         </label>
         <label class="row">
-          <span class="label">Size</span>
+          <span>
+            <span class="label">Size</span>
+            <span class="hint">Also A− and A+ in the toolbar, and ⌘= ⌘− on a text</span>
+          </span>
           <span class="size">
-            <input type="range" min="11" max="20" step="0.5" bind:value={settings.editor_size} onchange={save} />
+            <input type="range" min="9" max="32" step="0.5" bind:value={settings.editor_size} onchange={save} />
             <span class="points">{settings.editor_size} pt</span>
           </span>
         </label>

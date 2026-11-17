@@ -4,7 +4,8 @@
   // saving as the text is typed, the preview following the cursor, the symbols typed (the defaults each turned off if
   // not wanted, and the user's own).
   // Review: the user's name, e-mail and colour (empty: from the git configuration, as before). Build: where texmark,
-  // Quarto, latexmk and pandoc are (empty: found as usual, which the hint says). Window: files as tabs, the menu bar icon.
+  // Quarto, latexmk and pandoc are (empty: found as usual, which the hint says). Window: files as tabs, the menu bar icon,
+  // the appearance (light, dark or the system's).
   // Every change is kept at once (settings.json of the app's data folder); the windows are told as it changes.
 
   import { invoke } from "@tauri-apps/api/core";
@@ -164,9 +165,12 @@
           </select>
         </label>
         <label class="row">
-          <span class="label">Size</span>
+          <span>
+            <span class="label">Size</span>
+            <span class="hint">The text's own size. A− A+ in the toolbar, ⌘= ⌘− ⌘0 and View ▸ Zoom zoom the whole window, text and all</span>
+          </span>
           <span class="size">
-            <input type="range" min="11" max="20" step="0.5" bind:value={settings.editor_size} onchange={save} />
+            <input type="range" min="9" max="32" step="0.5" bind:value={settings.editor_size} onchange={save} />
             <span class="points">{settings.editor_size} pt</span>
           </span>
         </label>
@@ -359,6 +363,24 @@
             <span class="hint">A thin bar in the project's colour along the top of its windows</span>
           </span>
           <input type="checkbox" class="switch" bind:checked={settings.project_colour_bar} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
+            <span class="label">Interface follows the text size</span>
+            <span class="hint">With the text set larger than the default, menus, fields and icons grow with it (their text about 85% of the editor's)</span>
+          </span>
+          <input type="checkbox" class="switch" bind:checked={settings.interface_follows_text} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
+            <span class="label">Appearance</span>
+            <span class="hint">Light or dark, or as the system is; also in the View menu and the toolbar</span>
+          </span>
+          <select bind:value={settings.appearance} onchange={save}>
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
         </label>
       </section>
     </div>

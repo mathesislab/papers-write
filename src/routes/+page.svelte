@@ -77,7 +77,7 @@
   import Frame from "$lib/Frame.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
-  import { applyEditor, watchSettings, type Settings } from "$lib/settings";
+  import { applyEditor, watchSettings, type Appearance, type Settings } from "$lib/settings";
   import "$lib/theme.css";
 
   // The toolbar above the text (Toolbar): the formats (also the Format menu, `format`: ⌘B, ⌘I, ⌘K), Add Comment…, Find and Find and
@@ -142,7 +142,8 @@
   let html = $state("");
   let said = $state("");
   let block = $state(0);
-  const widthKey = `preview-width:${getCurrentWebview().label}`;
+  // the pane's width as a share of the window's (not pixels: zoomed, the pane would take the text's room)
+  const widthKey = `pane-share:${getCurrentWebview().label}`;
   const stored = (() => {
     try {
       return Number(localStorage.getItem(widthKey));
@@ -150,7 +151,7 @@
       return 0;
     }
   })();
-  let width = $state(stored >= 240 ? stored : 0);
+  let width = $state(stored > 0.1 && stored < 0.9 ? stored : 0);
   let panes = $state<HTMLElement>();
   /** the project bar and the sidebar around the text (Frame) */
   let frame = $state<Frame>();
@@ -250,7 +251,9 @@
     bar.setPointerCapture(e.pointerId);
     const move = (m: PointerEvent) => {
       const total = panes?.clientWidth ?? 0;
-      width = Math.round(Math.min(Math.max(panes!.getBoundingClientRect().right - m.clientX, 240), total - 240));
+      if (!total) return;
+      const px = Math.min(Math.max(panes!.getBoundingClientRect().right - m.clientX, 240), total - 240);
+      width = Math.round((px / total) * 1000) / 1000;
     };
     const stop = () => {
       bar.removeEventListener("pointermove", move);
@@ -468,6 +471,8 @@
   let spelling = $state(true);
   /** the file written as it is typed; off: only when saved, a draft kept meanwhile (Settings ▸ Editor) */
   let autosave = $state(true);
+  /** light, dark or as the system is (Settings, the toolbar) */
+  let appearance = $state<Appearance>("system");
   let who = "";
   /** how often the colours were set: the text and the lists are drawn again with them */
   let coloured = $state(0);
@@ -476,6 +481,7 @@
     prefs = applyEditor(s);
     spelling = s.spelling;
     autosave = s.autosave;
+    appearance = s.appearance;
     symbols = s.symbols;
     colour = s.review_colour;
     follows = s.preview_follow;
@@ -613,6 +619,9 @@
     onview={(v) => session.setView(v)}
     width={prefs.readable ? prefs.width : null}
     onwidth={(w) => invoke("set_text_width", { width: w })}
+    {appearance}
+    onsize={(by) => invoke("zoom_window", { by })}
+    onappearance={(a) => invoke("set_appearance", { appearance: a })}
   />
   <!-- the column of text dragged at its edges: its width kept (COLUMN_WIDTH_EVENT) -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -663,7 +672,7 @@
   {#if previewing && markdown}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
-    <div class="pane" style:width={width ? `${width}px` : "45%"}><Preview {html} error={said} {block} /></div>
+    <div class="pane" style:width={width ? `${width * 100}%` : "45%"}><Preview {html} error={said} {block} /></div>
   {/if}
   {#if panel}
     <div class="pane review"><ReviewPanel {session} /></div>

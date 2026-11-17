@@ -21,6 +21,16 @@ pub enum EditorFont {
     Mono,
 }
 
+/// The colours of the windows: the system's, or light or dark whatever the system's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 /// What Tab puts in at the cursor.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -48,6 +58,12 @@ pub struct Settings {
     pub readable_width: bool,
     /// the width of that column (em), dragged at its edges or set from View and the toolbar
     pub text_width: f64,
+    /// light or dark, or as the system is
+    pub appearance: Appearance,
+    /// the windows' zoom, all they show (⌘= ⌘− ⌘0 on a text): 1 is as designed
+    pub zoom: f64,
+    /// the interface as large as the text asks: text set larger than the default makes the windows larger (`scale`)
+    pub interface_follows_text: bool,
     pub line_numbers: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
@@ -89,6 +105,9 @@ impl Default for Settings {
             indent: Indent::default(),
             readable_width: true,
             text_width: 46.0,
+            appearance: Appearance::System,
+            zoom: 1.0,
+            interface_follows_text: true,
             line_numbers: false,
             spelling: true,
             autosave: true,
@@ -137,12 +156,21 @@ impl Settings {
         }
         self.editor_size = if self.editor_size.is_finite() { self.editor_size.clamp(9.0, 32.0) } else { Settings::default().editor_size };
         self.review_colour = self.review_colour.filter(|c| (1..=REVIEW_COLOURS).contains(c));
+        self.zoom = if self.zoom.is_finite() && self.zoom > 0.0 { self.zoom.clamp(ZOOM.0, ZOOM.1) } else { 1.0 };
         self.text_width = if self.text_width.is_finite() {
             self.text_width.clamp(TEXT_WIDTH.0, TEXT_WIDTH.1)
         } else {
             Settings::default().text_width
         };
         self
+    }
+
+    /// How much the windows are scaled: the zoom, and with the interface following the text, as much again as the text
+    /// is larger than the default (the interface's text then about `INTERFACE` of the editor's; the editors draw their
+    /// text that much smaller, `textScale` of settings.ts, so that it stays the size set). Never smaller than the zoom.
+    pub fn scale(&self) -> f64 {
+        let follow = if self.interface_follows_text { (INTERFACE * self.editor_size / INTERFACE_SIZE).max(1.0) } else { 1.0 };
+        self.zoom * follow
     }
 
     /// The file set for the tool `name` (texmark, quarto, latexmk, pandoc); none when it is to be found as usual.
@@ -168,6 +196,17 @@ pub fn init(app: &AppHandle) {
         let _ = DIR.set(dir);
     }
     chosen_tools(&get());
+    themed(app, get().appearance);
+}
+
+/// The windows' own parts (title bar, menus, dialogs) light or dark as the settings say; the pages follow the
+/// settings themselves (`data-theme`).
+fn themed(app: &AppHandle, appearance: Appearance) {
+    app.set_theme(match appearance {
+        Appearance::System => None,
+        Appearance::Light => Some(tauri::Theme::Light),
+        Appearance::Dark => Some(tauri::Theme::Dark),
+    });
 }
 
 /// The tools the settings name, where the core finds them itself (pandoc, for the Word round trip).
@@ -192,6 +231,10 @@ fn put(app: &AppHandle, settings: Settings) {
         changed
     };
     chosen_tools(&settings);
+    themed(app, settings.appearance);
+    for webview in app.webviews().values() {
+        let _ = webview.set_zoom(settings.scale());
+    }
     if let Some(dir) = DIR.get() {
         settings.save(dir);
     }
@@ -232,6 +275,20 @@ pub fn step_text_width(app: &AppHandle, by: f64) {
     put(app, settings);
 }
 
+/// The window zoomed a step in or out (the toolbar's A+ and A−), all it shows.
+#[tauri::command]
+pub fn zoom_window(app: AppHandle, by: f64) {
+    step_zoom(&app, by);
+}
+
+/// Light, dark, or as the system is (View ▸ Appearance, the toolbar).
+#[tauri::command]
+pub fn set_appearance(app: AppHandle, appearance: Appearance) {
+    let mut settings = get();
+    settings.appearance = appearance;
+    put(&app, settings);
+}
+
 /// View ▸ Full Width: the text as wide as the window, or a column again.
 pub fn toggle_full_width(app: &AppHandle) {
     let mut settings = get();
@@ -239,10 +296,29 @@ pub fn toggle_full_width(app: &AppHandle) {
     put(app, settings);
 }
 
-/// The settings, for the Settings window and the document pages.
+/// The settings, for the Settings window and the document pages; the page asking zoomed as they say.
 #[tauri::command]
-pub fn settings() -> Settings {
-    get()
+pub fn settings(webview: tauri::Webview) -> Settings {
+    let settings = get();
+    if settings.scale() != 1.0 {
+        let _ = webview.set_zoom(settings.scale());
+    }
+    settings
+}
+
+/// The interface's text (px, theme.css) and the share of the editor's text it is, when it follows it.
+const INTERFACE_SIZE: f64 = 13.0;
+const INTERFACE: f64 = 0.85;
+
+/// The least and most zoom of the windows.
+const ZOOM: (f64, f64) = (0.5, 2.0);
+
+/// ⌘= and ⌘− on a text, View ▸ Zoom In and Zoom Out, the toolbar's A+ and A− (`by` 1 or −1): the windows zoomed a
+/// step in or out, all they show (text, icons, fields); ⌘0, View ▸ Actual Size (`by` 0): as designed.
+pub fn step_zoom(app: &AppHandle, by: f64) {
+    let mut settings = get();
+    settings.zoom = if by == 0.0 { 1.0 } else { ((settings.zoom + by * 0.1) * 10.0).round() / 10.0 };
+    put(app, settings);
 }
 
 /// The settings changed in the Settings window.
@@ -362,6 +438,9 @@ mod tests {
             indent: Indent::Four,
             readable_width: false,
             text_width: 60.0,
+            appearance: Appearance::Dark,
+            zoom: 1.2,
+            interface_follows_text: false,
             line_numbers: true,
             spelling: false,
             autosave: false,

@@ -105,6 +105,8 @@ pub fn run() {
             settings::settings,
             settings::set_settings,
             settings::set_text_width,
+            settings::zoom_window,
+            settings::set_appearance,
             settings::tools_found,
             settings::choose_tool,
             documents::document,

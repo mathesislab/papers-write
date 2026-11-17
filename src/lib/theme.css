@@ -30,8 +30,9 @@
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
+/* dark: as the system is (Settings ▸ Appearance: System), or chosen (Dark); `data-theme` on the root says the choice */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #262628;
     --fg: #f2f2f4;
     --muted: #9a9aa0;
@@ -53,6 +54,34 @@
     --md-location: #5fc4a8;
     --md-quote: #b4b4bc;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #262628;
+  --fg: #f2f2f4;
+  --muted: #9a9aa0;
+  --border: rgba(255, 255, 255, 0.16);
+  --line: rgba(255, 255, 255, 0.08);
+  --accent: #3a78e6;
+  --selection: rgba(58, 120, 230, 0.35);
+  --sidebar: #2c2c2f;
+  --menu-bg: #323236;
+  --chip: rgba(255, 255, 255, 0.07);
+  --viewer: #1e1e20;
+  --tile-none: #5b5b61;
+  --error: #ff7a66;
+  --due-far: #4cc171;
+  --due-near: #f0c53a;
+  --due-close: #f29a45;
+  --due-due: #ff6552;
+  --md-heading: #7ea6f5;
+  --md-location: #5fc4a8;
+  --md-quote: #b4b4bc;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 html,

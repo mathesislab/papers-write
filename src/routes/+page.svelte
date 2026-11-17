@@ -75,7 +75,7 @@
   import Frame from "$lib/Frame.svelte";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
-  import { applyEditor, watchSettings, type Settings } from "$lib/settings";
+  import { applyEditor, watchSettings, type Appearance, type Settings } from "$lib/settings";
   import "$lib/theme.css";
 
   // The toolbar above the text (Toolbar): the formats (also the Format menu, `format`: ⌘B, ⌘I, ⌘K), Add Comment…, Find and Find and
@@ -464,6 +464,8 @@
   let follows = true;
   /** the system's spelling on the prose (Settings ▸ Editor) */
   let spelling = $state(true);
+  /** light, dark or as the system is (Settings, the toolbar) */
+  let appearance = $state<Appearance>("system");
   let who = "";
   /** how often the colours were set: the text and the lists are drawn again with them */
   let coloured = $state(0);
@@ -471,6 +473,7 @@
   function apply(s: Settings) {
     prefs = applyEditor(s);
     spelling = s.spelling;
+    appearance = s.appearance;
     symbols = s.symbols;
     colour = s.review_colour;
     follows = s.preview_follow;
@@ -576,6 +579,9 @@
     onview={(v) => session.setView(v)}
     width={prefs.readable ? prefs.width : null}
     onwidth={(w) => invoke("set_text_width", { width: w })}
+    {appearance}
+    onsize={(by) => invoke("step_editor_size", { by })}
+    onappearance={(a) => invoke("set_appearance", { appearance: a })}
   />
   <!-- the column of text dragged at its edges: its width kept (COLUMN_WIDTH_EVENT) -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->

@@ -13,6 +13,9 @@ test("on macOS the symbols stay; elsewhere the keys are written out, Ctrl first"
   assert.equal(keys("Zoom Out (⌘-) and (⌘−) and ⌘= ⌘0 ⌘[ ⌘1", false), "Zoom Out (Ctrl+-) and (Ctrl+-) and Ctrl+= Ctrl+0 Ctrl+[ Ctrl+1");
   assert.equal(keys("⇧Tab takes it out", false), "Shift+Tab takes it out");
   assert.equal(keys("⌘/ or Edit ▸ Symbols…", false), "Ctrl+/ or Edit ▸ Symbols…");
+  assert.equal(keys("Go to Source (⌘-click)", false), "Go to Source (Ctrl+click)");
+  assert.equal(keys("Go to Source (⌘-click)", true), "Go to Source (⌘-click)");
+  assert.equal(keys("⌥⌘-click", false), "Ctrl+Alt+click");
 });
 
 test("the Trash's keys as the file manager has them: ⌘⌫ at once on macOS; Delete asked first, ⇧Delete at once elsewhere", () => {

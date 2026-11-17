@@ -240,8 +240,8 @@
   {/if}
   <!-- in the middle, how the text is shown -->
   <div class="middle">
-    <button class="size" onclick={() => onsize(-1)} title="Zoom Out: the whole window, text and all (⌘−)" aria-label="Zoom Out">A<sup>−</sup></button>
-    <button class="size" onclick={() => onsize(1)} title="Zoom In: the whole window, text and all (⌘=)" aria-label="Zoom In">A<sup>+</sup></button>
+    <button class="size" onclick={() => onsize(-1)} title={keys("Zoom Out: the whole window, text and all (⌘−)")} aria-label="Zoom Out">A<sup>−</sup></button>
+    <button class="size" onclick={() => onsize(1)} title={keys("Zoom In: the whole window, text and all (⌘=)")} aria-label="Zoom In">A<sup>+</sup></button>
     <button
       onclick={() => onappearance(other)}
       oncontextmenu={appearanceMenu}

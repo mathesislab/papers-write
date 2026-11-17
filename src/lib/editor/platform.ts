@@ -10,12 +10,14 @@ const ORDER = ["⌃", "⌘", "⌥", "⇧"];
 const KEYS: Record<string, string> = { "↵": "Enter", "−": "-", "⌫": "Backspace", "⌦": "Delete", "⎋": "Esc" };
 
 /** `text` with its keys as the platform writes them: on macOS as it is; elsewhere each run of modifier symbols and the
- *  key after it written out (`(⇧⌘E)` → `(Ctrl+Shift+E)`, `⌘↵` → `Ctrl+Enter`), on its own `↵` as Enter. */
+ *  key after it written out (`(⇧⌘E)` → `(Ctrl+Shift+E)`, `⌘↵` → `Ctrl+Enter`, `⌘-click` → `Ctrl+click`), on its own
+ *  `↵` as Enter. */
 export function keys(text: string, onMac = mac): string {
   if (onMac) return text;
   return text
-    .replace(/([⌃⌥⇧⌘]+)(↵|⌫|⌦|⎋|Tab|[^\s)⌃⌥⇧⌘,·])/gu, (_, mods: string, key: string) => {
+    .replace(/([⌃⌥⇧⌘]+)(-click|↵|⌫|⌦|⎋|Tab|[^\s)⌃⌥⇧⌘,·])/gu, (_, mods: string, key: string) => {
       const names = [...new Set(ORDER.filter((m) => mods.includes(m)).map((m) => NAMES[m]))];
+      if (key === "-click") return `${names.join("+")}+click`;
       return [...names, KEYS[key] ?? (key.length === 1 ? key.toUpperCase() : key)].join("+");
     })
     .replace(/↵/g, "Enter");

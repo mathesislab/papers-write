@@ -4,7 +4,7 @@
 import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { popupReleased } from "$lib/contextMenu";
-import { mac } from "papers-write/editor";
+import { keys } from "papers-write/editor";
 import type { PdfViewProps, Spot } from "$lib/pdf";
 import { readAloudItems } from "$lib/readAloud";
 
@@ -21,7 +21,7 @@ export async function pdfMenu(
   const reading = await readAloudItems(selected || fromHere, selected ? "Read Aloud" : "Read Aloud from Here");
   const items = await Promise.all([
     ...reading,
-    ...(spot && onsource ? [MenuItem.new({ text: `Go to Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => onsource(spot) })] : []),
+    ...(spot && onsource ? [MenuItem.new({ text: keys("Go to Source (⌘-click)"), action: () => onsource(spot) })] : []),
     ...(menuItem ? [MenuItem.new(menuItem)] : []),
     PredefinedMenuItem.new({ item: "Separator" }),
     PredefinedMenuItem.new({ item: "Copy" }),

@@ -9,7 +9,7 @@
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { showPdfImages } from "$lib/pdfImage";
-  const keysOf = (k: string) => (navigator.userAgent.includes("Mac") ? k : "Ctrl");
+  import { keys } from "papers-write/editor";
 
   let {
     html,
@@ -164,7 +164,7 @@
         const reading = await readAloudItems(selected || at.text, selected ? "Read Aloud" : "Read Aloud Paragraph");
         const items = await Promise.all([
           ...reading,
-          MenuItem.new({ text: `Go to Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word, at.around) }),
+          MenuItem.new({ text: keys("Go to Source (⌘-click)"), action: () => onsource(at.text, at.word, at.around) }),
           ...(onpdf ? [MenuItem.new({ text: "Show PDF", action: onpdf })] : []),
           PredefinedMenuItem.new({ item: "Separator" }),
           PredefinedMenuItem.new({ item: "Copy" }),

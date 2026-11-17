@@ -8,7 +8,7 @@
   // nothing. There is no Esc for a new one: it would drop it by a stray key.
 
   import { invoke } from "@tauri-apps/api/core";
-  import { REVEAL } from "papers-write/editor";
+  import { REVEAL, keys } from "papers-write/editor";
   import { onMount } from "svelte";
   import { COLOURS, SHORT, initials, type Colour } from "papers-write/project";
   import "./card.css";
@@ -178,7 +178,7 @@
           <option value="notes">Notes</option>
         </select>
         <span class="hint">
-          {#if notes}opened on the last note changed, searched by title, name and text (⇧⌘F){#if keptBy} — this folder is kept by {keptBy}{/if}{:else}its main document opens first{/if}
+          {#if notes}opened on the last note changed, searched by title, name and text {keys("(⇧⌘F)")}{#if keptBy} — this folder is kept by {keptBy}{/if}{:else}its main document opens first{/if}
         </span>
       </div>
 

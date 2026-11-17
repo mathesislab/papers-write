@@ -78,6 +78,8 @@
     type FileRead,
     type Status,
     COLUMN_WIDTH_EVENT,
+    keys,
+    mac,
     type Mark,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
@@ -401,9 +403,8 @@
   /** A right-click in the text: Read Aloud (when set), Show in Preview or in PDF, and the edits of the selection. */
   async function editorMenu(e: MouseEvent) {
     const where = previewing && markdown ? "Preview" : "PDF";
-    const mac = navigator.userAgent.includes("Mac");
     const reading = await readAloudItems(spokenHere(), editor?.view()?.state.selection.main.empty ? "Read Aloud Paragraph" : "Read Aloud");
-    const click = ` (${mac ? "⌘" : "Ctrl"}-click)`;
+    const click = keys(" (⌘-click)");
     const items = await Promise.all([
       ...reading,
       // the pane shown says what ⌘-click does

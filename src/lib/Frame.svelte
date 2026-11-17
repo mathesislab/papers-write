@@ -15,12 +15,11 @@
   // (⌥⌘O, `outline`) shows it on the outline. Shown or not, its tab, its width and its open folders are the same in
   // all the project's tabs (ProjectSidebar).
 
-  import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
   import { OPEN_FOLDER, keys } from "papers-write/editor";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import { onMount, type Snippet } from "svelte";
-  import { ProjectBar, ProjectFrame, ProjectSidebar, cssOf, part } from "papers-write/project";
+  import { ProjectBar, ProjectFrame, ProjectSidebar, cssOf, part, popupReleased } from "papers-write/project";
   import type { Heading } from "papers-write/editor";
   import ProjectCard from "$lib/ProjectCard.svelte";
   import Sidebar, { type Tab } from "$lib/Sidebar.svelte";

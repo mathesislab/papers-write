@@ -3,7 +3,7 @@
 
 import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
-import { popupReleased } from "$lib/contextMenu";
+import { popupReleased } from "papers-write/project";
 import { keys } from "papers-write/editor";
 import type { PdfViewProps, Spot } from "$lib/pdf";
 import { readAloudItems } from "$lib/readAloud";

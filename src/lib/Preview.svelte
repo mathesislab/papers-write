@@ -4,7 +4,7 @@
   // to the same one (pandoc's Markdown reader has no source positions, so the blocks are matched by their order).
   // `error` is what pandoc said, in a bar at the foot.
 
-  import { followButtons, popupReleased } from "$lib/contextMenu";
+  import { followButtons, popupReleased } from "papers-write/project";
   import { readAloudItems } from "$lib/readAloud";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";

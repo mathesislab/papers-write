@@ -19,7 +19,7 @@
   // opened from the tree shows in a tab of its own, another page: that page's tree takes the keys back, on the file
   // (`FOCUS`, which the pages of an app share).
 
-  import { popupReleased } from "$lib/contextMenu";
+  import { popupReleased } from "./contextMenu";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { REVEAL, trashKey } from "../editor/platform";
   import { LogicalPosition } from "@tauri-apps/api/dpi";

@@ -31,7 +31,6 @@
   // `pending_go_to` for a window made for it), Replace All of the search as `replace-all` to the windows of the files
   // it changes.
 
-  import { popupReleased } from "$lib/contextMenu";
   import { readAloudItems, spokenOf } from "$lib/readAloud";
   import { toggleComment } from "@codemirror/commands";
   import { gotoLine, selectNextOccurrence } from "@codemirror/search";
@@ -43,7 +42,7 @@
   import { EditorView } from "@codemirror/view";
   import { ensureSyntaxTree } from "@codemirror/language";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { part, ready } from "papers-write/project";
+  import { part, popupReleased, ready } from "papers-write/project";
   import Preview from "$lib/Preview.svelte";
   import CommentBox from "$lib/CommentBox.svelte";
   import ReviewPanel from "$lib/ReviewPanel.svelte";

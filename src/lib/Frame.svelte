@@ -15,6 +15,7 @@
   // (⌥⌘O, `outline`) shows it on the outline. Shown or not, its tab, its width and its open folders are the same in
   // all the project's tabs (ProjectSidebar).
 
+  import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import { onMount, type Snippet } from "svelte";
@@ -149,7 +150,7 @@
       MenuItem.new({ text: "Project Info…", action: () => (carding = root) }),
       MenuItem.new({ text: "Remove from Bar", action: () => void invoke("remove_from_bar", { root }) }),
     ]);
-    await (await Menu.new({ items })).popup();
+    await popupReleased(await Menu.new({ items }));
   }
 
   function projectInfo() {

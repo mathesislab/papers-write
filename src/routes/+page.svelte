@@ -33,6 +33,7 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { onMount, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
   import { ensureSyntaxTree } from "@codemirror/language";
@@ -273,7 +274,7 @@
   }
 
   /** A right-click in the text: Show in Preview or in PDF, and the edits of the selection. */
-  async function editorMenu() {
+  async function editorMenu(e: MouseEvent) {
     const where = previewing && markdown ? "Preview" : "PDF";
     const mod = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl";
     const items = await Promise.all([
@@ -284,12 +285,12 @@
       PredefinedMenuItem.new({ item: "Paste" }),
       PredefinedMenuItem.new({ item: "SelectAll" }),
     ]);
-    await (await Menu.new({ items })).popup();
+    await (await Menu.new({ items })).popup(new LogicalPosition(e.clientX, e.clientY));
   }
 
   /** ⌃-click in the preview: the words of its block looked for in the text, the word clicked marked there. */
-  async function previewToSource(text: string, word: string) {
-    const place = await invoke<[number, number] | null>("place_in_text", { text: current(), query: text, word }).catch(() => null);
+  async function previewToSource(text: string, word: string, around: { before: string[]; after: string[] }) {
+    const place = await invoke<[number, number] | null>("place_in_text", { text: current(), query: text, word, around }).catch(() => null);
     if (place) editor?.markFound(place[0], place[1]);
     else say("Not found in the text");
   }
@@ -348,8 +349,8 @@
   }
 
   /** ⌃-click in the PDF beside the text: its source there (this text, or another file in its tab). */
-  async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null, word = "") {
-    const found = await invoke<boolean>("open_source_at", { pdf, text, at, word }).catch(() => false);
+  async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null, word = "", around = { before: [] as string[], after: [] as string[] }) {
+    const found = await invoke<boolean>("open_source_at", { pdf, text, at, word, around }).catch(() => false);
     if (!found) say("Not found in the project's sources");
   }
 

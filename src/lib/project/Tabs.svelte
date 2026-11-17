@@ -1,6 +1,7 @@
 <script lang="ts">
   // The tabs of this page's set in its window (papers-tabs, crates/tabs), drawn by TabStrip: asked on `tabs-changed`
-  // and when the window gets the focus; a tab chosen is `select_tab`, one closed `close_tab` (the app may ask first).
+  // and when the window gets the focus; a tab chosen is `select_tab`, one closed `close_tab` (the app may ask first),
+  // one dragged to another place `move_tab`.
   // An app's control on a tab (`extra`) as TabStrip's; `least` the fewest tabs that show a strip.
 
   import { invoke } from "@tauri-apps/api/core";
@@ -24,6 +25,16 @@
     }
   }
 
+  /** A tab dragged to another place: shown there at once, then the app told (which tells every page of the window). */
+  function moved(label: string, to: number) {
+    const from = tabs.findIndex((t) => t.id === label);
+    if (from < 0) return;
+    const now = [...tabs];
+    now.splice(to, 0, ...now.splice(from, 1));
+    tabs = now;
+    invoke("move_tab", { label, to }).catch(refresh);
+  }
+
   onMount(() => {
     refresh();
     window.addEventListener("focus", refresh);
@@ -43,4 +54,5 @@
   {extra}
   onselect={(label) => invoke("select_tab", { label })}
   onclose={(label) => invoke("close_tab", { label })}
+  onmove={moved}
 />

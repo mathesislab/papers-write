@@ -98,8 +98,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
             &recent,
             &item("open-project", "Open Project…", Some("Shift+CmdOrCtrl+O"))?,
-            // as Sublime's Quick Switch Project: the projects of the bar and the recent ones, in a list over the page
-            &item("switch-project", "Switch Project…", Some("Alt+CmdOrCtrl+P"))?,
+            // as Sublime's Quick Switch Project, on its keys: ⌃⌘P on macOS, Ctrl+Alt+P elsewhere
+            &item("switch-project", "Switch Project…", Some(if MAC { "Ctrl+Cmd+P" } else { "Ctrl+Alt+P" }))?,
             &separator()?,
             &item("save", "Save", Some("CmdOrCtrl+S"))?,
             &item("close", "Close", Some("CmdOrCtrl+W"))?,

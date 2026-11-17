@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Switch Project (⌃⌥P), as Sublime's Quick Switch Project: a field over the page and the projects of the bar, then
+  // Switch Project (⌃⌘P; Ctrl+Alt+P elsewhere), as Sublime's Quick Switch Project: a field over the page and the projects of the bar, then
   // those opened recently. What is typed keeps those whose name (or folder) has its letters in order; Enter switches
   // the window to the project (as its tile does), the last line opens another (Open Project…). Up, Down, Esc.
 

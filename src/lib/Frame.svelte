@@ -29,7 +29,7 @@
   import { watchSettings } from "$lib/settings";
   import { over } from "$lib/overlay.svelte";
 
-  /** Switch Project (⌃⌥P) shown */
+  /** Switch Project (⌃⌘P) shown */
   let switching = $state(false);
 
   let {

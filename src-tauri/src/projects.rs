@@ -185,7 +185,7 @@ fn tile(root: &Path, current: bool) -> Tile {
     }
 }
 
-/// A project offered by Switch Project (⌃⌥P): its folder, name and colour, whether it is the asking tab's.
+/// A project offered by Switch Project (⌃⌘P; Ctrl+Alt+P elsewhere): its folder, name and colour, whether it is the asking tab's.
 #[derive(Serialize)]
 pub struct Offered {
     root: String,

@@ -40,8 +40,8 @@ export interface PdfViewer {
   find(text: string, again?: boolean, backwards?: boolean): Promise<boolean>;
   /** to the item `i` of the outline told (`onoutline`) */
   goToOutline(i: number): void;
-  /** Show in PDF: the place scrolled to and marked, till the next click; what was marked, said; not PDFKit's yet */
-  show?(target: Target): Promise<string>;
+  /** Show in PDF: the place scrolled to and marked, till the next click; what was marked, said */
+  show(target: Target): Promise<string>;
 }
 
 /** The props of a view of a PDF. */

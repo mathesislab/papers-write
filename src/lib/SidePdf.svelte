@@ -81,7 +81,7 @@
   /** The place `line` (1-based) of the source `source` is at in the PDF, from the map its build left beside it
    *  (texmark's, or SyncTeX's for LaTeX), shown and marked; false without a map, or when it says nothing there. */
   export async function showSource(source: string, line: number, word = "", along = 0, before: string[] = [], after: string[] = []): Promise<number | null> {
-    if (!side?.pdf || !view?.show) return null;
+    if (!side?.pdf || !view) return null;
     status = "Looking it up in the build's map…";
     const boxes = await invoke<Box[] | null>("pdf_boxes", { pdf: side.pdf, source, line }).catch((e) => ((status = String(e)), null));
     if (!boxes?.length) {

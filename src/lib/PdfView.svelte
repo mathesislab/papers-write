@@ -7,7 +7,7 @@
   import { onMount } from "svelte";
   import * as pdfkit from "tauri-plugin-pdfkit-api";
   import type { Click, Entry, Place, Turn } from "tauri-plugin-pdfkit-api";
-  import { lineOfText, spoken, wordAround, type OutlineItem, type PdfViewProps, type Spot } from "$lib/pdf";
+  import { bestPlace, better, lineOfText, spoken, wordAround, type Found, type OutlineItem, type PdfViewProps, type Spot, type Target } from "$lib/pdf";
   import { pdfMenu } from "$lib/pdfMenu";
 
   // `covered`: hidden while the page shows a card over it, as the view lies above all of the page
@@ -81,6 +81,31 @@
   /** Find `text`: the first place, or `again` the next (the one before, `backwards`); an empty text clears. */
   export function find(text: string, again = false, backwards = false): Promise<boolean> {
     return send(() => pdfkit.find(text, again, backwards));
+  }
+
+  /** Show in PDF: the word marked in the pages of the paragraph (`regions`) where its neighbours are most like the
+   *  source's (`bestPlace`), the nearest to the line the map gives (`box`) among equals; else that line. What was
+   *  marked, said. */
+  export async function show({ box, regions, word, before, after }: Target): Promise<string> {
+    // the line the map gives (the box is from its baseline up), and where it is in its page's text
+    const own = await send(() => pdfkit.place(box.page, box.x + box.width / 2, box.y - box.height / 2)).catch(() => null);
+    if (!own) return "the PDF is not read yet";
+    let best: (Found & { page: number }) | null = null;
+    for (const page of new Set([box.page, ...regions.map((r) => r.page)])) {
+      const place = page === box.page ? own : await send(() => pdfkit.place(page, 0, 0)).catch(() => null);
+      if (!place) continue;
+      const near = (from: number) => (page === box.page && own.index !== null ? Math.abs(from - own.index) : 1e6);
+      const found = bestPlace(place.text, word, before, after, near);
+      if (found) best = better(best, { ...found, page });
+    }
+    const chosen = best;
+    if (chosen && (await send(() => pdfkit.mark(chosen.page, chosen.from, chosen.to)))) {
+      return chosen.score ? "word marked" : "word marked (its neighbours differ)";
+    }
+    // the word is not in the text (math, a citation): the line
+    const line = own.line;
+    if (line && (await send(() => pdfkit.mark(box.page, line[0], line[1])))) return "line marked (the word is not in the PDF's text there)";
+    return "nothing of the page's text there to mark";
   }
 
   /** A click on a place of the PDF as Go to Source takes it: the line (with the next when it is short), the point, the

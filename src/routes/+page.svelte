@@ -522,8 +522,37 @@
     if (what === "find-project") {
       return frame?.findInProject();
     }
+    // the PDF beside the text in front: its own find (it cannot be replaced in)
+    if (pdfFront && pdfBeside && sidePdf && what !== "find-replace") {
+      if (what === "find") return sidePdf.focusFind();
+      if (what === "find-next" || what === "find-previous") return void sidePdf.findAgain(what === "find-previous");
+      if (what === "find-selection") return sidePdf.findSelection();
+    }
     editor?.find(what === "find-replace" ? "replace" : (what.replace(/^find-?/, "") || "find") as FindCommand);
   }
+
+  /** Whether the PDF beside the text had the keys last (a click in it, its find field), rather than the text: Find,
+   *  Find Next and Find Previous are then its own. */
+  let pdfFront = $state(false);
+  $effect(() => {
+    const focused = (e: FocusEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.(".side-pdf")) pdfFront = true;
+      else if (target?.closest?.(".editor, .toolbar")) pdfFront = false;
+    };
+    // F3 and ⇧F3 in the PDF, as Linux and Windows have them beside the menu's ⌘G and ⇧⌘G (the text's search has them)
+    const f3 = (e: KeyboardEvent) => {
+      if (e.key !== "F3" || e.ctrlKey || e.metaKey || e.altKey || !pdfFront) return;
+      e.preventDefault();
+      findCommand(e.shiftKey ? "find-previous" : "find-next");
+    };
+    document.addEventListener("focusin", focused);
+    document.addEventListener("keydown", f3, true);
+    return () => {
+      document.removeEventListener("focusin", focused);
+      document.removeEventListener("keydown", f3, true);
+    };
+  });
 
   /** The keys to the sheet as it opens, so Esc reaches it. */
   const grab = (node: HTMLElement) => node.focus();

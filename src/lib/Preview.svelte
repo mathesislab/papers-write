@@ -4,6 +4,7 @@
   // to the same one (pandoc's Markdown reader has no source positions, so the blocks are matched by their order).
   // `error` is what pandoc said, in a bar at the foot.
 
+  import { followButtons, popupReleased } from "$lib/contextMenu";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   const keysOf = (k: string) => (navigator.userAgent.includes("Mac") ? k : "Ctrl");
@@ -13,12 +14,19 @@
     error = "",
     block = 0,
     onsource,
+    onblock,
+    onpdf,
   }: {
     html: string;
     error?: string;
     block?: number;
-    /** ⌃-click (⌘ on macOS) on the preview, or Find in Source in its menu: the text of the block clicked, and the word */
+    /** ⌃-click (⌘ on macOS) on the preview, or Go to Source in its menu: the text of the block clicked, and the word */
     onsource?: (text: string, word: string, around: { before: string[]; after: string[] }) => void;
+    /** a click in the preview (not a selection): the index of the top-level block clicked, for the text to scroll
+     *  to it */
+    onblock?: (index: number) => void;
+    /** Show PDF, in the menu: the pane switched to the PDF */
+    onpdf?: () => void;
   } = $props();
 
   let frame: HTMLIFrameElement;
@@ -115,9 +123,20 @@
   /** The frame loaded: ⌃-click and its menu taken to the source. */
   function loaded() {
     const doc = frame?.contentDocument;
+    if (doc) followButtons(doc);
     if (doc && onsource) {
       doc.addEventListener("click", (e) => {
-        if (!(e.ctrlKey || e.metaKey) || e.button !== 0) return;
+        if (e.button !== 0) return;
+        if (!(e.ctrlKey || e.metaKey)) {
+          // a plain click, not the end of a selection: the text scrolled to the block, as the preview follows the
+          // cursor
+          if (doc.getSelection()?.toString()) return;
+          let el = e.target as Element | null;
+          while (el && el.parentElement && el.parentElement !== doc.body) el = el.parentElement;
+          const index = el && el.parentElement === doc.body ? [...doc.body.children].indexOf(el) : -1;
+          if (index >= 0) onblock?.(index);
+          return;
+        }
         const at = clicked(e);
         if (!at) return;
         e.preventDefault();
@@ -128,12 +147,14 @@
         if (!at) return;
         e.preventDefault();
         const items = await Promise.all([
-          MenuItem.new({ text: `Find in Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word, at.around) }),
+          MenuItem.new({ text: `Go to Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word, at.around) }),
+          ...(onpdf ? [MenuItem.new({ text: "Show PDF", action: onpdf })] : []),
+          PredefinedMenuItem.new({ item: "Separator" }),
           PredefinedMenuItem.new({ item: "Copy" }),
         ]);
         // at the pointer: the frame's own place added to where the click is in it
         const box = frame.getBoundingClientRect();
-        await (await Menu.new({ items })).popup(new LogicalPosition(box.left + e.clientX, box.top + e.clientY));
+        await popupReleased(await Menu.new({ items }), new LogicalPosition(box.left + e.clientX, box.top + e.clientY));
       });
     }
     reveal();

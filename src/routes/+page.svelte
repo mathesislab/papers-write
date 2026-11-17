@@ -31,6 +31,7 @@
   // `pending_go_to` for a window made for it), Replace All of the search as `replace-all` to the windows of the files
   // it changes.
 
+  import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -225,6 +226,7 @@
 
   /** The top-level blocks of the text that pandoc shows, before and including the cursor's: front matter, link
    *  definitions, comments and raw LaTeX environments are not in its HTML. */
+  const HIDDEN_BLOCKS = new Set(["FrontMatter", "LinkReference", "CommentBlock", "LatexEnvironment"]);
   function follow() {
     const view = editor?.view();
     if (!previewing || !view || !follows) return;
@@ -232,10 +234,24 @@
     const head = state.selection.main.head;
     const tree = ensureSyntaxTree(state, state.doc.length, 50);
     if (!tree) return;
-    const hidden = new Set(["FrontMatter", "LinkReference", "CommentBlock", "LatexEnvironment"]);
     let index = -1;
-    for (let n = tree.topNode.firstChild; n && n.from <= head; n = n.nextSibling) if (!hidden.has(n.name)) index++;
+    for (let n = tree.topNode.firstChild; n && n.from <= head; n = n.nextSibling) if (!HIDDEN_BLOCKS.has(n.name)) index++;
     block = Math.max(index, 0);
+  }
+
+  /** A click in the preview: the text scrolled to the block clicked (the `index`th block pandoc shows, as `follow`
+   *  counts them), its start a little below the top; the cursor stays where it is. */
+  function scrollToBlock(index: number) {
+    const view = editor?.view();
+    if (!view) return;
+    const tree = ensureSyntaxTree(view.state, view.state.doc.length, 50);
+    if (!tree) return;
+    let i = -1;
+    for (let n = tree.topNode.firstChild; n; n = n.nextSibling) {
+      if (HIDDEN_BLOCKS.has(n.name) || ++i < index) continue;
+      view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: 48 }) });
+      return;
+    }
   }
 
   /** The cursor's moves, told a moment later. */
@@ -338,7 +354,7 @@
       // macOS: the system's Services, as its own menu had them (Look Up and Speech are not open to apps' menus)
       ...(mac ? [PredefinedMenuItem.new({ item: "Separator" }), PredefinedMenuItem.new({ item: "Services" })] : []),
     ]);
-    await (await Menu.new({ items })).popup(new LogicalPosition(e.clientX, e.clientY));
+    await popupReleased(await Menu.new({ items }), new LogicalPosition(e.clientX, e.clientY));
   }
 
   /** ⌃-click in the preview: the words of its block looked for in the text, the word clicked marked there. */
@@ -816,14 +832,14 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width}px` : "45%"}>
-      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} />
+      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? () => togglePdf() : undefined} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width}px` : "45%"}>
-      <SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} />
+      <SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} onpreview={markdown ? () => togglePreview() : undefined} />
       <button class="close-pane" onclick={() => togglePdf()} title="Hide PDF" aria-label="Hide PDF">×</button>
     </div>
   {/if}

@@ -165,8 +165,10 @@
 </div>
 
 <style>
+  /* on a narrow pane, onto a second line rather than past its right edge */
   .tools {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 4px;
     min-width: 0;

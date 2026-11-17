@@ -163,6 +163,12 @@ pub trait Host: Send + Sync + 'static {
     /// The last window of tabs gone.
     fn none_left(&self, _app: &AppHandle) {}
 
+    /** The colour of a window and of its pages before they are drawn (`dark`: the system's theme is), so that a
+     *  window opening shows it rather than an empty or half-drawn area; none: the platform's. */
+    fn background(&self, _app: &AppHandle, _dark: bool) -> Option<tauri::window::Color> {
+        None
+    }
+
     /// A project's tabs as last saved.
     fn layout(&self, app: &AppHandle, root: &Path) -> Layout;
 
@@ -332,6 +338,9 @@ fn make_window(app: &AppHandle) -> tauri::Result<Window> {
         None => builder.center(),
     };
     let window = builder.build()?;
+    if let Some(colour) = background_of(app, &window) {
+        let _ = window.set_background_color(Some(colour));
+    }
     state.windows.lock().unwrap().insert(label.clone(), Win::default());
     state.order.lock().unwrap().push(label);
     Ok(window)
@@ -381,19 +390,31 @@ pub fn add_beside(app: &AppHandle, label: &str, url: &str, beside: &str, title: 
     add_to(app, &window, label, url, Some(title))
 }
 
+/// The background of `window` and its pages, as the app says for the system's theme now.
+fn background_of(app: &AppHandle, window: &Window) -> Option<tauri::window::Color> {
+    let dark = window.theme().is_ok_and(|t| t == tauri::Theme::Dark);
+    host(app).background(app, dark)
+}
+
 /// The page made as a tab of the set `window` shows first.
 fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Option<String>) -> tauri::Result<Webview> {
     let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
-    let page = window.add_child(
-        WebviewBuilder::new(label, WebviewUrl::App(url.into())).auto_resize(),
-        LogicalPosition::new(0.0, 0.0),
-        LogicalSize::new(size.width, size.height),
-    )?;
+    let mut builder = WebviewBuilder::new(label, WebviewUrl::App(url.into())).auto_resize();
+    if let Some(colour) = background_of(app, window) {
+        builder = builder.background_color(colour);
+    }
+    let page = window.add_child(builder, LogicalPosition::new(0.0, 0.0), LogicalSize::new(size.width, size.height))?;
     // behind the page in view till it says it is drawn (`page_ready`); one that never says so comes to the front
     // after a while all the same
     let on_top = app.state::<Tabs>().on_top.lock().unwrap().get(window.label()).cloned();
-    if let Some(shown) = on_top.and_then(|f| app.get_webview(&f)) {
-        behind(&page, &shown);
+    match on_top.and_then(|f| app.get_webview(&f)) {
+        Some(shown) => behind(&page, &shown),
+        // the first page of a window: outside macOS, hidden till it is drawn, the window's background shown
+        // meanwhile rather than the page being drawn (`reveal` shows it)
+        None => {
+            #[cfg(not(target_os = "macos"))]
+            let _ = page.hide();
+        }
     }
     let (handle, waited) = (app.clone(), label.to_string());
     std::thread::spawn(move || {

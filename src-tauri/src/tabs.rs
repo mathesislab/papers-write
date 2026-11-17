@@ -13,6 +13,11 @@ pub use papers_tabs::*;
 pub struct Write;
 
 impl Host for Write {
+    fn background(&self, _app: &AppHandle, dark: bool) -> Option<tauri::window::Color> {
+        // the pages' --bg (theme.css), light or dark as the system is
+        Some(if dark { tauri::window::Color(0x26, 0x26, 0x28, 0xff) } else { tauri::window::Color(0xf6, 0xf6, 0xf8, 0xff) })
+    }
+
     fn style(&self) -> WindowStyle {
         WindowStyle { title: "Papers Write", size: (1000.0, 720.0), least: (520.0, 360.0) }
     }

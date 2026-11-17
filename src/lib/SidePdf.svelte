@@ -94,6 +94,31 @@
     notFound = !(await view?.find(query, again, e.shiftKey));
   }
 
+  let findField = $state<HTMLInputElement>();
+
+  /** Find… with the PDF in front: its field, filled with the PDF's selection when there is one. */
+  export function focusFind() {
+    const selected = window.getSelection()?.toString().trim();
+    if (selected && !selected.includes("\n")) query = selected;
+    findField?.focus();
+    findField?.select();
+  }
+
+  /** Find Next and Find Previous with the PDF in front; the field asked first when it is empty. */
+  export async function findAgain(backwards: boolean) {
+    if (!query.trim()) return focusFind();
+    const again = query === lastQuery;
+    lastQuery = query;
+    notFound = !(await view?.find(query, again, backwards));
+  }
+
+  /** Use Selection for Find with the PDF in front. */
+  export function findSelection() {
+    const selected = window.getSelection()?.toString().trim();
+    if (selected) [query, lastQuery] = [selected, ""];
+    void findAgain(false);
+  }
+
   /** The outline as a menu: a click goes to its place. */
   async function outlineMenu(e: MouseEvent) {
     const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -123,7 +148,7 @@
   });
 </script>
 
-<aside>
+<aside class="side-pdf">
   <header>
     <button class="name" onclick={changeMenu} disabled={!side} title="{side?.pdf ?? ''} (a click changes it)">{side?.pdf ? nameOf(side.pdf) : "PDF"} ▾</button>
     {#if side?.pdf}
@@ -133,6 +158,7 @@
         <button onclick={() => view?.zoom(0)} title="Fit Width">Fit</button>
         <button onclick={() => view?.zoom(1)} title="Zoom In" aria-label="Zoom In">+</button>
         <input
+          bind:this={findField}
           class="find"
           class:missing={notFound}
           bind:value={query}

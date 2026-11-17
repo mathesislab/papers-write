@@ -36,6 +36,8 @@
     setReviewView,
     undoSuggestion,
   } from "./review/review";
+  import { criticMarks, criticReview, decideAll, decideMark, marksHere } from "./review/criticMode";
+  import { commentOn, type Mark } from "./review/critic";
   import type { ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "./review/types";
   import SymbolList from "./SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "./symbols";
@@ -60,6 +62,8 @@
     drafts,
     onsync,
     oncontext,
+    critic,
+    onmarks,
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
@@ -111,6 +115,11 @@
     onsync?: () => void;
     /** a right-click in the text: the cursor put there (unless it is in the selection), then the app's menu */
     oncontext?: (e: MouseEvent) => void;
+    /** the review kept in the text itself (CriticMarkup) rather than by the app (`review`): the marks drawn, accepted
+     *  and rejected in the text, suggest mode writing marks, with the user's `initials` after each (empty: none) */
+    critic?: { initials: string };
+    /** the CriticMarkup marks of the text, told as they change (with `critic`) */
+    onmarks?: (marks: Mark[]) => void;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -238,6 +247,21 @@
   /** the review in the editor: given as the app has it, which may be after the file is read */
   const reviewSlot = new Compartment();
   let reviewed: ReviewHandlers | undefined;
+  /** the review in the text (`critic`), in a slot of its own, and whether it is in */
+  const criticSlot = new Compartment();
+  let critical = false;
+  const criticOf = () => criticReview(() => critic?.initials ?? "");
+  const marksTold = EditorView.updateListener.of((u) => {
+    if (critical && u.docChanged) onmarks?.(criticMarks(u.state));
+  });
+  $effect(() => {
+    const now = !!critic;
+    if (!editor || now === critical) return;
+    critical = now;
+    editor.dispatch({ effects: criticSlot.reconfigure(now ? criticOf() : []) });
+    if (now && mode !== "edit") setReviewMode(editor, mode);
+    onmarks?.(now ? criticMarks(editor.state) : []);
+  });
   $effect(() => {
     const now = review;
     if (!editor || now === reviewed) return;
@@ -266,8 +290,22 @@
         diagnostics,
         spelling,
         placeholder,
-        extensions: [...extensions, selection, found, clicks, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
+        extensions: [
+          ...extensions,
+          selection,
+          found,
+          clicks,
+          ...(mono || latex ? [] : [listKey]),
+          reviewSlot.of(review ? reviewOf(review) : []),
+          criticSlot.of(critic ? criticOf() : []),
+          marksTold,
+        ],
       });
+    if (critic && !critical) {
+      critical = true;
+      if (mode !== "edit") setReviewMode(editor, mode);
+    }
+    if (critical) onmarks?.(criticMarks(editor.state));
     if (review && reviewed !== review) {
       reviewed = review;
       if (mode !== "edit") setReviewMode(editor, mode);
@@ -396,8 +434,25 @@
   export function setMode(now: ReviewMode) {
     mode = now;
     if (now === "suggest") shownView = "markup";
-    if (editor && review) setReviewMode(editor, now);
+    if (editor && (review || critical)) setReviewMode(editor, now);
   }
+
+  /** The CriticMarkup mark accepted or rejected (a comment resolved: either), as an edit of the text (with `critic`). */
+  export function decideMarkAt(mark: Mark, accept: boolean) {
+    if (!editor || !critical) return;
+    // the mark as the text has it now
+    const now = criticMarks(editor.state).find((m) => m.from === mark.from && m.kind === mark.kind);
+    if (now) decideMark(editor, now, accept);
+  }
+  /** Every mark accepted or rejected (with `critic`); false when there is none. */
+  export const decideAllMarks = (accept: boolean) => !!editor && critical && decideAll(editor, accept);
+  /** A comment written in the text on [from, to): `{==text==}{>>@MP: body<<}` (with `critic`). */
+  export function commentInText(from: number, to: number, body: string) {
+    if (!editor || !critical) return;
+    editor.dispatch({ changes: commentOn(from, to, body, critic?.initials ?? ""), userEvent: "review.comment" });
+  }
+  /** The marks at the cursor (with `critic`). */
+  export const marksAtCursor = (): Mark[] => (editor && critical ? marksHere(editor.state) : []);
   /** All Markup, Accepted or Original (with `review`): what is drawn of the suggestions; the text is the file's in all
    *  (not in suggest mode, which is All Markup). */
   export function setView(now: ReviewView) {

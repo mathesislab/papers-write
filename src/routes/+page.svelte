@@ -44,6 +44,7 @@
   import Preview from "$lib/Preview.svelte";
   import CommentBox from "$lib/CommentBox.svelte";
   import ReviewPanel from "$lib/ReviewPanel.svelte";
+  import CriticPanel from "$lib/CriticPanel.svelte";
   import { ReviewSession } from "$lib/review.svelte";
   import { colorOf } from "$lib/reviewFormat";
   import { message, type Entry } from "$lib/commitLog";
@@ -72,6 +73,7 @@
     type FileRead,
     type Status,
     COLUMN_WIDTH_EVENT,
+    type Mark,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
@@ -170,6 +172,18 @@
   const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), log: (e) => log.push(e), colours: (m) => setColours(withOwn(m)) });
   /** the review panel at the right: shown (the preview is not while it is) */
   let panel = $state(false);
+  /** where the document's suggestions are kept, as its project says: the review's notes, or the text (CriticMarkup) */
+  let store = $state<"notes" | "in-file">("notes");
+  const inText = $derived(store === "in-file");
+  /** the CriticMarkup marks of the text (in-file) */
+  let marks = $state.raw<Mark[]>([]);
+  /** the user's initials, after the marks they write (Settings ▸ Review) */
+  let initials = $state("");
+
+  /** Where the suggestions are kept, asked again (the document read, its project changed). */
+  async function askStore() {
+    store = await invoke<"notes" | "in-file">("review_store").catch(() => "notes" as const);
+  }
   /** the comment being written: the selection it is on and where the box goes */
   let commenting = $state<{ from: number; to: number; x: number; y: number } | null>(null);
   const markdown = $derived(!path || /\.(md|markdown|qmd|txt)$/i.test(path));
@@ -180,6 +194,7 @@
     log = [];
     path = (await invoke<{ path: string | null }>("document")).path;
     void restorePane();
+    askStore();
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
     const going = await invoke<{ at: number; end: number; mark: boolean } | null>("pending_go_to").catch(() => null);
@@ -600,6 +615,9 @@
     else if (what === "panel") togglePanel();
     else if (what === "comment") comment();
     else if (what === "accept-here" || what === "reject-here") changeHere(what === "accept-here" ? "accept" : "reject");
+    else if (inText && (what === "accept-all" || what === "reject-all")) void allMarks(what === "accept-all");
+    else if (inText && (what === "next" || what === "previous")) stepMarks(what === "next");
+    else if (inText && what.startsWith("view-")) say("Accepted and Original show the review's notes; the marks in the text are shown as they are");
     else if (what === "accept-all") session.acceptAll().catch(() => {});
     else if (what === "reject-all") session.rejectAll().catch(() => {});
     else if (what === "cleanup") void session.cleanUp();
@@ -613,11 +631,28 @@
     session.act(here.id, action).catch(() => {});
   }
 
+  /** Accept All and Reject All of the marks in the text, asked first. */
+  async function allMarks(accept: boolean) {
+    const n = marks.filter((m) => m.kind !== "comment" && m.kind !== "highlight").length;
+    if (!n) return say("No suggestions in the text");
+    const verb = accept ? "Accept" : "Reject";
+    const ok = await invoke<boolean>("review_confirm", { message: `${verb} the ${n} suggestion${n === 1 ? "" : "s"} in the text?`, ok: `${verb} All` }).catch(() => false);
+    if (ok) editor?.decideAllMarks(accept);
+  }
+
+  /** Next Change and Previous Change among the marks in the text. */
+  function stepMarks(forward: boolean) {
+    if (!marks.length) return say("No changes or comments to go to");
+    const head = editor?.view()?.state.selection.main.head ?? 0;
+    const mark = forward ? (marks.find((m) => m.from > head) ?? marks[0]) : (marks.findLast((m) => m.to < head) ?? marks[marks.length - 1]);
+    editor?.select(mark.from, mark.to);
+  }
+
   /** Add Comment…: the box beside the end of the selection. */
   function comment() {
     const view = editor?.view();
     if (!view) return;
-    if (!session.me) return say("Save the document first, to comment on it");
+    if (!session.me && !inText) return say("Save the document first, to comment on it");
     const { from, to } = view.state.selection.main;
     if (from === to) return say("Select the text to comment on");
     const at = view.coordsAtPos(to) ?? view.coordsAtPos(from);
@@ -628,7 +663,8 @@
     const c = commenting;
     commenting = null;
     editor?.focus();
-    if (c) await session.comment(c.from, c.to, body).catch(() => {});
+    if (c && inText) editor?.commentInText(c.from, c.to, body);
+    else if (c) await session.comment(c.from, c.to, body).catch(() => {});
   }
 
   function edit(what: string) {
@@ -719,6 +755,7 @@
     appearance = s.appearance;
     symbols = s.symbols;
     colour = s.review_colour;
+    initials = s.review_initials;
     follows = s.preview_follow;
     const now = `${s.review_name}\n${s.review_email}`;
     if (who && who !== now) session.identity();
@@ -786,6 +823,8 @@
     const unlisten = [
       listen("opened", ask),
       listen("save-and-close", saveAndClose),
+      // the project's write.toml changed (Project Info): the suggestions may be kept elsewhere now
+      listen("projects-changed", askStore),
       listen("file-changed", () => {
         editor?.changedOnDisk();
         session.reload(300);
@@ -852,7 +891,10 @@
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
     view={session.view}
-    open={session.items.filter((item) => item.state === "open").length}
+    open={inText ? marks.length : session.items.filter((item) => item.state === "open").length}
+    where={inText ? "in the text" : "in notes"}
+    {store}
+    onstore={(s) => invoke("set_review_store", { store: s }).then(askStore).catch((e) => say(String(e)))}
     colour={userColour}
     {panel}
     reviewing={!!session.me}
@@ -901,7 +943,9 @@
         onoutline={markdown || latex ? (h, i) => ([headings, here] = [h, i]) : undefined}
         autofocus
         extensions={[cursor]}
-        review={session.handlers}
+        review={inText ? undefined : session.handlers}
+        critic={inText ? { initials } : undefined}
+        onmarks={(m) => (marks = m)}
         onchange={changed}
         bind:error
         bind:findbar
@@ -927,7 +971,19 @@
     </div>
   {/if}
   {#if panel}
-    <div class="pane review"><ReviewPanel {session} /></div>
+    <div class="pane review">
+      {#if inText}
+        <CriticPanel
+          {marks}
+          text={current}
+          ondecide={(m, accept) => editor?.decideMarkAt(m, accept)}
+          onall={(accept) => void allMarks(accept)}
+          onshow={(m) => editor?.select(m.from, m.to)}
+        />
+      {:else}
+        <ReviewPanel {session} />
+      {/if}
+    </div>
   {/if}
   </div>
   {#if listing}

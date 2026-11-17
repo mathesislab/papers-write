@@ -38,6 +38,8 @@ export { environmentTex, hover, isTex, labelTarget, targetAt, type Target } from
 export { contextAt, labelsOf, literalAt, nameOptions, refOptions, texContextAt, texLabelsOf, type Context, type Literal } from "./context";
 export { MATH_NAMES, TEXT_NAMES, TEX_NAMES, type LatexName } from "./lang/latex-names.ts";
 export type { CitationOption, Completion, Diagnostics, EditorFont, Found, Hit, HoverSources, Indent, Item, Span, Spelling, YearCount } from "./types";
+export { acceptMark, commentOn, parseCritic, rejectMark, resolveAll, type Mark, type MarkKind } from "./review/critic";
+export { criticMarks, criticReview } from "./review/criticMode";
 export { accept, itemsAt, redoSuggestion, review, reviewColour, REVIEW_COLOURS, setColours, reviewMode, reviewView, scrollToItem, setReview, setReviewMode, setReviewView, undoSuggestion } from "./review/review";
 export type {
   ReviewDecision,

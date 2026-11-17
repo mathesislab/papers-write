@@ -29,6 +29,8 @@
   let paper = $state("paper.md");
   let build = $state("");
   let engine = $state<"texmark" | "quarto">("texmark");
+  /** where the suggestions and comments are kept */
+  let reviewStore = $state<"notes" | "in-file">("notes");
   let library = $state("");
   let error = $state("");
   /** asked of the app, not yet answered */
@@ -56,6 +58,7 @@
       colour = m.colour ?? "none";
       build = m.build ?? "";
       engine = m.engine ?? "texmark";
+      reviewStore = m.review ?? "notes";
       library = m.library ?? "";
       main = m.main[0] ?? likelyMain(next.documents) ?? (next.defined ? "" : NEW);
     } catch (e) {
@@ -88,6 +91,8 @@
       build: blank(build),
       // texmark and none set: unset still
       engine: was.engine === null && engine === "texmark" ? null : engine,
+      // notes and none set: unset still
+      review: was.review === null && reviewStore === "notes" ? null : reviewStore,
       library: blank(library),
       profile: was.profile,
     };
@@ -177,6 +182,20 @@
       {#if !fresh}
         <label for="project-build">Build folder</label>
         <input id="project-build" bind:value={build} placeholder="build" autocomplete="off" spellcheck="false" />
+
+        <label for="project-review">Suggestions</label>
+        <div class="row">
+          <select id="project-review" bind:value={reviewStore}>
+            <option value="notes">In review notes</option>
+            <option value="in-file">In the text (CriticMarkup)</option>
+          </select>
+          <span class="hint">
+            {reviewStore === "notes" ? "beside the documents, with authors, dates and replies" : "as {++ ++} {-- --} {~~ ~> ~~} marks, which texmark shows in the PDF"}
+            {#if card && (card.manifest.review ?? "notes") !== reviewStore}
+              — suggestions made so far stay where they are: File ▸ Exchange ▸ {reviewStore === "in-file" ? "Export as CriticMarkup… writes the review's notes as marks" : "Import Review… reads marks into the review's notes"}
+            {/if}
+          </span>
+        </div>
 
         <label for="project-engine">Build with</label>
         <div class="row">

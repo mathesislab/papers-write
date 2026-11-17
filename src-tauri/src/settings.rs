@@ -77,6 +77,9 @@ pub struct Settings {
     /// who the user is in the review: empty, the git configuration's (the system's) name and e-mail
     pub review_name: String,
     pub review_email: String,
+    /// the user's initials, put after the suggestions they make in the text itself (CriticMarkup: `{>>@MP<<}`);
+    /// empty: none
+    pub review_initials: String,
     /// the user's colour among the review's authors, 1 to 6; none: from the name, as everyone's
     pub review_colour: Option<u8>,
 
@@ -118,6 +121,7 @@ impl Default for Settings {
             symbols: Vec::new(),
             review_name: String::new(),
             review_email: String::new(),
+            review_initials: String::new(),
             review_colour: None,
             preview_follow: true,
             texmark_path: String::new(),
@@ -156,7 +160,7 @@ impl Settings {
 
     /// The settings with what cannot be used put right: texts trimmed, the size and the colour in their ranges.
     pub fn normalised(mut self) -> Settings {
-        for text in [&mut self.review_name, &mut self.review_email, &mut self.texmark_path, &mut self.quarto_path, &mut self.latexmk_path, &mut self.pandoc_path] {
+        for text in [&mut self.review_name, &mut self.review_email, &mut self.review_initials, &mut self.texmark_path, &mut self.quarto_path, &mut self.latexmk_path, &mut self.pandoc_path] {
             *text = text.trim().to_string();
         }
         self.editor_size = if self.editor_size.is_finite() { self.editor_size.clamp(9.0, 32.0) } else { Settings::default().editor_size };
@@ -452,6 +456,7 @@ mod tests {
             symbols: vec![("(c)".into(), "©".into()), ("->".into(), String::new())],
             review_name: "A. Reviewer".into(),
             review_email: "a@example.org".into(),
+            review_initials: "AR".into(),
             review_colour: Some(3),
             preview_follow: false,
             texmark_path: "/opt/bin/texmark".into(),

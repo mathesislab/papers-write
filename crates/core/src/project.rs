@@ -70,6 +70,35 @@ impl Engine {
     }
 }
 
+/// Where a project's suggestions and comments are kept: in the review's own files beside the documents (notes, the
+/// default: `.papers-write/review/`, with authors, times, threads and rounds), or in the text itself as CriticMarkup
+/// (`{++ ++}`, `{-- --}`, `{~~ ~> ~~}`, `{== ==}{>> <<}`), which texmark and other tools read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReviewStore {
+    #[default]
+    Notes,
+    InFile,
+}
+
+impl ReviewStore {
+    pub fn name(self) -> &'static str {
+        match self {
+            ReviewStore::Notes => "notes",
+            ReviewStore::InFile => "in-file",
+        }
+    }
+}
+
+/// Where the suggestions and comments of `document` are kept: what its project's `write.toml` says (`review`), else
+/// in notes.
+pub fn review_store_of(document: &Path) -> ReviewStore {
+    match Project::of(document) {
+        Ok(Some(project)) => project.manifest.review.unwrap_or_default(),
+        _ => ReviewStore::Notes,
+    }
+}
+
 /// What builds the Markdown document `document`: Quarto for a `.qmd`, else what its project's `write.toml` says
 /// (`engine`), else texmark.
 pub fn engine_of(document: &Path) -> Engine {
@@ -102,6 +131,9 @@ pub struct Manifest {
     /// the build profile (`.papers-write/build/<name>.toml`) a fresh checkout starts with; the user's choice takes over
     #[serde(default)]
     pub profile: Option<String>,
+    /// where the suggestions and comments are kept: notes (none) or in the text as CriticMarkup
+    #[serde(default)]
+    pub review: Option<ReviewStore>,
 }
 
 /// `main = "paper.md"` or `main = ["paper.md", "supplement.md"]`.
@@ -234,6 +266,9 @@ impl Project {
         if manifest.profile != old.profile {
             text(doc, "profile", manifest.profile.as_deref());
         }
+        if manifest.review != old.review {
+            text(doc, "review", manifest.review.map(ReviewStore::name));
+        }
     }
 
     /// The name, else the folder's.
@@ -287,6 +322,7 @@ impl Manifest {
             engine: self.engine,
             library: path(&self.library),
             profile: text(&self.profile),
+            review: self.review,
         }
     }
 }
@@ -534,6 +570,11 @@ mod tests {
         assert!(fs::read_to_string(root.join(MANIFEST)).unwrap().contains("engine = \"quarto\""));
         assert_eq!(Project::read(&root).unwrap().manifest.engine, Some(Engine::Quarto));
         assert_eq!(engine_of(&root.join("paper.md")), Engine::Quarto);
+        // where the review is kept, written and read
+        assert_eq!(review_store_of(&root.join("paper.md")), ReviewStore::Notes);
+        project_again.set(&Manifest { review: Some(ReviewStore::InFile), ..project_again.manifest.clone() }).unwrap();
+        assert!(fs::read_to_string(root.join(MANIFEST)).unwrap().contains("review = \"in-file\""));
+        assert_eq!(review_store_of(&root.join("paper.md")), ReviewStore::InFile);
         // a key unset is taken out
         project_again.set(&Manifest { build: None, colour: None, engine: None, ..project_again.manifest.clone() }).unwrap();
         let text = fs::read_to_string(root.join(MANIFEST)).unwrap();

@@ -2,9 +2,10 @@
   // The review's mode, at the right of the toolbar: Editing or Suggesting, a click on either switches to it (⇧⌘E
   // switches too), Suggesting in the user's colour; the ▾ is a menu of the views of the suggestions in Editing (All
   // Markup, Accepted, Original), the one shown said after Editing when it is not All Markup. An untitled document has
-  // no review: it edits. The review panel is a button of its own (Toolbar).
+  // no review: it edits. Suggesting says where suggestions go (`where`: in the text as CriticMarkup, or in the review's
+  // notes). The review panel is a button of its own (Toolbar).
 
-  import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
+  import { CheckMenuItem, Menu, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import type { ReviewMode, ReviewView } from "papers-write/editor";
 
@@ -13,6 +14,9 @@
     view,
     colour,
     reviewing,
+    where = "",
+    store,
+    onstore,
     onmode,
     onview,
   }: {
@@ -22,6 +26,11 @@
     colour: string;
     /** the document has a review (it is a file) */
     reviewing: boolean;
+    /** where suggestions go ("in the text", "in notes"), said after Suggesting while suggesting; none: not said */
+    where?: string;
+    /** where the project keeps its suggestions, and its change (none: not offered) */
+    store?: "notes" | "in-file";
+    onstore?: (store: "notes" | "in-file") => void;
     onmode: (mode: ReviewMode) => void;
     onview: (view: ReviewView) => void;
   } = $props();
@@ -34,11 +43,18 @@
 
   async function menu(e: MouseEvent) {
     const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const items = await Promise.all(
-      VIEWS.map(([v, text, accelerator]) =>
+    const items = await Promise.all([
+      ...VIEWS.map(([v, text, accelerator]) =>
         CheckMenuItem.new({ text, checked: view === v, enabled: reviewing && mode === "edit", accelerator, action: () => onview(v) }),
       ),
-    );
+      ...(store && onstore
+        ? [
+            PredefinedMenuItem.new({ item: "Separator" }),
+            CheckMenuItem.new({ text: "Suggestions in Review Notes", checked: store === "notes", enabled: reviewing, action: () => onstore("notes") }),
+            CheckMenuItem.new({ text: "Suggestions in the Text (CriticMarkup)", checked: store === "in-file", enabled: reviewing, action: () => onstore("in-file") }),
+          ]
+        : []),
+    ]);
     await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
 
@@ -62,11 +78,15 @@
     disabled={!reviewing}
     role="radio"
     aria-checked={mode === "suggest"}
-    title={!reviewing ? "Save the document to suggest changes" : mode === "suggest" ? "Suggesting: what is typed is a suggestion" : "Suggest changes (⇧⌘E)"}
+    title={!reviewing
+      ? "Save the document to suggest changes"
+      : mode === "suggest"
+        ? `Suggesting: what is typed is a suggestion${where ? `, kept ${where}` : ""}`
+        : `Suggest changes${where ? `, kept ${where}` : ""} (⇧⌘E)`}
   >
-    Suggesting
+    Suggesting{#if mode === "suggest" && where}<span class="view">· {where}</span>{/if}
   </button>
-  <button class="more" onclick={menu} disabled={!reviewing} title="View: All Markup, Accepted, Original" aria-label="View">
+  <button class="more" onclick={menu} disabled={!reviewing} title="View: All Markup, Accepted, Original; where suggestions are kept" aria-label="View">
     <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
   </button>
 </div>

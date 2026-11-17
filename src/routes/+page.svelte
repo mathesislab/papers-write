@@ -808,7 +808,7 @@
     width={prefs.readable ? prefs.width : null}
     onwidth={(w) => invoke("set_text_width", { width: w })}
     {appearance}
-    onsize={(by) => invoke("step_editor_size", { by })}
+    onsize={(by) => invoke("zoom_window", { by })}
     onappearance={(a) => invoke("set_appearance", { appearance: a })}
   />
   <div class="editor">

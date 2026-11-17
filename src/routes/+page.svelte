@@ -325,8 +325,11 @@
     const head = view.state.selection.main.head;
     const line = view.state.doc.lineAt(head);
     // exactly, from the map the build left beside the PDF; else by the words around the cursor
+    // the word selected, else the word at the cursor
+    const { from, to } = view.state.selection.main;
+    const selected = view.state.sliceDoc(from, to).trim();
     const range = view.state.wordAt(head);
-    const word = range ? view.state.sliceDoc(range.from, range.to) : "";
+    const word = selected && !/\s/.test(selected) ? selected : range ? view.state.sliceDoc(range.from, range.to) : "";
     const along = line.length ? (head - line.from) / line.length : 0;
     const page = await sidePdf?.showSource(path, line.number, word, along);
     if (page) return say(`Shown in the PDF: page ${page}`);

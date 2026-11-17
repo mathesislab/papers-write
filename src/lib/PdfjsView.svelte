@@ -213,9 +213,9 @@
 
   /** A box of the PDF (SyncTeX's: its page, its left and baseline in PDF points from the page's top left, its width
    *  and height above the baseline) brought into view, and marked a moment. */
-  export function showBox(box: { page: number; x: number; y: number; width: number; height: number }, word = "") {
+  export function showBox(box: { page: number; x: number; y: number; width: number; height: number }, word = ""): string {
     const pageView = viewer?.getPageView(box.page - 1);
-    if (!viewer || !pageView) return;
+    if (!viewer || !pageView) return "the PDF is not read yet";
     const [, , , top] = pageView.viewport.viewBox;
     // PDF space: from the bottom left
     const [x1, y1, x2, y2] = [box.x, top - box.y - 3, box.x + box.width, top - box.y + box.height];
@@ -227,7 +227,7 @@
     // word in that line of the text layer, else the line
     clearMarks();
     marked = { page: box.page, line: [x1, y1, x2, y2], word };
-    drawMark();
+    return drawMark();
   }
 
   /** The marks of Show in PDF taken off: the word's highlight unwrapped, the line's spans let go. */
@@ -238,12 +238,14 @@
 
   /** The mark drawn on its page's text layer, as pdf.js marks what Find found (a box laid over the page is not drawn
    *  over its canvas by WebKitGTK): the word, wrapped in a highlight where it is in the line, else the line's spans. */
-  function drawMark() {
-    if (!marked) return;
+  function drawMark(): string {
+    if (!marked) return "";
     const pageView = viewer?.getPageView(marked.page - 1);
     const pageDiv = pageView?.div as HTMLElement | undefined;
     const spans = [...(pageDiv?.querySelectorAll<HTMLElement>(".textLayer span:not(.synced-word)") ?? [])];
-    if (!pageView || !spans.length || pageView.div.querySelector(".synced-word, .synced-line")) return;
+    if (!pageView) return "no such page";
+    if (!spans.length) return "marked once the page is drawn";
+    if (pageView.div.querySelector(".synced-word, .synced-line")) return "marked";
     const [a, b, c, d] = pageView.viewport.convertToViewportRectangle(marked.line);
     const origin = pageView.div.getBoundingClientRect();
     const middle = origin.top + pageView.div.clientTop + (b + d) / 2;
@@ -269,10 +271,16 @@
         const mark = document.createElement("span");
         mark.className = "highlight selected synced-word";
         best.range.surroundContents(mark);
-        return;
+        return "word marked";
       }
     }
-    for (const span of spans) if (near(span.getBoundingClientRect(), height / 2 + 2)) span.classList.add("highlight", "selected", "synced-line");
+    let lines = 0;
+    for (const span of spans)
+      if (near(span.getBoundingClientRect(), height / 2 + 2)) {
+        span.classList.add("highlight", "selected", "synced-line");
+        lines++;
+      }
+    return lines ? "line marked" : "nothing of the page's text there to mark";
   }
 
   /** A page's text layer drawn anew (pdf.js makes it again as it draws the page): the mark drawn on it again. */

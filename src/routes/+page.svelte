@@ -40,6 +40,7 @@
   import Preview from "$lib/Preview.svelte";
   import CommentBox from "$lib/CommentBox.svelte";
   import ReviewPanel from "$lib/ReviewPanel.svelte";
+  import NotesSearch from "$lib/NotesSearch.svelte";
   import { ReviewSession } from "$lib/review.svelte";
   import { colorOf } from "$lib/reviewFormat";
   import { message, type Entry } from "$lib/commitLog";
@@ -163,9 +164,20 @@
   /** a LaTeX file: highlighted and completed, with no symbols typed */
   const latex = $derived(!!path && /\.(tex|sty|cls)$/i.test(path));
 
+  /** the folder of notes the page is of (none: a paper, or no project), and whether its search is shown */
+  let notes = $state<{ root: string; name: string } | null>(null);
+  let notesShown = $state(false);
+
+  async function askNotes() {
+    notes = await invoke<{ root: string; name: string } | null>("notes_of").catch(() => null);
+    // a page of no file in a folder of notes: its search, to open one or make one
+    if (notes && !path) notesShown = true;
+  }
+
   async function ask() {
     log = [];
     path = (await invoke<{ path: string | null }>("document")).path;
+    void askNotes();
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
     const going = await invoke<{ at: number; end: number } | null>("pending_go_to").catch(() => null);
@@ -430,6 +442,8 @@
   /** Edit ▸ Find: in the text (the editor's bar), or in the project (the sidebar's search). */
   function findCommand(what: string) {
     if (what === "find-project") {
+      // a folder of notes: the search of its notes, not of all its files
+      if (notes) return void (notesShown = true);
       return frame?.findInProject();
     }
     editor?.find(what === "find-replace" ? "replace" : (what.replace(/^find-?/, "") || "find") as FindCommand);
@@ -507,6 +521,7 @@
     ready(ask(), textIn.promise, frame?.loaded() ?? Promise.resolve());
     const unlisten = [
       listen("opened", ask),
+      listen("projects-changed", askNotes),
       listen("file-changed", () => {
         editor?.changedOnDisk();
         session.reload(300);
@@ -667,6 +682,9 @@
     oncommitted={() => (log = [])}
     onlog={(did) => log.push({ did })}
   />
+  {#if notesShown && notes}
+    <NotesSearch name={notes.name} onclose={() => ((notesShown = false), editor?.focus())} />
+  {/if}
   {#if commenting}<CommentBox x={commenting.x} y={commenting.y} onpost={post} oncancel={() => ((commenting = null), editor?.focus())} />{/if}
   <Exchange
     bind:this={exchange}

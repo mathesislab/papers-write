@@ -70,6 +70,25 @@ impl Engine {
     }
 }
 
+/// What a project is: a paper (or a book, a report: documents built into a PDF; the default), or a folder of notes
+/// (crate::notes: opened on the last note changed, searched by title, name and text).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    #[default]
+    Paper,
+    Notes,
+}
+
+impl Kind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Kind::Paper => "paper",
+            Kind::Notes => "notes",
+        }
+    }
+}
+
 /// What builds the Markdown document `document`: Quarto for a `.qmd`, else what its project's `write.toml` says
 /// (`engine`), else texmark.
 pub fn engine_of(document: &Path) -> Engine {
@@ -99,6 +118,9 @@ pub struct Manifest {
     pub engine: Option<Engine>,
     /// a `.bib` file or a papers library searched for references, beside the papers library of the user
     pub library: Option<PathBuf>,
+    /// a paper (none) or a folder of notes
+    #[serde(default)]
+    pub kind: Option<Kind>,
 }
 
 /// `main = "paper.md"` or `main = ["paper.md", "supplement.md"]`.
@@ -228,6 +250,9 @@ impl Project {
         if manifest.library != old.library {
             text(doc, "library", path(&manifest.library).as_deref());
         }
+        if manifest.kind != old.kind {
+            text(doc, "kind", manifest.kind.filter(|k| *k != Kind::Paper).map(Kind::name));
+        }
     }
 
     /// The name, else the folder's.
@@ -280,6 +305,7 @@ impl Manifest {
             build: path(&self.build),
             engine: self.engine,
             library: path(&self.library),
+            kind: self.kind.filter(|k| *k != Kind::Paper),
         }
     }
 }

@@ -284,6 +284,14 @@ pub fn cancel_project(window: Webview) {
 #[tauri::command]
 pub fn create_project(app: AppHandle, window: Webview, root: String, manifest: Manifest, paper: bool) -> Result<(), String> {
     let root = PathBuf::from(root);
+    // a folder of notes has no main document: it opens on its last note, or its search
+    if manifest.kind == Some(write_core::project::Kind::Notes) {
+        Project::create(&root, &manifest).map_err(|e| e.to_string())?;
+        window.state::<Projects>().asking.lock().unwrap().remove(window.label());
+        with_saved(&app, |saved| saved.opened(&root));
+        changed(&app);
+        return crate::tabs::show_project(&app, &root, crate::tabs::Target::Front);
+    }
     let main = manifest.main.first().ok_or("Choose the main document")?.clone();
     let written = if paper {
         let name = main.to_string_lossy();

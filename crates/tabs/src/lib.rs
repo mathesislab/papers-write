@@ -213,6 +213,8 @@ pub struct Tabs {
     cycling: Mutex<Option<(String, usize)>>,
     /// the presses of Switch to Recent Tab, for the end of one after a while without a press or ⌃ let go
     cycle_presses: AtomicUsize,
+    /// when Switch to Recent Tab was last asked (a press said twice is left out)
+    last_recent: Mutex<Option<std::time::Instant>>,
     /// a tab brought back by Back or Forward: not itself a visit
     stepping: AtomicBool,
     /// the folders open in the file tree of each project's sidebar (none: of the pages of no project), the same in
@@ -242,6 +244,7 @@ impl Tabs {
             visits: Mutex::default(),
             cycling: Mutex::default(),
             cycle_presses: AtomicUsize::new(0),
+            last_recent: Mutex::default(),
             stepping: AtomicBool::new(false),
             folders: Mutex::default(),
             ready: Mutex::default(),
@@ -667,6 +670,16 @@ pub fn recent(app: &AppHandle, by: isize) {
     let Some(window) = front_window(app) else {
         return;
     };
+    // one press said twice (the page and the menu both): the second left out
+    {
+        let state = app.state::<Tabs>();
+        let mut last = state.last_recent.lock().unwrap();
+        let now = std::time::Instant::now();
+        if last.is_some_and(|t| now.duration_since(t) < std::time::Duration::from_millis(80)) {
+            return;
+        }
+        *last = Some(now);
+    }
     let strip = strip_of(app, &window);
     let state = app.state::<Tabs>();
     let mut recent: Vec<String> = state.visits.lock().unwrap().get(&window).map(|v| v.recent.clone()).unwrap_or_default();
@@ -678,12 +691,14 @@ pub fn recent(app: &AppHandle, by: isize) {
     }
     let target = {
         let mut cycling = state.cycling.lock().unwrap();
+        let from = cycling.as_ref().map(|(_, i)| *i);
         let at = match cycling.as_ref() {
             Some((w, i)) if *w == window => *i as isize,
             _ => 0,
         };
         let next = (at + by).rem_euclid(recent.len() as isize) as usize;
         *cycling = Some((window.clone(), next));
+        eprintln!("[papers-write] recent tab: {recent:?}, from {from:?} by {by}: {}", recent[next]);
         recent[next].clone()
     };
     select(app, &target);

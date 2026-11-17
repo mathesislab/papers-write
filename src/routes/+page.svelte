@@ -173,7 +173,7 @@
   async function ask() {
     log = [];
     path = (await invoke<{ path: string | null }>("document")).path;
-    restorePane();
+    void restorePane();
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
     const going = await invoke<{ at: number; end: number; mark: boolean } | null>("pending_go_to").catch(() => null);
@@ -256,7 +256,21 @@
       else localStorage.removeItem(paneKey(path));
     } catch {}
   }
-  function restorePane() {
+  async function restorePane() {
+    if (!path) return;
+    // a tab behind the one in front: when it first comes to the front (a PDF or a preview made for each tab at the
+    // start, all at once, made it slow)
+    if (!(await invoke<boolean>("page_in_front").catch(() => true))) {
+      const unlisten = await listen<boolean>("tab-shown", (e) => {
+        if (!e.payload) return;
+        void unlisten();
+        void restoreNow();
+      });
+      return;
+    }
+    restoreNow();
+  }
+  function restoreNow() {
     if (!path) return;
     let pane: string | null = null;
     try {

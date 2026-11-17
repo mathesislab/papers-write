@@ -506,6 +506,8 @@
     const stop = watchSettings(apply);
     ready(ask(), textIn.promise, frame?.loaded() ?? Promise.resolve());
     const unlisten = [
+      // the labels of the other chapters known anew (preview.rs): previewed again
+      listen("preview-labels", () => void refresh()),
       listen("opened", ask),
       listen("file-changed", () => {
         editor?.changedOnDisk();

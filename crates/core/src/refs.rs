@@ -133,6 +133,46 @@ pub fn main_bibliography(path: &Path, text: &str) -> Vec<PathBuf> {
     bibliography_of(&main, &main_text).into_iter().map(|n| folder.join(n)).filter(|f| f.is_file()).collect()
 }
 
+/// The files of the whole document `path` is a chapter of (texmark's thesis or book: the main document lists its
+/// chapters in `chapters:`): the main document, then the chapters in order, those that are there. None when `path` is
+/// no chapter of its project's main document.
+pub fn document_files(path: &Path) -> Option<Vec<PathBuf>> {
+    if path.as_os_str().is_empty() {
+        return None;
+    }
+    let main = Project::of(&folder_of(path)).ok().flatten()?.main()?;
+    let same = |a: &Path, b: &Path| a.canonicalize().ok().zip(b.canonicalize().ok()).is_some_and(|(a, b)| a == b);
+    let dir = folder_of(&main);
+    let chapters: Vec<PathBuf> = frontmatter::chapters(&std::fs::read_to_string(&main).ok()?).iter().map(|c| dir.join(c)).collect();
+    if !chapters.iter().any(|c| same(c, path)) {
+        return None;
+    }
+    Some(std::iter::once(main).chain(chapters.into_iter().filter(|c| c.is_file())).collect())
+}
+
+/// The text of a whole document as its files are on disk (`document_files`): the main document's front matter and
+/// text, then each chapter's text (a chapter's own front matter left out), for its labels to be numbered as one.
+pub fn whole_text(files: &[PathBuf]) -> String {
+    let mut whole = String::new();
+    for (i, file) in files.iter().enumerate() {
+        let text = std::fs::read_to_string(file).unwrap_or_default();
+        whole.push_str(if i == 0 { &text } else { &text[frontmatter::body_start(&text)..] });
+        whole.push_str("\n\n");
+    }
+    whole
+}
+
+/// What tells whether a document's files changed: each one's time of change and size.
+pub fn files_stamp(files: &[PathBuf]) -> Vec<(PathBuf, Option<std::time::SystemTime>, u64)> {
+    files
+        .iter()
+        .map(|f| {
+            let meta = std::fs::metadata(f).ok();
+            (f.clone(), meta.as_ref().and_then(|m| m.modified().ok()), meta.map_or(0, |m| m.len()))
+        })
+        .collect()
+}
+
 /// The `.bib` files of the references of a Markdown or LaTeX file: those it names
 /// (relative to the file's folder), then the papers library's, each once; one that is not there is left out.
 pub fn sources_of(markdown_path: &Path, markdown_text: &str) -> Vec<PathBuf> {
@@ -486,5 +526,23 @@ mod tests {
         // the main document, and a file that names its own, keep theirs
         assert!(main_bibliography(&root.join("thesis.md"), main).is_empty());
         assert!(main_bibliography(&root.join("other.md"), "---\nbibliography: other.bib\n---\n").is_empty());
+    }
+
+    #[test]
+    fn the_files_of_a_chapter_s_whole_document() {
+        let root = folder("whole");
+        fs::write(root.join("write.toml"), "main = \"thesis.md\"\n").unwrap();
+        fs::write(root.join("thesis.md"), "---\ntitle: T\nchapters:\n  - one.md\n  - two.md\n---\n\nAbstract.\n").unwrap();
+        fs::write(root.join("one.md"), "---\nx: 1\n---\n# One {#sec:one}\n").unwrap();
+        fs::write(root.join("two.md"), "# Two {#sec:two}\n").unwrap();
+        let files = document_files(&root.join("two.md")).unwrap();
+        assert_eq!(files, [root.join("thesis.md"), root.join("one.md"), root.join("two.md")]);
+        let whole = whole_text(&files);
+        assert!(whole.starts_with("---\ntitle: T"));
+        assert!(!whole.contains("x: 1"));
+        assert!(whole.find("Abstract.").unwrap() < whole.find("# One").unwrap());
+        assert!(whole.find("# One").unwrap() < whole.find("# Two").unwrap());
+        assert!(document_files(&root.join("thesis.md")).is_none());
+        assert!(document_files(&root.join("other.md")).is_none());
     }
 }

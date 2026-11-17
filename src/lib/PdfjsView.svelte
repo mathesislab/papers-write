@@ -1,7 +1,8 @@
 <script lang="ts">
   // A PDF by pdf.js, where PDFKit is not (Linux), as Papers Desktop shows them there: the props and the commands of
   // PdfView (zoom, back and forward, a page, a turn, find), in the page itself, so a card over it covers it as any
-  // element. Back and Forward are the pages the links and the jumps (Go to Page, first, last) left.
+  // element. Back and Forward are the pages the links and the jumps (Go to Page, first, last) left. A ⌃-click on the
+  // text gives the line clicked (`onsource`), for the page to open its source there.
 
   import { invoke } from "@tauri-apps/api/core";
   import { GlobalWorkerOptions, getDocument, type PDFDocumentLoadingTask } from "pdfjs-dist";
@@ -19,6 +20,7 @@
     onpage,
     onhistory,
     onopen,
+    onsource,
   }: {
     path: string;
     /** the page to open at (from 1) */
@@ -31,6 +33,8 @@
     onhistory?: (history: History) => void;
     /** the PDF open: its page count */
     onopen: (count: number) => void;
+    /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked, and the next when it is short */
+    onsource?: (text: string) => void;
   } = $props();
 
   let area: HTMLDivElement;
@@ -127,8 +131,46 @@
     return found;
   }
 
+  /** The text of the line of the text layer that `span` is on (the spans whose middle is level with its own), in
+   *  order; with the next line when it has fewer than six words, for enough of them to find. */
+  function lineOf(span: HTMLElement): string {
+    const layer = span.closest(".textLayer");
+    if (!layer) return span.textContent ?? "";
+    const middle = (r: DOMRect) => r.top + r.height / 2;
+    const spans = [...layer.querySelectorAll<HTMLElement>("span")].filter((s) => !s.querySelector("span") && s.textContent?.trim());
+    const rects = spans.map((s) => s.getBoundingClientRect());
+    const own = span.getBoundingClientRect();
+    const level = (r: DOMRect, y: number) => Math.abs(middle(r) - y) < Math.max(own.height, 4) / 2;
+    const textAt = (y: number) =>
+      spans
+        .map((s, i) => ({ s, r: rects[i] }))
+        .filter(({ r }) => level(r, y))
+        .sort((a, b) => a.r.left - b.r.left)
+        .map(({ s }) => s.textContent)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    let text = textAt(middle(own));
+    if (text.split(" ").length < 6) {
+      const below = rects.map(middle).filter((y) => y > middle(own) + own.height / 2).sort((a, b) => a - b)[0];
+      if (below !== undefined) text = `${text}\n${textAt(below)}`;
+    }
+    return text;
+  }
+
+  function sourceClick(e: MouseEvent) {
+    if (!onsource || !(e.ctrlKey || e.metaKey) || e.button !== 0) return;
+    const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
+    if (!span) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const text = lineOf(span);
+    if (text) onsource(text);
+  }
+
   onMount(() => {
     let task: PDFDocumentLoadingTask | null = null;
+    container.addEventListener("click", sourceClick, true);
     const pages = document.createElement("div");
     pages.className = "pdfViewer";
     container.append(pages);
@@ -177,6 +219,7 @@
       }
     })();
     return () => {
+      container.removeEventListener("click", sourceClick, true);
       resize.disconnect();
       task?.destroy();
     };

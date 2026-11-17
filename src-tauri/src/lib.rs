@@ -8,6 +8,7 @@ mod git;
 mod hover;
 mod menu;
 mod package;
+mod pdfsync;
 mod preview;
 mod projects;
 mod refs;
@@ -191,6 +192,7 @@ pub fn run() {
             sidebar::search_project,
             sidebar::replace_in_project,
             sidebar::open_at,
+            pdfsync::open_source_at,
             sidebar::pending_go_to,
             sidebar::new_markdown_file,
             sidebar::trash_path,

@@ -108,9 +108,154 @@ pub fn markdown_line(markdown: &str, tex_line: &str) -> Option<u32> {
     best.filter(|_| !tie).map(|(_, n)| n)
 }
 
+/// A place in one of several source texts: the text (its index), the line (1-based), and where the words found start
+/// in that line (a byte offset into it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Place {
+    pub text: usize,
+    pub line: u32,
+    pub column: usize,
+}
+
+/// Where `query` (text read off a PDF: a line of it, LaTeX already rendered) is in `texts` (the Markdown and LaTeX
+/// sources of a document): the lines with the longest run of the query's words, all of them when several are as
+/// good; none when no line shares a run of three words (two, one for a query that short). Words are compared as
+/// `words` makes them, so Markdown or LaTeX markup in the source does not matter; a word split by a hyphen at the
+/// end of a PDF line is joined again.
+pub fn find_text(texts: &[&str], query: &str) -> Vec<Place> {
+    let query = words(&join_hyphenated(query));
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let need = query.len().min(3);
+    let mut best = 0;
+    let mut places = Vec::new();
+    for (t, text) in texts.iter().enumerate() {
+        for (i, line) in text.lines().enumerate() {
+            let line_words = words(line);
+            let (score, start) = longest_run_at(&query, &line_words);
+            if score < need || score < best {
+                continue;
+            }
+            if score > best {
+                best = score;
+                places.clear();
+            }
+            let column = column_of(line, &line_words[start..start + score]);
+            places.push(Place { text: t, line: i as u32 + 1, column });
+        }
+    }
+    places
+}
+
+/// Where the run of words `run` starts in `line`: the first place of its first word that the next words follow
+/// closely (a few characters of markup or punctuation between them), else the first place of that word.
+fn column_of(line: &str, run: &[String]) -> usize {
+    let Some(first) = run.first() else { return 0 };
+    let follows = |mut at: usize| {
+        for w in &run[1..run.len().min(4)] {
+            match line[at..].find(w.as_str()) {
+                Some(i) if i <= 12 => at += i + w.len(),
+                _ => return false,
+            }
+        }
+        true
+    };
+    let mut from = 0;
+    while let Some(i) = line[from..].find(first.as_str()) {
+        let at = from + i;
+        if follows(at + first.len()) {
+            return at;
+        }
+        from = at + first.len();
+    }
+    line.find(first.as_str()).unwrap_or(0)
+}
+
+/// "sea-\nlevel" as a PDF line ends: "sealevel" is not what the source says, but "sea-level" is not either; the
+/// hyphen of a line break is taken out where a lower-case letter follows.
+fn join_hyphenated(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '-' && chars.peek() == Some(&'\n') {
+            chars.next();
+            if chars.peek().is_some_and(|n| n.is_lowercase()) {
+                continue;
+            }
+            out.push_str("-\n");
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// The length of the longest run of words `a` and `b` have in common, and where it starts in `b`.
+fn longest_run_at(a: &[String], b: &[String]) -> (usize, usize) {
+    let mut best = (0, 0);
+    let mut prev = vec![0usize; b.len() + 1];
+    for x in a {
+        let mut row = vec![0usize; b.len() + 1];
+        for (j, y) in b.iter().enumerate() {
+            if x == y {
+                row[j + 1] = prev[j] + 1;
+                if row[j + 1] > best.0 {
+                    best = (row[j + 1], j + 1 - row[j + 1]);
+                }
+            }
+        }
+        prev = row;
+    }
+    best
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_off_a_pdf_is_found_in_the_source_it_came_from() {
+        let intro = "# Introduction\n\nSea level rises, as **Kopp et al.** [@kopp2014] showed for the coasts.\n";
+        let tex = "\\section{Methods}\nThe \\emph{semi-empirical} model of sea level is used here.\n";
+        let texts = [intro, tex];
+        assert_eq!(find_text(&texts, "Sea level rises, as Kopp et al."), vec![Place { text: 0, line: 3, column: 0 }]);
+        let found = find_text(&texts, "The semi-empirical model of sea");
+        assert_eq!((found[0].text, found[0].line), (1, 2));
+        assert_eq!(found.len(), 1);
+    }
+
+    #[test]
+    fn the_column_is_where_the_words_found_start() {
+        let text = "Before this. Sea level rises fast in the north.";
+        let found = find_text(&[text], "level rises fast in");
+        assert_eq!(found, vec![Place { text: 0, line: 1, column: text.find("level").unwrap() }]);
+    }
+
+    #[test]
+    fn the_column_is_that_of_the_whole_run_not_of_an_earlier_lone_word() {
+        let text = "Scaling theory gives the area. It is derived from scaling theory [@bahr1997] or by inverting.";
+        let found = find_text(&[text], "derived from scaling theory [Bahr et al., 1997] or by inverting the ice");
+        assert_eq!(found[0].column, text.find("derived").unwrap());
+        let found = find_text(&[text], "from scaling theory");
+        assert_eq!(found[0].column, text.find("from scaling").unwrap());
+    }
+
+    #[test]
+    fn several_places_as_good_are_all_given_and_too_little_in_common_is_none() {
+        let a = "the same words here and more";
+        let b = "other text with the same words here";
+        assert_eq!(find_text(&[a, b], "the same words here").len(), 2);
+        assert!(find_text(&[a], "nothing of it here at all").is_empty());
+        assert!(find_text(&[a], "the same").len() == 1);
+    }
+
+    #[test]
+    fn a_word_broken_at_the_end_of_a_pdf_line_is_joined() {
+        assert_eq!(join_hyphenated("semi-\nempirical and well-\nKnown"), "semiempirical and well-\nKnown");
+        let text = "a semiempirical model of the sea";
+        assert_eq!(find_text(&[text], "a semi-\nempirical model").len(), 1);
+    }
 
     fn w(s: &str) -> String {
         words(s).join(" ")

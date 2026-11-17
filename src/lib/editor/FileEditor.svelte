@@ -51,6 +51,8 @@
     autofocus = false,
     symbols = [],
     prefs = PREFS,
+    onsync,
+    oncontext,
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
@@ -92,6 +94,11 @@
     symbols?: [string, string][];
     /** what the editor takes from the settings */
     prefs?: EditorPrefs;
+    /** ⌃-click (⌘ on macOS) in the text: the cursor put there, then this (its place shown in the PDF or the preview);
+     *  extra cursors are made with ⌥-click instead */
+    onsync?: () => void;
+    /** a right-click in the text: the cursor put there (unless it is in the selection), then the app's menu */
+    oncontext?: (e: MouseEvent) => void;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -120,6 +127,32 @@
     }),
     EditorView.baseTheme({
       ".cm-found": { background: "color-mix(in srgb, var(--accent, #2f6fde) 28%, transparent)", borderRadius: "2px", outline: "1px solid color-mix(in srgb, var(--accent, #2f6fde) 55%, transparent)" },
+    }),
+  ];
+
+  /** ⌃-click: the place shown elsewhere (`onsync`); a right-click: the app's menu (`oncontext`). */
+  const clicks = [
+    EditorView.clickAddsSelectionRange.of((e) => e.altKey),
+    EditorView.domEventHandlers({
+      mousedown(e, view) {
+        if (!onsync || e.button !== 0 || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        if (pos == null) return false;
+        e.preventDefault();
+        view.dispatch({ selection: { anchor: pos } });
+        view.focus();
+        onsync();
+        return true;
+      },
+      contextmenu(e, view) {
+        if (!oncontext) return false;
+        e.preventDefault();
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        const { from, to } = view.state.selection.main;
+        if (pos != null && (pos < from || pos > to)) view.dispatch({ selection: { anchor: pos } });
+        oncontext(e);
+        return true;
+      },
     }),
   ];
 
@@ -215,7 +248,7 @@
         diagnostics,
         spelling,
         placeholder,
-        extensions: [...extensions, selection, found, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
+        extensions: [...extensions, selection, found, clicks, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });
     if (review && reviewed !== review) {
       reviewed = review;

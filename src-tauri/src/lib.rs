@@ -195,6 +195,8 @@ pub fn run() {
             sidebar::open_at,
             pdfsync::open_source_at,
             pdfsync::pdf_boxes,
+            pdfsync::place_in_text,
+            menu::view_shown,
             sidepdf::side_pdf,
             sidepdf::set_side_pdf,
             sidepdf::choose_side_pdf,

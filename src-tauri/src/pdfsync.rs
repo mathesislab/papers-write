@@ -129,6 +129,14 @@ fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
     (file.is_file() && line > 0).then_some((file, line))
 }
 
+/// Where text read off the preview (a block of it, and the word clicked) is in `text`, the document as typed: the
+/// start and end (UTF-16) of the word clicked, else of the words found; none when nothing matches.
+#[tauri::command]
+pub fn place_in_text(text: String, query: String, word: String) -> Option<(usize, usize)> {
+    let place = srcmap::find_text(&[&text], &query).into_iter().next()?;
+    Some(span_of(&text, place.line, place.column, &word))
+}
+
 /// A box of a PDF: its page, its left and baseline in PDF points from the page's top left, its size.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy)]
 pub struct Box {

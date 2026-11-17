@@ -5,6 +5,7 @@
   // text gives the line clicked (`onsource`), for the page to open its source there.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { GlobalWorkerOptions, getDocument, type PDFDocumentLoadingTask } from "pdfjs-dist";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
   import { EventBus, PDFFindController, PDFLinkService, PDFViewer } from "pdfjs-dist/web/pdf_viewer.mjs";
@@ -169,6 +170,21 @@
     if (text) onsource(text, pointOf(e), wordAt(e));
   }
 
+  /** A right-click on the text: Find in Source (as a ⌃-click), and Copy. */
+  async function sourceMenu(e: MouseEvent) {
+    if (!onsource) return;
+    const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
+    if (!span) return;
+    e.preventDefault();
+    const [text, at, word] = [lineOf(span), pointOf(e), wordAt(e)];
+    const mac = navigator.userAgent.includes("Mac");
+    const items = await Promise.all([
+      MenuItem.new({ text: `Find in Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word) }),
+      PredefinedMenuItem.new({ item: "Copy" }),
+    ]);
+    await (await Menu.new({ items })).popup();
+  }
+
   /** The word under the pointer, in the text layer. */
   function wordAt(e: MouseEvent): string {
     const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
@@ -219,6 +235,7 @@
   onMount(() => {
     let task: PDFDocumentLoadingTask | null = null;
     container.addEventListener("click", sourceClick, true);
+    container.addEventListener("contextmenu", sourceMenu);
     const pages = document.createElement("div");
     pages.className = "pdfViewer";
     container.append(pages);
@@ -268,6 +285,7 @@
     })();
     return () => {
       container.removeEventListener("click", sourceClick, true);
+      container.removeEventListener("contextmenu", sourceMenu);
       resize.disconnect();
       task?.destroy();
     };

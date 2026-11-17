@@ -112,6 +112,14 @@ pub fn bibliography_of(path: &Path, text: &str) -> Vec<String> {
     if crate::latex::is_latex(path) { crate::latex::bibliography_with_inputs(path, text) } else { frontmatter::bibliography(text) }
 }
 
+/// The `.bib` files a document uses: those it names (beside it), else, for a chapter naming none, its main document's
+/// (`main_bibliography`). What its citations are checked against, completed from, and added to.
+pub fn document_bibliography(path: &Path, text: &str) -> Vec<PathBuf> {
+    let folder = folder_of(path);
+    let own: Vec<PathBuf> = bibliography_of(path, text).into_iter().map(|n| folder.join(n)).collect();
+    if own.is_empty() { main_bibliography(path, text) } else { own }
+}
+
 /// The `.bib` files of the project's main document (`write.toml`), for a file of the project that names none itself
 /// (a chapter, whose bibliography its main document names, as texmark builds it): those that are there. None for
 /// the main document itself, a file outside a project, or one that names its own.
@@ -152,7 +160,7 @@ pub fn project_library_of(document: &Path) -> Option<PathBuf> {
 /// [`project_library_bib`]): searched instead of the papers library found from the folder.
 pub fn sources_in(markdown_path: &Path, markdown_text: &str, project_library: Option<&Path>) -> Vec<PathBuf> {
     let folder = folder_of(markdown_path);
-    let named = bibliography_of(markdown_path, markdown_text).into_iter().map(|n| folder.join(n)).collect::<Vec<_>>();
+    let named = document_bibliography(markdown_path, markdown_text);
     let library = MachineConfig::load(None)
         .map_err(|e| e.message().to_string())
         .and_then(|machine| match project_library {
@@ -486,5 +494,8 @@ mod tests {
         // the main document, and a file that names its own, keep theirs
         assert!(main_bibliography(&root.join("thesis.md"), main).is_empty());
         assert!(main_bibliography(&root.join("other.md"), "---\nbibliography: other.bib\n---\n").is_empty());
+        // checked against, completed from and added to: the main document's
+        assert_eq!(document_bibliography(&root.join("parts/intro.md"), chapter), vec![root.join("references.bib")]);
+        assert_eq!(document_bibliography(&root.join("other.md"), "---\nbibliography: other.bib\n---\n"), vec![root.join("other.bib")]);
     }
 }

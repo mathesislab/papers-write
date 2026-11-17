@@ -12,7 +12,7 @@ use serde::Serialize;
 
 use crate::frontmatter;
 use crate::latex;
-use crate::refs::{References, bibliography_of, folder_of};
+use crate::refs::{References, document_bibliography, folder_of};
 
 /// The `.bib` file a document gets when its front matter names none.
 pub const DEFAULT_BIB: &str = "references.bib";
@@ -57,7 +57,8 @@ impl std::error::Error for Error {}
 /// front matter names is left where it is. The file is written whole, by a rename, and its text is kept.
 pub fn cite(markdown_path: &Path, markdown_text: &str, key: &str, references: &References) -> Result<Cited, Error> {
     let folder = folder_of(markdown_path);
-    let named: Vec<PathBuf> = bibliography_of(markdown_path, markdown_text).into_iter().map(|n| folder.join(n)).collect();
+    // its own bibliography, else its main document's (a chapter): the entry goes there, the chapter left as it is
+    let named: Vec<PathBuf> = document_bibliography(markdown_path, markdown_text);
     let (target, markdown) = match named.first() {
         Some(first) => (first.clone(), None),
         None if latex::is_latex(markdown_path) => (folder.join(DEFAULT_BIB), Some(latex::with_bibliography(markdown_text, DEFAULT_BIB))),

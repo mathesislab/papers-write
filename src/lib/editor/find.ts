@@ -21,6 +21,7 @@ import {
 } from "@codemirror/search";
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap, type Panel, type ViewUpdate } from "@codemirror/view";
+import { keys } from "./platform.ts";
 
 /** What the menu asks: the bar (on the find field, or the replace field), the next or previous match, the selection
  *  as the text to find; or the bar closed (the toolbar's button of the bar shown). */
@@ -155,7 +156,7 @@ function panel(view: EditorView): Panel {
     { class: "cm-find-row cm-find-replace" },
     replace,
     button("Replace", "Replace this match, and find the next (↵)", () => replaceNext(view)),
-    button("All", "Replace all (⌘↵)", () => replaceAll(view)),
+    button("All", keys("Replace all (⌘↵)"), () => replaceAll(view)),
   );
   const dom = el(
     "div",
@@ -169,8 +170,8 @@ function panel(view: EditorView): Panel {
       caseBtn,
       wordBtn,
       regexBtn,
-      iconButton("previous", "Previous (⇧⌘G)", () => findPrevious(view)),
-      iconButton("next", "Next (⌘G)", () => findNext(view)),
+      iconButton("previous", keys("Previous (⇧⌘G)"), () => findPrevious(view)),
+      iconButton("next", keys("Next (⌘G)"), () => findNext(view)),
       close,
     ),
     replaceRow,
@@ -180,7 +181,7 @@ function panel(view: EditorView): Panel {
     const shown = state.field(replaceShown);
     replaceRow.style.display = shown ? "" : "none";
     expand.classList.toggle("open", shown);
-    const title = shown ? "Hide Replace" : "Show Replace (⌥⌘F)";
+    const title = shown ? "Hide Replace" : keys("Show Replace (⌥⌘F)");
     expand.title = title;
     expand.setAttribute("aria-label", title);
     expand.setAttribute("aria-expanded", String(shown));

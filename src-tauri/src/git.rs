@@ -251,7 +251,7 @@ pub(crate) fn state_of(doc: &Path) -> Option<State> {
 
 /// The document of the window, else an error that says to save it.
 pub(crate) fn doc_of(window: &Webview) -> Result<PathBuf, String> {
-    documents::path_of(window.app_handle(), window.label()).ok_or_else(|| "Save the document first (⌘S)".to_string())
+    documents::path_of(window.app_handle(), window.label()).ok_or_else(|| documents::SAVE_FIRST.to_string())
 }
 
 /// Blocking work off the thread of the page.

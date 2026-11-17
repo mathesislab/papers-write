@@ -15,6 +15,7 @@
 
   import { popupReleased } from "$lib/contextMenu";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { REVEAL } from "../editor/platform";
   import type { Kind, Node } from "./types";
 
   let {
@@ -48,7 +49,7 @@
     onnew?: (folder: string, name: string) => void;
     /** files, or folders, to add to a folder of the project */
     onadd?: (folder: string, directory: boolean) => void;
-    /** a path to show in the Finder */
+    /** a path to show in the file manager (the Finder on macOS) */
     onreveal: (path: string) => void;
     /** a file to open in the default app */
     ondefault: (path: string) => void;
@@ -71,7 +72,7 @@
   async function folderMenu(e: MouseEvent) {
     e.preventDefault();
     const tools = folderItems(root);
-    const items = await Promise.all([...tools, ...(tools.length ? [separator()] : []), item("Reveal in Finder", () => onreveal(root))]);
+    const items = await Promise.all([...tools, ...(tools.length ? [separator()] : []), item(REVEAL, () => onreveal(root))]);
     await popupReleased(await Menu.new({ items }));
   }
 
@@ -89,7 +90,7 @@
     const own = node.kind === "folder" ? [] : (extra?.(node) ?? []);
     if (own.length) items.push(...own.map((x) => item(x.text, x.action)));
     if (node.kind !== "folder" && !node.missing) items.push(item("Open in Default App", () => ondefault(node.path)));
-    if (!node.missing) items.push(item("Reveal in Finder", () => onreveal(node.path)));
+    if (!node.missing) items.push(item(REVEAL, () => onreveal(node.path)));
     if (outside && top && onunlink) items.push(separator(), item("Remove Link", () => onunlink(node)));
     if (!outside && ontrash) items.push(separator(), item("Move to Trash…", () => ontrash(node)));
     await popupReleased(await Menu.new({ items: await Promise.all(items) }));

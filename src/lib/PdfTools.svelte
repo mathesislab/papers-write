@@ -5,6 +5,7 @@
   // What is at either end is the page's (`lead`, `trail`): the tab's name, the pane's PDF and what it did.
 
   import { tick, type Snippet } from "svelte";
+  import { keys } from "papers-write/editor";
   import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
 
@@ -127,12 +128,12 @@
     />
     <span class="page">of {count}</span>
   {:else if count}
-    <button class="page" onclick={askPage} title="Go to Page… (⌥⌘G)">Page {current} of {count}</button>
+    <button class="page" onclick={askPage} title={keys("Go to Page… (⌥⌘G)")}>Page {current} of {count}</button>
   {/if}
   <span class="group">
-    <button onclick={() => view?.zoom(-1)} title="Zoom Out (⌘-)" aria-label="Zoom Out">−</button>
-    <button onclick={() => view?.zoom(0)} title="Fit Width (⌘0)">Fit</button>
-    <button onclick={() => view?.zoom(1)} title="Zoom In (⌘=)" aria-label="Zoom In">+</button>
+    <button onclick={() => view?.zoom(-1)} title={keys("Zoom Out (⌘-)")} aria-label="Zoom Out">−</button>
+    <button onclick={() => view?.zoom(0)} title={keys("Fit Width (⌘0)")}>Fit</button>
+    <button onclick={() => view?.zoom(1)} title={keys("Zoom In (⌘=)")} aria-label="Zoom In">+</button>
   </span>
   {#if outline.length}
     <button class="section" onclick={outlineMenu} title={here >= 0 ? `${outline[here].title} (a click lists the sections)` : "The sections"}>

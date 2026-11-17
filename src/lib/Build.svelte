@@ -9,6 +9,7 @@
   // was matched to (`md_line`), is a button: it takes the cursor to the line (`ongoto`).
 
   import { invoke } from "@tauri-apps/api/core";
+  import { REVEAL, keys } from "papers-write/editor";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { onMount } from "svelte";
@@ -78,11 +79,13 @@
           : `${status.what === "diff" ? "Marked-up PDF" : "Build"} failed`;
   }
   const title = $derived(
-    status?.state === "watching" || status?.state === "external"
-      ? `${status.message ?? ""}. Show the PDF (⌥⇧⌘B)`
-      : status?.state === "done"
-        ? `Made in ${status.seconds?.toFixed(1)} s. Build and Show PDF (⌥⇧⌘B)`
-        : "Build and Show PDF (⌥⇧⌘B)",
+    keys(
+      status?.state === "watching" || status?.state === "external"
+        ? `${status.message ?? ""}. Show the PDF (⌥⇧⌘B)`
+        : status?.state === "done"
+          ? `Made in ${status.seconds?.toFixed(1)} s. Build and Show PDF (⌥⇧⌘B)`
+          : "Build and Show PDF (⌥⇧⌘B)",
+    ),
   );
 
   /** The ▾ beside the button: the builds to choose from, and the PDF made last. */
@@ -231,7 +234,7 @@
       {@const log = status.log}
       <p class="where" title={log}>Log: <code>{log}</code></p>
       <div class="buttons">
-        <button onclick={() => request("reveal", { path: log })}>Reveal in Finder</button>
+        <button onclick={() => request("reveal", { path: log })}>{REVEAL}</button>
         <button onclick={() => request("open_document", { path: log })}>Open Log</button>
       </div>
     {/if}

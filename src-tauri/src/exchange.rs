@@ -19,7 +19,7 @@ use crate::{documents, git};
 
 /// The file of the window, to take the review of.
 fn document_of(window: &Webview) -> Result<PathBuf, String> {
-    documents::path_of(window.app_handle(), window.label()).ok_or_else(|| "Save the document first (⌘S)".to_string())
+    documents::path_of(window.app_handle(), window.label()).ok_or_else(|| documents::SAVE_FIRST.to_string())
 }
 
 fn read(path: &Path) -> Result<String, String> {

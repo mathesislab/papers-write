@@ -42,6 +42,9 @@ pub struct Document {
     path: Option<String>,
 }
 
+/// What an untitled document is told before what needs a file: Save, with its key as the platform writes it.
+pub const SAVE_FIRST: &str = if cfg!(target_os = "macos") { "Save the document first (⌘S)" } else { "Save the document first (Ctrl+S)" };
+
 /// The file a window shows, or none when it is untitled.
 #[tauri::command]
 pub fn document(window: Webview) -> Document {

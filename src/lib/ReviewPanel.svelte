@@ -6,6 +6,7 @@
   // ReviewSession, which writes the review files; the panel only asks.
 
   import type { ReviewSession } from "$lib/review.svelte";
+  import { keys } from "papers-write/editor";
   import type { ReviewItem } from "papers-write/editor";
   import type { ReviewRecord } from "$lib/editor/review/types";
   import { ago, colorOf, whoIs } from "$lib/reviewFormat";
@@ -119,7 +120,7 @@
     <div class="form" onclick={(e) => e.stopPropagation()}>
       <textarea bind:value={form.text} use:grab onkeydown={key} rows="2" placeholder={form.kind === "reply" ? "Reply" : "Instead"}></textarea>
       <div class="actions">
-        <span>⌘↵</span>
+        <span>{keys("⌘↵")}</span>
         <button onclick={() => (form = null)}>Cancel</button>
         <button class="primary" onclick={send}>{form.kind === "reply" ? "Reply" : "Suggest"}</button>
       </div>

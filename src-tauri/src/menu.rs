@@ -273,8 +273,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
             &separator()?,
-            &item("previous-tab", "Show Previous Tab", Some("Shift+CmdOrCtrl+["))?,
-            &item("next-tab", "Show Next Tab", Some("Shift+CmdOrCtrl+]"))?,
+            // ⇧⌘[ ⇧⌘] as macOS's apps have them; Ctrl+PageUp and Ctrl+PageDown elsewhere, as browsers and editors do
+            &item("previous-tab", "Show Previous Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+[" } else { "Ctrl+PageUp" }))?,
+            &item("next-tab", "Show Next Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+]" } else { "Ctrl+PageDown" }))?,
             &item("move-tab-left", "Move Tab Left", Some("Shift+CmdOrCtrl+PageUp"))?,
             &item("move-tab-right", "Move Tab Right", Some("Shift+CmdOrCtrl+PageDown"))?,
         ],

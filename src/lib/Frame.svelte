@@ -17,6 +17,7 @@
 
   import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
+  import { OPEN_FOLDER, keys } from "papers-write/editor";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import { onMount, type Snippet } from "svelte";
   import { ProjectBar, ProjectFrame, ProjectSidebar, cssOf, part } from "papers-write/project";
@@ -156,7 +157,7 @@
   async function tileMenu(root: string) {
     const items = await Promise.all([
       MenuItem.new({ text: "Open in New Window", action: () => void invoke("open_project_in_new_window", { root }).catch((e) => onproblem(String(e))) }),
-      MenuItem.new({ text: "Open Project Folder in Finder", action: () => void invoke("reveal", { path: root }).catch((e) => onproblem(String(e))) }),
+      MenuItem.new({ text: OPEN_FOLDER, action: () => void invoke("reveal", { path: root }).catch((e) => onproblem(String(e))) }),
       MenuItem.new({ text: "Project Info…", action: () => (carding = root) }),
       MenuItem.new({ text: "Remove from Bar", action: () => void invoke("remove_from_bar", { root }) }),
     ]);
@@ -205,7 +206,7 @@
 
 {#snippet tiles()}
   {#if projects.current && projects.tiles.length}
-    <ProjectBar items={projects.tiles} onswitch={switchProject} onmenu={tileMenu} onadd={() => invoke("choose_project")} addTitle="Open Project… (⇧⌘O)" />
+    <ProjectBar items={projects.tiles} onswitch={switchProject} onmenu={tileMenu} onadd={() => invoke("choose_project")} addTitle={keys("Open Project… (⇧⌘O)")} />
   {/if}
 {/snippet}
 {#snippet files(root: string)}

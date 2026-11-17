@@ -332,14 +332,16 @@
   /** A right-click in the text: Show in Preview or in PDF, and the edits of the selection. */
   async function editorMenu(e: MouseEvent) {
     const where = previewing && markdown ? "Preview" : "PDF";
-    const mod = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl";
+    const mac = navigator.userAgent.includes("Mac");
     const items = await Promise.all([
-      MenuItem.new({ text: `Show in ${where} (${mod}-click)`, enabled: !!path, action: syncHere }),
+      MenuItem.new({ text: `Show in ${where} (${mac ? "⌘" : "Ctrl"}-click)`, enabled: !!path, action: syncHere }),
       PredefinedMenuItem.new({ item: "Separator" }),
       PredefinedMenuItem.new({ item: "Cut" }),
       PredefinedMenuItem.new({ item: "Copy" }),
       PredefinedMenuItem.new({ item: "Paste" }),
       PredefinedMenuItem.new({ item: "SelectAll" }),
+      // macOS: the system's Services, as its own menu had them (Look Up and Speech are not open to apps' menus)
+      ...(mac ? [PredefinedMenuItem.new({ item: "Separator" }), PredefinedMenuItem.new({ item: "Services" })] : []),
     ]);
     await (await Menu.new({ items })).popup(new LogicalPosition(e.clientX, e.clientY));
   }

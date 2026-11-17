@@ -730,6 +730,35 @@ pub fn step(app: &AppHandle, by: isize) {
     }
 }
 
+/// A tab moved to place `to` among the tabs of its set (dragged in the strip): the window's pages told, the order
+/// saved.
+pub fn move_tab(app: &AppHandle, page: &str, to: usize) {
+    let Some(window) = window_of(app, page) else {
+        return;
+    };
+    if with_tabs(app, |w| w.get_mut(&window).is_some_and(|win| win.move_to(page, to))) {
+        changed(app, &window);
+    }
+}
+
+/// The tab in front of the window in front moved one place left or right, not past the ends (Move Tab Left and
+/// Move Tab Right).
+pub fn shift(app: &AppHandle, by: isize) {
+    let Some(window) = front_window(app) else {
+        return;
+    };
+    let at = with_tabs(app, |w| {
+        let set = w.get(&window)?.sets.first()?;
+        let front = set.front.clone()?;
+        let i = set.pages.iter().position(|p| *p == front)? as isize;
+        let to = i + by;
+        (to >= 0 && (to as usize) < set.pages.len()).then_some((front, to as usize))
+    });
+    if let Some((page, to)) = at {
+        move_tab(app, &page, to);
+    }
+}
+
 // --- projects: switching a window, opening one in a window of its own, saving and restoring
 
 /// Where a project not shown by any window goes.
@@ -922,6 +951,12 @@ pub mod commands {
     #[tauri::command]
     pub fn close_tab(app: AppHandle, label: String) {
         super::close(&app, &label);
+    }
+
+    /// A tab dragged to place `to` in the strip.
+    #[tauri::command]
+    pub fn move_tab(app: AppHandle, label: String, to: usize) {
+        super::move_tab(&app, &label, to);
     }
 
     /// The sidebar of the asking page's project.

@@ -21,6 +21,8 @@
     onfind,
     onpanel,
     where = "",
+    store,
+    onstore,
     onmode,
     onview,
   }: {
@@ -43,8 +45,10 @@
     /** the bar shown, Find or Find and Replace; or closed */
     onfind: (what: "find" | "replace" | "close") => void;
     onpanel: () => void;
-    /** where suggestions are kept, said by the mode control */
+    /** where suggestions are kept, said by the mode control, and its change */
     where?: string;
+    store?: "notes" | "in-file";
+    onstore?: (store: "notes" | "in-file") => void;
     onmode: (mode: ReviewMode) => void;
     onview: (view: ReviewView) => void;
   } = $props();
@@ -160,7 +164,7 @@
       {@render icon("panel")}
       {#if open}<span class="count" title="{open} open">{open}</span>{/if}
     </button>
-    <ModeControl {mode} {view} {colour} {reviewing} {where} {onmode} {onview} />
+    <ModeControl {mode} {view} {colour} {reviewing} {where} {store} {onstore} {onmode} {onview} />
   </div>
 </div>
 

@@ -267,6 +267,18 @@ pub fn set_project_info(app: AppHandle, root: String, manifest: Manifest) -> Res
     Ok(())
 }
 
+/// Where the suggestions of the page's project are kept, set (`write.toml`: `review`; "notes" takes the key out).
+#[tauri::command]
+pub fn set_review_store(app: AppHandle, window: tauri::Webview, store: write_core::project::ReviewStore) -> Result<(), String> {
+    let doc = crate::documents::path_of(&app, window.label()).ok_or("Save the document first")?;
+    let root = write_core::project::find(&doc).ok_or("Not in a project: File ▸ Open Project… makes a folder one, with write.toml")?;
+    let mut project = Project::read(&root).map_err(|e| e.to_string())?;
+    let review = (store != write_core::project::ReviewStore::Notes).then_some(store);
+    project.set(&Manifest { review, ..project.manifest.clone() }).map_err(|e| e.to_string())?;
+    changed(&app);
+    Ok(())
+}
+
 /// The folder whose card the window asks for: a folder opened as a project that has no `write.toml`.
 #[tauri::command]
 pub fn asking_project(window: Webview) -> Option<String> {

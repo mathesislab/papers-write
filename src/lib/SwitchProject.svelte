@@ -1,11 +1,13 @@
 <script lang="ts">
-  // Switch Project (⌃⌘P; Ctrl+Alt+P elsewhere), as Sublime's Quick Switch Project: a field over the page and the projects of the bar, then
-  // those opened recently. What is typed keeps those whose name (or folder) has its letters in order; Enter switches
-  // the window to the project (as its tile does), the last line opens another (Open Project…). Up, Down, Esc.
+  // Switch Project (⌃⌘P; Ctrl+Alt+P elsewhere), as Sublime's Quick Switch Project: a field over the page and the
+  // projects of the bar, then those opened recently. What is typed keeps those whose name (or folder) has its letters in
+  // order, the best first, matched as Go to File matches (fuzzy.ts) and shown in bold; Enter switches the window to the
+  // project (as its tile does), the last line opens another (Open Project…). Up, Down, Esc.
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { cssOf, type Colour } from "papers-write/project";
+  import { matchIn, pieces } from "$lib/fuzzy";
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -15,15 +17,19 @@
   let at = $state(0);
   let field = $state<HTMLInputElement>();
 
-  /** Whether the letters of `q` are in `text` in order (case aside). */
-  const follows = (q: string, text: string) => {
-    let i = 0;
-    for (const c of text.toLowerCase()) if (c === q[i]) i++;
-    return i === q.length;
-  };
+  /** The projects shown, with the places of what matched in the name or the folder: all, in order, without a query;
+   *  else those matched, the best first (a match in the name before one in the folder), the bar's order among equals. */
   const shown = $derived.by(() => {
     const q = query.trim().toLowerCase().replace(/\s+/g, "");
-    return q ? projects.filter((p) => follows(q, p.name) || follows(q, p.root)) : projects;
+    if (!q) return projects.map((project) => ({ project, inName: [] as number[], inRoot: [] as number[] }));
+    return projects
+      .map((project) => {
+        const name = matchIn(q, project.name.toLowerCase());
+        const root = name.score ? { score: 0, at: [] } : matchIn(q, project.root.toLowerCase());
+        return { project, score: name.score ? 2 * name.score + 20 : root.score, inName: name.at, inRoot: root.at };
+      })
+      .filter((row) => row.score > 0)
+      .sort((a, b) => b.score - a.score);
   });
   /** the lines: the projects, then Open Another Project… */
   const count = $derived(shown.length + 1);
@@ -33,7 +39,7 @@
   });
 
   function go(i: number) {
-    const project = shown[i];
+    const project = shown[i]?.project;
     onclose();
     if (project) void invoke("switch_project", { root: project.root });
     else void invoke("choose_project");
@@ -60,13 +66,13 @@
   <div class="sheet" role="dialog" aria-label="Switch Project" tabindex="-1" onclick={(e) => e.stopPropagation()}>
     <input bind:this={field} bind:value={query} onkeydown={keys} placeholder="Switch to a project" spellcheck="false" autocomplete="off" />
     <ul>
-      {#each shown as p, i (p.root)}
+      {#each shown as { project: p, inName, inRoot }, i (p.root)}
         <li class:on={i === at}>
           <button onclick={() => go(i)} onmouseenter={() => (at = i)}>
             <span class="dot" style:background={cssOf(p.colour) ?? "var(--line)"}></span>
-            <span class="name">{p.name}</span>
+            <span class="name">{#each pieces(p.name, inName) as piece, k (k)}{#if piece.on}<b>{piece.text}</b>{:else}{piece.text}{/if}{/each}</span>
             {#if p.current}<span class="here">this window</span>{/if}
-            <span class="root">{p.root}</span>
+            <span class="root">{#each pieces(p.root, inRoot) as piece, k (k)}{#if piece.on}<b>{piece.text}</b>{:else}{piece.text}{/if}{/each}</span>
           </button>
         </li>
       {/each}

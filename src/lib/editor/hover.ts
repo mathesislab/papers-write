@@ -21,7 +21,7 @@ export type Target =
   | { kind: "image"; path: string; from: number; to: number };
 
 const MATH_NODES = new Set(["InlineMath", "DisplayMath", "MathEnvironment"]);
-const INCLUDE = /\\includegraphics\*?(?:\[[^\]]*\])?\{([^}]*)\}/g;
+export const INCLUDE = /\\includegraphics\*?(?:\[[^\]]*\])?\{([^}]*)\}/g;
 /** math environments that are the equation itself: their wrapper is left off when rendering (`$$ … $$` is already one) */
 const WRAPPERS = /^\\begin\{(?:equation\*?|displaymath)\}([^]*)\\end\{(?:equation\*?|displaymath)\}$/;
 
@@ -43,10 +43,10 @@ function mathOf(state: EditorState, node: SyntaxNode): { tex: string; display: b
 }
 
 /** The path of an image in `![…](path)`: without the brackets of a path with spaces (`<a b.png>`) or a title. */
-const imagePath = (raw: string) => raw.trim().replace(/^<(.*)>$/, "$1");
+export const imagePath = (raw: string) => raw.trim().replace(/^<(.*)>$/, "$1");
 
 /** Whether a path is a file (not `https://…`). */
-const isFile = (path: string) => !!path && !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(path) && !path.startsWith("//");
+export const isFile = (path: string) => !!path && !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(path) && !path.startsWith("//");
 
 /** What `pos` is over: a formula, a key of a citation or a cross-reference, an image (`![…](path)`,
  *  `\includegraphics{path}`); null over anything else. `side` is the side of `pos` the pointer is on. */

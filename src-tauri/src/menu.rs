@@ -167,6 +167,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
+            &item("figures-inline", "Show Figures in the Text", None)?,
             &separator()?,
             &item("text-wider", "Text Width +", None)?,
             &item("text-narrower", "Text Width −", None)?,
@@ -334,6 +335,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
+        "figures-inline" => crate::settings::toggle_inline_figures(app),
         "text-wider" => crate::settings::step_text_width(app, 1.0),
         "text-narrower" => crate::settings::step_text_width(app, -1.0),
         "text-full" => crate::settings::toggle_full_width(app),

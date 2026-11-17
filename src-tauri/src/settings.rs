@@ -65,6 +65,8 @@ pub struct Settings {
     /// the interface as large as the text asks: text set larger than the default makes the windows larger (`scale`)
     pub interface_follows_text: bool,
     pub line_numbers: bool,
+    /// the figures shown in the text, under their lines, rather than in a tooltip
+    pub inline_figures: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
     /// a file written as it is typed (half a second after the typing stops); off: only when saved (⌘S), the text typed
@@ -116,6 +118,7 @@ impl Default for Settings {
             zoom: 1.0,
             interface_follows_text: true,
             line_numbers: false,
+            inline_figures: false,
             spelling: true,
             autosave: true,
             symbols: Vec::new(),
@@ -254,6 +257,13 @@ fn put(app: &AppHandle, settings: Settings) {
     if let Err(e) = app.emit("settings-changed", settings) {
         eprintln!("settings-changed: {e}");
     }
+}
+
+/// View ▸ Show Figures in the Text: the figures in the text, or in their tooltips.
+pub fn toggle_inline_figures(app: &AppHandle) {
+    let mut settings = get();
+    settings.inline_figures = !settings.inline_figures;
+    put(app, settings);
 }
 
 /// The narrowest and widest column of text (em).
@@ -451,6 +461,7 @@ mod tests {
             zoom: 1.2,
             interface_follows_text: false,
             line_numbers: true,
+            inline_figures: true,
             spelling: false,
             autosave: false,
             symbols: vec![("(c)".into(), "©".into()), ("->".into(), String::new())],

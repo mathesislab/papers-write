@@ -112,6 +112,27 @@ pub fn bibliography_of(path: &Path, text: &str) -> Vec<String> {
     if crate::latex::is_latex(path) { crate::latex::bibliography_with_inputs(path, text) } else { frontmatter::bibliography(text) }
 }
 
+/// The `.bib` files of the project's main document (`write.toml`), for a file of the project that names none itself
+/// (a chapter, whose bibliography its main document names, as texmark builds it): those that are there. None for
+/// the main document itself, a file outside a project, or one that names its own.
+pub fn main_bibliography(path: &Path, text: &str) -> Vec<PathBuf> {
+    if path.as_os_str().is_empty() || !bibliography_of(path, text).is_empty() {
+        return Vec::new();
+    }
+    let Some(main) = Project::of(&folder_of(path)).ok().flatten().and_then(|p| p.main()) else {
+        return Vec::new();
+    };
+    let same = |a: &Path, b: &Path| a.canonicalize().ok().zip(b.canonicalize().ok()).is_some_and(|(a, b)| a == b);
+    if same(&main, path) {
+        return Vec::new();
+    }
+    let Ok(main_text) = std::fs::read_to_string(&main) else {
+        return Vec::new();
+    };
+    let folder = folder_of(&main);
+    bibliography_of(&main, &main_text).into_iter().map(|n| folder.join(n)).filter(|f| f.is_file()).collect()
+}
+
 /// The `.bib` files of the references of a Markdown or LaTeX file: those it names
 /// (relative to the file's folder), then the papers library's, each once; one that is not there is left out.
 pub fn sources_of(markdown_path: &Path, markdown_text: &str) -> Vec<PathBuf> {
@@ -450,5 +471,20 @@ mod tests {
         fn serializes<T: Serialize>() {}
         serializes::<Found>();
         serializes::<RefEntry>();
+    }
+
+    #[test]
+    fn a_chapter_takes_the_bibliography_of_the_main_document() {
+        let root = folder("chapter");
+        fs::write(root.join("write.toml"), "main = \"thesis.md\"\n").unwrap();
+        fs::write(root.join("references.bib"), REFS).unwrap();
+        let main = "---\nbibliography: references.bib\nchapters:\n  - intro.md\n---\n";
+        fs::write(root.join("thesis.md"), main).unwrap();
+        fs::create_dir_all(root.join("parts")).unwrap();
+        let chapter = "# Intro\n\nAs shown [@robinson2012].\n";
+        assert_eq!(main_bibliography(&root.join("parts/intro.md"), chapter), vec![root.join("references.bib")]);
+        // the main document, and a file that names its own, keep theirs
+        assert!(main_bibliography(&root.join("thesis.md"), main).is_empty());
+        assert!(main_bibliography(&root.join("other.md"), "---\nbibliography: other.bib\n---\n").is_empty());
     }
 }

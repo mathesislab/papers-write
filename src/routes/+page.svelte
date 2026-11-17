@@ -841,6 +841,8 @@
     const stop = watchSettings(apply);
     ready(ask(), textIn.promise, frame?.loaded() ?? Promise.resolve());
     const unlisten = [
+      // the labels of the other chapters known anew (preview.rs): previewed again
+      listen("preview-labels", () => void refresh()),
       listen("opened", ask),
       listen("save-and-close", saveAndClose),
       // the project's write.toml changed (Project Info): the suggestions may be kept elsewhere now, or it is notes now

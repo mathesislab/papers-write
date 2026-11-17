@@ -47,14 +47,25 @@ pub(crate) fn body_start(text: &str) -> usize {
 /// The names in the `bibliography` field of the front matter of `text`: a string, or a list (`[a.bib, b.bib]`
 /// or `- a.bib` lines), quotes taken off. Empty when there is no front matter or no such field.
 pub fn bibliography(text: &str) -> Vec<String> {
+    list(text, "bibliography")
+}
+
+/// The files in the `chapters` field of the front matter of `text` (texmark's: the chapters of a thesis or a book, in
+/// order, relative to the main document), read as `bibliography` reads its field.
+pub fn chapters(text: &str) -> Vec<String> {
+    list(text, "chapters")
+}
+
+/// The names in the top-level field `name` of the front matter of `text`: a string, or a list, quotes taken off.
+fn list(text: &str, name: &str) -> Vec<String> {
     let Some(block) = find(text) else {
         return Vec::new();
     };
     let body: Vec<&str> = lines(&text[block.body]).map(|(_, l)| l).collect();
-    let Some(at) = body.iter().position(|l| field_value(l).is_some()) else {
+    let Some(at) = body.iter().position(|l| field_value(l, name).is_some()) else {
         return Vec::new();
     };
-    let value = field_value(body[at]).unwrap().trim();
+    let value = field_value(body[at], name).unwrap().trim();
     if let Some(flow) = value.strip_prefix('[') {
         // a flow list, over several lines perhaps
         let mut joined = flow.to_string();
@@ -103,9 +114,10 @@ pub fn value(text: &str, name: &str) -> Option<String> {
     })
 }
 
-/// The value after `bibliography:` of a top-level line, if it is that field's line.
-fn field_value(line: &str) -> Option<&str> {
-    line.strip_prefix("bibliography:")
+/// The value after `name:` of a top-level line, if it is that field's line.
+fn field_value<'a>(line: &'a str, name: &str) -> Option<&'a str> {
+    line.strip_prefix(name)?
+        .strip_prefix(':')
         .filter(|rest| rest.is_empty() || rest.starts_with([' ', '\t']))
 }
 
@@ -207,7 +219,7 @@ pub fn with_bibliography(text: &str, name: &str) -> String {
         let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
         return format!("---{eol}{line}{eol}---{eol}{eol}{text}");
     };
-    if text[block.body.clone()].lines().any(|l| field_value(l).is_some()) {
+    if text[block.body.clone()].lines().any(|l| field_value(l, "bibliography").is_some()) {
         return text.to_string();
     }
     let eol = if text[..block.close].ends_with("\r\n") { "\r\n" } else { "\n" };

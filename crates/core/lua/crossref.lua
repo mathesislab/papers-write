@@ -14,6 +14,11 @@
 --   * Quarto's labels and references, `{#fig-x}` and `@fig-x` (a hyphen for the colon), the same, but with Quarto's
 --     words: "Figure 1", "Figures 1 and 2", "Equation 1" (no parentheses), "Section 1", "Table 1"; the front matter's
 --     `crossref: {fig-prefix: Fig.}` changes them as Quarto's does
+--   * after LaTeX's `\appendix` (a raw line, as a thesis has before its appendices) the top-level headings are
+--     lettered A, B, ... as LaTeX does
+--   * the labels of the rest of a document (a chapter's references to the others): from a table of the whole
+--     document's labels and numbers (PAPERS_WRITE_LABELS names its file: "label<TAB>number" lines), numbers without a
+--     link; the app makes the table with this filter (PAPERS_WRITE_LABELS_OUT: where it writes them)
 -- A failure inside leaves the document as it was.
 
 -- the words before a reference, singular and plural, by kind: none until the front matter gives them
@@ -30,6 +35,28 @@ local WRAP = { equation = false, align = "aligned", gather = "gathered" }
 local NBSP = "\xC2\xA0"
 
 local labels, count, hdr = {}, { fig = 0, eq = 0, tbl = 0, sec = 0, lst = 0 }, { 0, 0, 0, 0, 0, 0 }
+local appendix = false
+
+-- the whole document's labels (PAPERS_WRITE_LABELS), for those this text does not have
+local known = {}
+do
+  local file = os.getenv("PAPERS_WRITE_LABELS")
+  local f = file and io.open(file, "r")
+  if f then
+    for line in f:lines() do
+      local label, number = line:match("^([^\t]+)\t(.*)$")
+      if label then known[label] = number end
+    end
+    f:close()
+  end
+end
+
+-- a label of the document not in this text: its number from the table, not linked (its place is elsewhere)
+local function elsewhere(id, kind)
+  local number = known[id]
+  if not number or number == "" then return nil end
+  return { kind = kind, text = number, elsewhere = true }
+end
 local number_sections = false
 
 -- the kind of a label or reference, `fig` of `fig:x` and of Quarto's `fig-x`
@@ -190,7 +217,7 @@ pass1.Header = function(h)
   local first = 1
   while first < lv and hdr[first] == 0 do first = first + 1 end
   local parts = {}
-  for i = first, lv do parts[#parts + 1] = tostring(hdr[i]) end
+  for i = first, lv do parts[#parts + 1] = (appendix and i == 1) and string.char(64 + hdr[i]) or tostring(hdr[i]) end
   local text = table.concat(parts, ".")
   if kind_of(h.identifier) == "sec" then register(h.identifier, "sec", hdr[lv], text) end
   if number_sections then
@@ -226,6 +253,11 @@ end
 
 pass1.RawBlock = function(b)
   if not is_tex(b.format) then return nil end
+  if b.text:match("^%s*\\appendix%s*$") then
+    appendix = true
+    hdr[1] = 0
+    return {}
+  end
   if b.text:match("^%s*\\label{[^}]*}%s*$") then return {} end
   if parse_env(b.text) then
     local out = equation_para({ pandoc.RawInline("tex", b.text) })
@@ -237,7 +269,10 @@ end
 -- the text of a reference to `e`: an equation's number in parentheses, but not after Quarto's "Equation"
 local function number_text(e, q) return (e.kind == "eq" and not q) and ("(" .. e.text .. ")") or e.text end
 
-local function link(content, e) return pandoc.Link(content, "#" .. e.id) end
+local function link(content, e)
+  if e.elsewhere then return pandoc.Span(content, { title = "in another file of the document" }) end
+  return pandoc.Link(content, "#" .. e.id)
+end
 
 local function unknown() return pandoc.Strong({ pandoc.Str("??") }) end
 
@@ -262,7 +297,7 @@ local function resolve_cite(c)
   for _, ct in ipairs(c.citations) do
     local k = kind_of(ct.id)
     if not k then return nil end
-    items[#items + 1] = { kind = k, q = quarto(ct.id), e = labels[ct.id] }
+    items[#items + 1] = { kind = k, q = quarto(ct.id), e = labels[ct.id] or elsewhere(ct.id, k) }
   end
   if #items == 0 then return nil end
   -- runs of one kind (written one way), each with its word (plural for several), the numbers joined
@@ -301,7 +336,7 @@ pass2.RawInline = function(r)
   local cmd, arg = r.text:match("^\\(%a+){([^}]*)}$")
   if cmd == "label" then return {} end
   if cmd == "ref" or cmd == "eqref" then
-    local e = labels[arg]
+    local e = labels[arg] or elsewhere(arg, cmd == "eqref" and "eq" or "sec")
     if not e then return unknown() end
     local t = cmd == "eqref" and ("(" .. e.text .. ")") or e.text
     return link({ pandoc.Str(t) }, e)
@@ -341,6 +376,13 @@ function Pandoc(doc)
     read_words(doc.meta)
     doc:walk({ Header = function(h) if kind_of(h.identifier) == "sec" then number_sections = true end end })
     local d = doc:walk(pass1)
+    -- the table of the labels, when the app asks for it
+    local out = os.getenv("PAPERS_WRITE_LABELS_OUT")
+    local f = out and io.open(out, "w")
+    if f then
+      for id, e in pairs(labels) do f:write(id, "\t", e.text, "\n") end
+      f:close()
+    end
     return d:walk(pass2)
   end)
   if ok and res then return res end

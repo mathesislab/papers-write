@@ -5,12 +5,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::EventKind;
 use tauri::{AppHandle, Emitter, EventTarget, Manager};
 
-/// The files watched, by the label of the window that shows each: the watcher of the file's folder.
+/// The files watched, by the label of the window that shows each: its subscription to the app's one watcher
+/// (watch.rs), which watches the file's folder.
 #[derive(Default)]
-pub struct Watched(Mutex<HashMap<String, RecommendedWatcher>>);
+pub struct Watched(Mutex<HashMap<String, crate::watch::Subscription>>);
 
 /// The text of a file: UTF-8, else an error that says so.
 #[tauri::command]
@@ -62,26 +63,16 @@ pub fn watch(app: &AppHandle, label: &str, path: &Path) -> Result<(), String> {
     // events name the file by its resolved folder
     let file: PathBuf = folder.join(path.file_name().unwrap_or_default());
     let (handle, target) = (app.clone(), label.to_string());
-    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-        if let Ok(event) = event
-            && matches!(
-                event.kind,
-                EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-            )
-            && event.paths.contains(&file)
-        {
+    let subscription = crate::watch::subscribe(&folder, false, move |event: &notify::Event| {
+        if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)) && event.paths.contains(&file) {
             let _ = handle.emit_to(EventTarget::webview(target.clone()), "file-changed", ());
         }
-    })
-    .map_err(|e| format!("{}: not watched ({e})", path.display()))?;
-    watcher
-        .watch(&folder, RecursiveMode::NonRecursive)
-        .map_err(|e| format!("{}: not watched ({e})", path.display()))?;
+    })?;
     app.state::<Watched>()
         .0
         .lock()
         .unwrap()
-        .insert(label.to_string(), watcher);
+        .insert(label.to_string(), subscription);
     Ok(())
 }
 

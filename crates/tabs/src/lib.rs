@@ -989,6 +989,14 @@ pub mod commands {
         super::ready(page.app_handle(), page.label());
     }
 
+    /// Whether the asking page is the tab in front of its window (else it is told `tab-shown` when it comes).
+    #[tauri::command]
+    pub fn page_in_front(page: Webview) -> bool {
+        let app = page.app_handle();
+        let window = page.window().label().to_string();
+        super::front_of(app, &window).as_deref() == Some(page.label())
+    }
+
     /// The folders open in the file tree of the asking page's project.
     #[tauri::command]
     pub fn folders(page: Webview) -> Vec<String> {

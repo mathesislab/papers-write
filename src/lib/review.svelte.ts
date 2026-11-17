@@ -3,7 +3,7 @@
 // the user does with them. The editor is told the items (`setReview`) and the mode by the page, which reads them here.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { FileEditor, ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "papers-write/editor";
+import type { FileEditor, ReviewAction, ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "papers-write/editor";
 import { decided, type Entry } from "$lib/commitLog";
 
 export type Me = { name: string; email: string; slug: string };
@@ -69,6 +69,7 @@ export class ReviewSession {
           this.reload(300);
         }),
       select: (id) => (this.selected = id),
+      act: (id, action) => void this.act(id, action).catch(() => {}),
     };
   });
 
@@ -182,6 +183,16 @@ export class ReviewSession {
     await editor.accept(item);
     await invoke("review_decide", { on: item.id, decision: "accepted" });
     if (item.on) await invoke("review_decide", { on: item.on, decision: "accepted" });
+  }
+
+  /** A suggestion accepted or rejected, or a comment resolved, from the text (its tooltip, Review ▸ Accept Change and
+   *  Reject Change): the open item `id` as the review has it. */
+  async act(id: string, action: ReviewAction) {
+    const item = this.items.find((i) => i.id === id && i.state === "open");
+    if (!item) return;
+    if (action === "accept" && item.kind === "suggestion") await this.accept(item);
+    else if (action === "reject" && item.kind === "suggestion") await this.reject(item);
+    else if (action === "resolve" && item.kind === "comment") await this.decide(item.id, "resolved");
   }
 
   async accept(item: ReviewItem) {

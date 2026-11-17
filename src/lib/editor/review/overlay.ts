@@ -2,11 +2,12 @@
 // the text itself. A suggestion's text is struck through and what it puts there is shown after it, both in the
 // colour of its author; a comment is a light highlight of its text (a small mark where it has none). Items whose
 // text changed or is gone are dimmed; those decided (accepted, rejected, resolved, withdrawn) are not shown. On hover
-// a tooltip says who, when and what; a click on one tells the app (`select`).
+// a tooltip says who, when and what, with Accept and Reject (a suggestion) or Resolve (a comment) when the app takes
+// them (`act`); a click on one tells the app (`select`).
 
 import { Facet, StateEffect, StateField, type ChangeDesc, type EditorState, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, hoverTooltip, type DecorationSet, type Tooltip } from "@codemirror/view";
-import type { ReviewHandlers, ReviewItem, ReviewView } from "./types.ts";
+import type { ReviewAction, ReviewHandlers, ReviewItem, ReviewView } from "./types.ts";
 
 /** Which view of the review is drawn (All Markup, Accepted, Original). */
 export const setView = StateEffect.define<ReviewView>();
@@ -240,7 +241,34 @@ function what(state: EditorState, s: Shown): string {
   return `Replace “${clip(old, 30)}” with “${clip(s.insert, 30)}”`;
 }
 
-function tipOf(state: EditorState, shown: Shown[], me: string): HTMLElement {
+/** The buttons of an item's tooltip: Accept and Reject, or Resolve; each tells the app and closes the tooltip. A press
+ *  on one leaves the keys and the selection with the text. */
+function actionsOf(view: EditorView, item: ReviewItem, act: (id: string, action: ReviewAction) => void): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "cm-review-tip-actions";
+  const button = (label: string, action: ReviewAction, primary = false) => {
+    const b = row.appendChild(document.createElement("button"));
+    b.type = "button";
+    b.textContent = label;
+    if (primary) b.className = "cm-review-tip-primary";
+    b.onmousedown = (e) => e.preventDefault();
+    b.onclick = () => {
+      act(item.id, action);
+      // the tooltip goes (it closes as the selection is set)
+      view.dispatch({ selection: view.state.selection });
+      view.focus();
+    };
+  };
+  if (item.kind === "suggestion") {
+    button("Accept", "accept", true);
+    button("Reject", "reject");
+  } else button("Resolve", "resolve");
+  return row;
+}
+
+function tipOf(view: EditorView, shown: Shown[], me: string): HTMLElement {
+  const state = view.state;
+  const act = state.facet(handlersFacet)?.act;
   const dom = document.createElement("div");
   dom.className = "cm-review-tip";
   for (const s of shown) {
@@ -264,6 +292,8 @@ function tipOf(state: EditorState, shown: Shown[], me: string): HTMLElement {
     if (status?.type === "orphaned") line("Its text is gone", "cm-review-tip-note");
     const replies = s.item?.thread.filter((r) => r.kind === "reply").length ?? 0;
     if (replies) line(`${replies} ${replies === 1 ? "reply" : "replies"}`, "cm-review-tip-note");
+    // the app's open items only: a suggestion being typed is not written yet
+    if (act && s.item && s.item.state === "open" && status?.type !== "orphaned") box.appendChild(actionsOf(view, s.item, act));
   }
   return dom;
 }
@@ -282,10 +312,10 @@ const tooltip = hoverTooltip(
       pos: Math.min(...shown.map((s) => s.from)),
       end: Math.max(...shown.map((s) => s.to)),
       above: true,
-      create: () => ({ dom: tipOf(view.state, shown, me) }),
+      create: () => ({ dom: tipOf(view, shown, me) }),
     };
   },
-  { hoverTime: 350 },
+  { hoverTime: 350, hideOnChange: true },
 );
 
 /** A click on an item: the app's `select`. */
@@ -337,6 +367,19 @@ const theme = EditorView.baseTheme({
   ".cm-review-tip-dot": { width: "0.6em", height: "0.6em", borderRadius: "50%", background: "var(--review-color)", flex: "none" },
   ".cm-review-tip-what": { color: "var(--review-color)" },
   ".cm-review-tip-note": { color: "var(--muted, #6e6e73)" },
+  ".cm-review-tip-actions": { display: "flex", gap: "6px", marginTop: "6px" },
+  ".cm-review-tip-actions button": {
+    font: "inherit",
+    fontSize: "0.95em",
+    padding: "1px 10px",
+    color: "var(--fg, inherit)",
+    background: "var(--chip, rgba(0,0,0,.06))",
+    border: "1px solid var(--line, rgba(0,0,0,.12))",
+    borderRadius: "5px",
+    cursor: "default",
+  },
+  ".cm-review-tip-actions button:hover": { borderColor: "var(--review-color, currentColor)" },
+  ".cm-review-tip-actions .cm-review-tip-primary": { borderColor: "var(--review-color, currentColor)" },
 });
 
 /** The app's items, as drawn. */

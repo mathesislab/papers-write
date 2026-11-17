@@ -41,6 +41,7 @@ export type { CitationOption, Completion, Diagnostics, EditorFont, Found, Hit, H
 export { accept, itemsAt, redoSuggestion, review, reviewColour, REVIEW_COLOURS, setColours, reviewMode, reviewView, scrollToItem, setReview, setReviewMode, setReviewView, undoSuggestion } from "./review/review";
 export type {
   ReviewDecision,
+  ReviewAction,
   ReviewHandlers,
   ReviewItem,
   ReviewKind,

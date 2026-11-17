@@ -31,6 +31,7 @@
   // `pending_go_to` for a window made for it), Replace All of the search as `replace-all` to the windows of the files
   // it changes.
 
+  import GoToFile from "$lib/GoToFile.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
@@ -153,6 +154,8 @@
   let frame = $state<Frame>();
   /** the headings of the document and the one the cursor is under, for the outline */
   let headings = $state.raw<Heading[]>([]);
+  /** Go to File (⌘P) shown */
+  let goingToFile = $state(false);
   let here = $state(-1);
   const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), log: (e) => log.push(e), colours: (m) => setColours(withOwn(m)) });
   /** the review panel at the right: shown (the preview is not while it is) */
@@ -525,6 +528,7 @@
       listen<string>("git-menu", (e) => git?.run(e.payload)),
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", togglePreview),
+      listen("go-to-file", () => (goingToFile = true)),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number }>("go-to", (e) => editor?.select(e.payload.at, e.payload.end)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -620,6 +624,14 @@
     <div class="pane review"><ReviewPanel {session} /></div>
   {/if}
   </div>
+  {#if goingToFile}
+    <GoToFile
+      headings={markdown || latex ? headings : []}
+      onheading={(h) => editor?.goToHeading(h)}
+      online={(n) => editor?.goToLine(n)}
+      onclose={() => ((goingToFile = false), editor?.focus())}
+    />
+  {/if}
   {#if listing}
     {#key version}
       <RefList bind:this={refs} enter="pandoc" {search} {closest} {sources} dropped={leftOut} oninsert={inserted} onopen={openPdf} onclose={closeList} />

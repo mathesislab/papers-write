@@ -46,6 +46,15 @@ pub async fn project_files(root: String) -> Result<Vec<Node>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Go to File: the files of the project of the asking page that can be opened (none outside a project).
+#[tauri::command]
+pub async fn project_file_list(window: tauri::Webview) -> Vec<search::Listed> {
+    let Some(root) = crate::tabs::project_of_page(window.app_handle(), window.label()) else {
+        return Vec::new();
+    };
+    tauri::async_runtime::spawn_blocking(move || search::openable(&root, 50_000)).await.unwrap_or_default()
+}
+
 /// The matches of a query in the files of the project at `root`.
 #[tauri::command]
 pub async fn search_project(root: String, query: Query) -> Result<Vec<FileHits>, String> {

@@ -186,8 +186,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                 ],
             )?,
             &separator()?,
-            &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
-            &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
+            // the sidebar on a tab (pressed again: hidden); outside macOS O for the files (open), I for the outline (an
+            // index), as Ctrl+Shift+F is the search's
+            &item("sidebar", "Show Files", Some(if MAC { "Alt+CmdOrCtrl+S" } else { "Ctrl+Alt+O" }))?,
+            &item("outline", "Show Outline", Some(if MAC { "Alt+CmdOrCtrl+O" } else { "Ctrl+Alt+I" }))?,
             // the project bar hidden at the window's left edge till the pointer comes there (Settings ▸ Window)
             &CheckMenuItem::with_id(
                 app,
@@ -542,7 +544,7 @@ fn item_of(app: &AppHandle, id: &str) -> Option<MenuItem<Wry>> {
 /// window comes to the front); View ▸ Show Preview and Show PDF the same (`view_shown`).
 #[tauri::command]
 pub fn sidebar_shown(app: AppHandle, shown: bool, outline: bool) {
-    for (id, on, name) in [("sidebar", shown, "Sidebar"), ("outline", outline, "Outline")] {
+    for (id, on, name) in [("sidebar", shown, "Files"), ("outline", outline, "Outline")] {
         if let Some(item) = item_of(&app, id) {
             let _ = item.set_text(format!("{} {name}", if on { "Hide" } else { "Show" }));
         }

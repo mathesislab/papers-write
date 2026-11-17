@@ -132,7 +132,8 @@
   // View ▸ Show Sidebar and Show Outline say Hide while they are shown: told as they change, and as the window comes
   // to the front
   $effect(() => {
-    const [shown, outline] = [side.shown, side.shown && sideTab === "outline"];
+    // each item says Hide while its own tab is the one shown
+    const [shown, outline] = [side.shown && sideTab === "files", side.shown && sideTab === "outline"];
     const tell = () => invoke("sidebar_shown", { shown, outline }).catch(() => {});
     tell();
     window.addEventListener("focus", tell);
@@ -151,6 +152,14 @@
     onfocus?.();
   }
 
+  /** View ▸ Show Files: the sidebar on its files, or hidden when it shows them (each tab of the sidebar has its key,
+   *  which hides it when that tab is the one shown). */
+  export function toggleFiles() {
+    if (!sideRoot) return onsay("Save the document first, to see its folder");
+    if (side.shown && sideTab === "files") return hideSidebar();
+    side.set({ shown: true, tab: "files" });
+  }
+
   /** View ▸ Show Outline: the sidebar on its outline, or hidden when it shows it. */
   export function toggleOutline() {
     if (side.shown && sideTab === "outline") return toggleSidebar();
@@ -160,6 +169,8 @@
   /** Edit ▸ Find ▸ Find in Project…: the sidebar on its search. */
   export function findInProject() {
     if (!sideRoot) return onsay("Save the document first, to search its folder");
+    // asked again with the search's field in hand: the sidebar hidden, as the other tabs' keys do
+    if (side.shown && sideTab === "search" && document.activeElement?.closest(".side")) return hideSidebar();
     side.set({ shown: true });
     queueMicrotask(() => list?.find());
   }
@@ -233,7 +244,7 @@
       listen("project-info", projectInfo),
       listen("switch-project", () => (switching = true)),
       listen("outline", toggleOutline),
-      listen("sidebar", toggleSidebar),
+      listen("sidebar", toggleFiles),
     ];
     return () => {
       stops.forEach((stop) => stop());

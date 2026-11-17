@@ -52,8 +52,9 @@ export function scorePath(query: string, relative: string): { score: number; at:
 }
 
 /** The items whose `relative` path matches `query`, the best first (then the most recently changed); `most` of them. */
-export function rank<T extends { relative: string; modified: number }>(items: T[], query: string, most: number): { item: T; at: number[] }[] {
-  if (!query.trim()) return [...items].sort((a, b) => b.modified - a.modified).slice(0, most).map((item) => ({ item, at: [] }));
+export function rank<T extends { relative: string; modified: number; open?: boolean }>(items: T[], query: string, most: number): { item: T; at: number[] }[] {
+  // without a query: the files open in tabs first, then the most recently changed
+  if (!query.trim()) return [...items].sort((a, b) => Number(!!b.open) - Number(!!a.open) || b.modified - a.modified).slice(0, most).map((item) => ({ item, at: [] }));
   return items
     .map((item) => ({ item, ...scorePath(query, item.relative) }))
     .filter((m) => m.score > 0)

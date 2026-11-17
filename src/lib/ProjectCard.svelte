@@ -37,6 +37,10 @@
   let keptBy = $state<string | null>(null);
   const notes = $derived(kind === "notes");
   let library = $state("");
+  /** what Go to File and Find in Project leave out (exclude.rs): one pattern a line */
+  let gitignore = $state(true);
+  let hide = $state("");
+  let show = $state("");
   let error = $state("");
   /** asked of the app, not yet answered */
   let busy = $state(false);
@@ -45,6 +49,9 @@
   const fresh = $derived(card !== null && !card.defined);
   /** the documents to choose from: the folder's, and the main one should it not be among them */
   const documents = $derived(card ? [...new Set([...card.manifest.main.slice(0, 1), ...card.documents])] : []);
+
+  /** The patterns of a field, one a line. */
+  const lines = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean);
 
   /** Nothing but spaces: not set. */
   const blank = (text: string) => text.trim() || null;
@@ -67,6 +74,9 @@
       library = m.library ?? "";
       keptBy = await invoke<string | null>("kept_by", { root }).catch(() => null);
       kind = m.kind ?? (!next.defined && keptBy ? "notes" : "paper");
+      gitignore = m.gitignore ?? true;
+      hide = (m.hide ?? []).join("\n");
+      show = (m.show ?? []).join("\n");
       main = m.main[0] ?? likelyMain(next.documents) ?? (next.defined ? "" : NEW);
     } catch (e) {
       error = String(e);
@@ -104,6 +114,9 @@
       profile: was.profile,
       // a paper and none set: unset still
       kind: was.kind === null && kind === "paper" ? null : kind,
+      gitignore: gitignore ? null : false,
+      hide: lines(hide),
+      show: lines(show),
     };
   }
 
@@ -234,6 +247,16 @@
           <button type="button" onclick={chooseLibrary}>Choose…</button>
         </div>
 
+        <span class="label">Go to File, Find in Project</span>
+        <div class="search">
+          <label class="check"><input type="checkbox" bind:checked={gitignore} /> Leave out what .gitignore ignores</label>
+          <span class="hint">Hidden files and build*, _build, dist, node_modules, target, __pycache__, venv are left out too. One pattern a line, as in .gitignore: a name anywhere (*.log), a path from the folder (data/raw/).</span>
+          <div class="patterns">
+            <label>Also leave out <textarea bind:value={hide} rows="2" placeholder="data/raw/" spellcheck="false"></textarea></label>
+            <label>Bring back <textarea bind:value={show} rows="2" placeholder="build-full/thesis.pdf" spellcheck="false"></textarea></label>
+          </div>
+        </div>
+
         <span class="label">Folder</span>
         <div class="row">
           <span class="path" title={root}>{root.replace(/^\/Users\/[^/]+/, "~")}</span>
@@ -250,6 +273,37 @@
 </form>
 
 <style>
+  .search {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .check {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .patterns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .patterns label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .patterns textarea {
+    font: 12px ui-monospace, monospace;
+    padding: 4px 6px;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    resize: vertical;
+  }
   h2 {
     margin: 0 0 14px;
     font-size: 13px;

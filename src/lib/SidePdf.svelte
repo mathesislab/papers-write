@@ -2,8 +2,8 @@
   // The PDF beside a text (View ▸ Show PDF): the one chosen for this source file, else the one found (`side_pdf`:
   // `<build>/<name>.pdf`), in a pane of the text's page, read again at the same page when it changes on disk
   // (`pdf-changed`: a build, a watch process). Its header says which PDF and changes it (the project's PDFs, the most
-  // recent first; Other…; the one found). A ⌃-click on its text opens the source there (`onsource`); `find` looks for
-  // words in it (Show in PDF).
+  // recent first; Other…; the one found). A ⌘-click on its text (Ctrl elsewhere) opens the source there (`onsource`);
+  // `showSource` marks the place of a source line by the build's map, `find` looks for words in it (Show in PDF).
 
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
@@ -13,15 +13,15 @@
   import PdfjsView from "$lib/PdfjsView.svelte";
   import PdfTools from "$lib/PdfTools.svelte";
   import { listen } from "$lib/events";
+  import { mac } from "papers-write/editor";
+  import type { Box, OutlineItem, PdfViewer, Spot } from "$lib/pdf";
 
-  type At = { page: number; x: number; y: number };
-  type Around = { before: string[]; after: string[] };
   let {
     onsource,
     onsay,
     onpreview,
   }: {
-    onsource: (pdf: string, text: string, at: At | null, word: string, around: Around) => void;
+    onsource: (pdf: string, spot: Spot) => void;
     onsay: (what: string) => void;
     /** the pane switched to the Markdown preview (a Markdown text only): first in the PDF's list, and in its menu */
     onpreview?: () => void;
@@ -31,12 +31,11 @@
   type Side = { pdf: string | null; offered: Offered[] };
 
   /** PDFKit is macOS's */
-  const mac = navigator.userAgent.includes("Mac");
   const Viewer = mac ? PdfView : PdfjsView;
 
   let side = $state<Side | null>(null);
   let error = $state("");
-  let view = $state<PdfView | PdfjsView>();
+  let view = $state<PdfViewer>();
   /** the page in view, kept as the PDF is read again */
   let page = $state(1);
   /** how many times the PDF was read again: the view is made anew */
@@ -82,7 +81,7 @@
   /** The place `line` (1-based) of the source `source` is at in the PDF, from the map its build left beside it
    *  (texmark's, or SyncTeX's for LaTeX), shown and marked; false without a map, or when it says nothing there. */
   export async function showSource(source: string, line: number, word = "", along = 0, before: string[] = [], after: string[] = []): Promise<number | null> {
-    if (!side?.pdf || !view || !("showBox" in view)) return null;
+    if (!side?.pdf || !view?.show) return null;
     status = "Looking it up in the build's map…";
     const boxes = await invoke<Box[] | null>("pdf_boxes", { pdf: side.pdf, source, line }).catch((e) => ((status = String(e)), null));
     if (!boxes?.length) {
@@ -99,7 +98,7 @@
       const height = Math.max(...own.map((l) => l.height));
       return { page, top: Math.min(...own.map((l) => l.y)) - height * 2.6, bottom: Math.max(...own.map((l) => l.y)) + height * 0.4 };
     });
-    const how = (view as PdfjsView).showBox(box, word, regions, before, after);
+    const how = await view.show({ box, regions, word, before, after });
     status = `→ page ${box.page}: ${how}`;
     return box.page;
   }
@@ -113,15 +112,13 @@
     statusTimer = setTimeout(() => (status = ""), 8000);
   });
   export const tell = (what: string) => (status = what);
-  type Box = { page: number; x: number; y: number; width: number; height: number };
 
-  /** the PDF's outline (its bookmarks, pdf.js), each with its depth */
-  let outline = $state.raw<{ level: number; title: string; page: number | null }[]>([]);
+  /** the PDF's outline (its bookmarks) */
+  let outline = $state.raw<OutlineItem[]>([]);
   /** the tools over the PDF (PdfTools, as a PDF's tab has them): Find is theirs */
   let tools = $state<PdfTools>();
-  /** the pages in view, their count, and whether there is a page to go back to or forward */
+  /** the PDF's page count */
   let count = $state(0);
-  let history = $state({ back: false, forward: false });
 
   /** Find… with the PDF in front: its field, with the PDF's selection. */
   export const focusFind = () => tools?.focusFind();
@@ -151,7 +148,7 @@
 <aside class="side-pdf">
   <!-- the tools of a PDF as its tab has them, then what was done and which PDF it is, last before the page's × that
        closes the pane -->
-  <PdfTools bind:this={tools} view={side?.pdf ? (view as never) : undefined} current={page} {count} {outline} room={30}>
+  <PdfTools bind:this={tools} view={side?.pdf ? view : undefined} current={page} {count} {outline} room={30}>
     {#snippet trail()}
       {#if status}<span class="status" title={status}>{status}</span>{/if}
       <button class="name" onclick={changeMenu} disabled={!side} title="{side?.pdf ?? ''} (a click changes it)">{side?.pdf ? nameOf(side.pdf) : "PDF"} ▾</button>
@@ -167,10 +164,9 @@
           path={side.pdf}
           {page}
           onpage={(p) => (page = p)}
-          onopen={(c: number) => ((count = c), (page = Math.min(page, c)))}
-          onhistory={(h: { back: boolean; forward: boolean }) => (history = h)}
-          onoutline={(items: { level: number; title: string; page: number | null }[]) => (outline = items)}
-          onsource={(text: string, at: At | null, word: string, around: Around) => side?.pdf && onsource(side.pdf, text, at, word, around)}
+          onopen={(c) => ((count = c), (page = Math.min(page, c)))}
+          onoutline={(items) => (outline = items)}
+          onsource={(spot) => side?.pdf && onsource(side.pdf, spot)}
           menuItem={onpreview ? { text: "Show Markdown Preview", action: onpreview } : null}
         />
       {/key}

@@ -8,17 +8,7 @@
   import { keys } from "papers-write/editor";
   import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
-
-  /** What the tools ask of the view (PdfjsView, PdfView). */
-  type View = {
-    back: () => void;
-    forward: () => void;
-    zoom: (step: number) => void;
-    pageTo: (page: number) => void;
-    find: (text: string, again?: boolean, backwards?: boolean) => Promise<boolean>;
-    focus: () => void;
-    goToOutline?: (i: number) => void;
-  };
+  import { sectionAt, type OutlineItem, type PdfViewer } from "$lib/pdf";
 
   let {
     view,
@@ -29,11 +19,11 @@
     trail,
     room = 0,
   }: {
-    view: View | undefined;
+    view: PdfViewer | undefined;
     current: number;
     count: number;
     /** the outline (bookmarks), each with the page it goes to (none: not known) */
-    outline?: { level: number; title: string; page: number | null }[];
+    outline?: OutlineItem[];
     lead?: Snippet;
     trail?: Snippet;
     /** room kept at the right (px): the pane's ×, which the page lays over it */
@@ -90,13 +80,7 @@
   }
 
   /** The section in view: the last of the outline that begins on the page in view or before it. */
-  const here = $derived.by(() => {
-    let at = -1;
-    outline.forEach((o, i) => {
-      if (o.page !== null && o.page <= current) at = i;
-    });
-    return at;
-  });
+  const here = $derived(sectionAt(outline, current));
 
   async function outlineMenu(e: MouseEvent) {
     const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();

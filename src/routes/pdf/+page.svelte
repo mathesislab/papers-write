@@ -3,35 +3,29 @@
   // Back and Forward (the page a link or a jump left: ⌘[ ⌘]), the page in view (and the field to go to one), the zoom
   // (⌘= ⌘- ⌘0, the PDF menu) and Find (⌘F, ⌘G; the menu says them as `pdf`). The Go menu comes as `go`: Back, Forward,
   // the previous, next, first and last page, Go to Page… (⌥⌘G). The PDF is read again, at the same page, when it
-  // changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last). A ⌃-click on its
-  // text opens the source there (pdf.js only, not PDFKit yet: `open_source_at`).
+  // changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last). A ⌘-click on its
+  // text (Ctrl elsewhere) opens the source there (`open_source_at`). Either view (pdf.ts) does all of this.
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
   import PdfjsView from "$lib/PdfjsView.svelte";
   import PdfTools from "$lib/PdfTools.svelte";
+  import { sectionAt, type OutlineItem, type PdfViewer, type Spot } from "$lib/pdf";
   import { listen } from "$lib/events";
   import { part, ready } from "papers-write/project";
-  import type { Heading } from "papers-write/editor";
+  import { mac } from "papers-write/editor";
   import Frame from "$lib/Frame.svelte";
   import "$lib/theme.css";
 
   let path = $state<string | null | undefined>();
-  let view = $state<PdfView | PdfjsView>();
+  let view = $state<PdfViewer>();
   /** PDFKit is macOS's */
-  const mac = navigator.userAgent.includes("Mac");
   const Viewer = mac ? PdfView : PdfjsView;
   let count = $state(0);
   let current = $state(1);
-  /** whether there is a page to go back to, or forward */
-  let history = $state({ back: false, forward: false });
-  /** the page typed in the field, while it is */
   /** the tools over the PDF (PdfTools): Find and Go to Page are theirs */
   let tools = $state<PdfTools>();
-  let text = $state("");
-  let notFound = $state(false);
-  let field = $state<HTMLInputElement>();
   /** how many times the PDF was read again: the view is made anew */
   let reads = $state(0);
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -43,27 +37,20 @@
   /** the PDF opened the first time, for the tab to be shown (`ready`) */
   const opened = part();
   let frame = $state<Frame>();
-  /** the PDF's outline (its bookmarks: pdf.js only), the page of each, and the one the page in view is under */
-  let outline = $state.raw<Heading[]>([]);
-  let outlinePages = $state.raw<(number | null)[]>([]);
-  const hereInOutline = $derived.by(() => {
-    let at = -1;
-    outlinePages.forEach((p, i) => {
-      if (p !== null && p <= current) at = i;
-    });
-    return outline.length ? at : -1;
-  });
+  /** the PDF's outline (its bookmarks), shown as the sidebar's Outline shows a text's headings */
+  let outline = $state.raw<OutlineItem[]>([]);
+  const headings = $derived(outline.map((o, i) => ({ level: o.level, title: o.title, from: i })));
   /** a card of the frame over the page: the PDF makes way */
   let carded = $state(false);
   /** what was just done or went wrong, for a moment */
   let note = $state("");
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /** ⌃-click on the PDF's text: its source opened there, found by its words in the project's Markdown and LaTeX. */
-  async function toSource(text: string, at: { page: number; x: number; y: number } | null = null, word = "", around = { before: [] as string[], after: [] as string[] }) {
+  /** ⌘-click on the PDF's text: its source opened there, found by its words in the project's Markdown and LaTeX. */
+  async function toSource({ line, at, word, before, after }: Spot) {
     if (!path) return;
     try {
-      const found = await invoke<boolean>("open_source_at", { pdf: path, text, at, word, around });
+      const found = await invoke<boolean>("open_source_at", { pdf: path, text: line, at, word, around: { before, after } });
       if (!found) say("Not found in the project's sources");
     } catch (e) {
       say(String(e));
@@ -84,7 +71,6 @@
     clearTimeout(timer);
     timer = setTimeout(() => {
       count = 0;
-      history = { back: false, forward: false };
       reads++;
     }, 500);
   }
@@ -144,14 +130,14 @@
   bind:this={frame}
   bind:covering={carded}
   {path}
-  headings={outline}
-  here={hereInOutline}
+  {headings}
+  here={sectionAt(outline, current)}
   outlined={outline.length > 0}
-  onheading={(h) => (view as PdfjsView | undefined)?.goToOutline?.(h.from)}
+  onheading={(h) => view?.goToOutline?.(h.from)}
   onsay={say}
   onfocus={() => view?.focus()}
 >
-  <PdfTools bind:this={tools} view={view as never} {current} {count} outline={outline.map((h, i) => ({ level: h.level, title: h.title, page: outlinePages[i] ?? null }))}>
+  <PdfTools bind:this={tools} {view} {current} {count} {outline}>
     {#snippet lead()}<span class="name" class:said={note} title={note || path || ""}>{note || name}</span>{/snippet}
   </PdfTools>
   <div class="viewer">
@@ -163,11 +149,7 @@
           page={current}
           covered={!front || carded}
           onpage={(p) => (current = p)}
-          onoutline={(items: { level: number; title: string; page: number | null }[]) => {
-            outlinePages = items.map((it) => it.page);
-            outline = items.map((it, i) => ({ level: it.level, title: it.title, from: i }));
-          }}
-          onhistory={(h) => (history = h)}
+          onoutline={(items) => (outline = items)}
           onsource={toSource}
           onopen={(c) => {
             count = c;

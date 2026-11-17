@@ -1,33 +1,15 @@
 <script lang="ts">
   // A PDF in PDFKit, as Preview shows it (tauri-plugin-pdfkit, as papers-review has it): a native view over the area
-  // of this element, kept in place as the area changes; the page in view and the history (Back, Forward) told back
-  // (`onpage`, `onhistory`). The commands go to the view in order: a search typed letter by letter must not land after
-  // the next one.
+  // of this element, kept in place as the area changes; the props and the commands of every view of a PDF (`PdfViewer`,
+  // pdf.ts). The commands go to the view in order: a search typed letter by letter must not land after the next one.
 
   import { onMount } from "svelte";
   import * as pdfkit from "tauri-plugin-pdfkit-api";
-  import type { History, Turn } from "tauri-plugin-pdfkit-api";
+  import type { Turn } from "tauri-plugin-pdfkit-api";
+  import type { PdfViewProps } from "$lib/pdf";
 
-  let {
-    path,
-    page = 1,
-    covered = false,
-    onpage,
-    onhistory,
-    onopen,
-  }: {
-    path: string;
-    /** the page to open at (from 1) */
-    page?: number;
-    /** hidden while the page shows a card over it: the view lies above all of the page */
-    covered?: boolean;
-    /** the page in view */
-    onpage: (page: number) => void;
-    /** whether there is a page to go back to (the one a link or a jump left) or forward */
-    onhistory?: (history: History) => void;
-    /** the PDF open: its page count */
-    onopen: (count: number) => void;
-  } = $props();
+  // `covered`: hidden while the page shows a card over it, as the view lies above all of the page
+  let { path, page = 1, covered = false, onpage, onhistory, onopen }: PdfViewProps = $props();
 
   let area: HTMLDivElement;
   // names this view for `cover` and `close`: the PDF read again has a view made anew while the old one goes

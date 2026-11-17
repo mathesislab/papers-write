@@ -87,6 +87,7 @@
   import Frame from "$lib/Frame.svelte";
   import SidePdf from "$lib/SidePdf.svelte";
   import { phrasesAt, plainOf } from "$lib/pdfSearch";
+  import type { Spot } from "$lib/pdf";
   import { figureImage } from "$lib/pdfImage";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
@@ -473,9 +474,9 @@
     say(sidePdf?.showing() ? "Not found in the PDF" : "Choose the PDF to show beside the text");
   }
 
-  /** ⌃-click in the PDF beside the text: its source there (this text, or another file in its tab). */
-  async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null, word = "", around = { before: [] as string[], after: [] as string[] }) {
-    const found = await invoke<boolean>("open_source_at", { pdf, text, at, word, around }).catch(() => false);
+  /** ⌘-click in the PDF beside the text: its source there (this text, or another file in its tab). */
+  async function toSource(pdf: string, { line, at, word, before, after }: Spot) {
+    const found = await invoke<boolean>("open_source_at", { pdf, text: line, at, word, around: { before, after } }).catch(() => false);
     if (!found) say("Not found in the project's sources");
   }
 

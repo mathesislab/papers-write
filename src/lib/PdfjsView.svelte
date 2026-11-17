@@ -1,52 +1,23 @@
 <script lang="ts">
   // A PDF by pdf.js, where PDFKit is not (Linux), as Papers Desktop shows them there: the props and the commands of
-  // PdfView (zoom, back and forward, a page, a turn, find), in the page itself, so a card over it covers it as any
-  // element. Back and Forward are the pages the links and the jumps (Go to Page, first, last) left. A ⌃-click on the
-  // text gives the line clicked (`onsource`), for the page to open its source there.
+  // every view of a PDF (`PdfViewer`, pdf.ts), in the page itself, so a card over it covers it as any element. Back and
+  // Forward are the pages the links and the jumps (Go to Page, first, last) left. A ⌃-click on the text gives the
+  // place clicked (`onsource`), for the page to open its source there; the text layer gives the line and the words.
 
-  import { popupReleased } from "$lib/contextMenu";
-  import { readAloudItems } from "$lib/readAloud";
+  import { bestPlace, better, spoken, wordAround, withNext, type At, type Found, type PdfViewProps, type Spot, type Target } from "$lib/pdf";
+  import { pdfMenu } from "$lib/pdfMenu";
   import { invoke } from "@tauri-apps/api/core";
-  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
-  import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { GlobalWorkerOptions, getDocument, type PDFDocumentLoadingTask } from "pdfjs-dist";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
   import { EventBus, PDFFindController, PDFLinkService, PDFViewer } from "pdfjs-dist/web/pdf_viewer.mjs";
   import "pdfjs-dist/web/pdf_viewer.css";
   import { onMount } from "svelte";
-  import type { History, Turn } from "tauri-plugin-pdfkit-api";
+  import type { Turn } from "tauri-plugin-pdfkit-api";
 
   GlobalWorkerOptions.workerSrc = workerUrl;
 
-  let {
-    path,
-    page = 1,
-    onpage,
-    onhistory,
-    onopen,
-    onsource,
-    menuItem = null,
-    onoutline,
-  }: {
-    path: string;
-    /** the page to open at (from 1) */
-    page?: number;
-    /** the page shows a card over it (the pdf.js view is part of the page: nothing to do) */
-    covered?: boolean;
-    /** the page in view */
-    onpage: (page: number) => void;
-    /** whether there is a page to go back to (the one a link or a jump left) or forward */
-    onhistory?: (history: History) => void;
-    /** the PDF open: its page count */
-    onopen: (count: number) => void;
-    /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
-     *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
-    onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string, around: { before: string[]; after: string[] }) => void;
-    /** an item of the page's own in the menu, after Go to Source (the pane: Show Markdown Preview) */
-    menuItem?: { text: string; action: () => void } | null;
-    /** the PDF's outline (its bookmarks), in order, each with its depth and the page it goes to (none: unknown) */
-    onoutline?: (items: { level: number; title: string; page: number | null }[]) => void;
-  } = $props();
+  // `covered`: the pdf.js view is part of the page, which a card covers as any element
+  let { path, page = 1, onpage, onhistory, onopen, onsource, menuItem = null, onoutline }: PdfViewProps = $props();
 
   let area: HTMLDivElement;
   let container: HTMLDivElement;
@@ -153,7 +124,7 @@
   }
 
   /** The text of the line of the text layer that `span` is on (the spans whose middle is level with its own), in
-   *  order; with the next line when it has fewer than six words, for enough of them to find. */
+   *  order; with the next line when it is short (`withNext`). */
   function lineOf(span: HTMLElement): string {
     const layer = span.closest(".textLayer");
     if (!layer) return span.textContent ?? "";
@@ -171,12 +142,8 @@
         .join(" ")
         .replace(/\s+/g, " ")
         .trim();
-    let text = textAt(middle(own));
-    if (text.split(" ").length < 6) {
-      const below = rects.map(middle).filter((y) => y > middle(own) + own.height / 2).sort((a, b) => a - b)[0];
-      if (below !== undefined) text = `${text}\n${textAt(below)}`;
-    }
-    return text;
+    const below = rects.map(middle).filter((y) => y > middle(own) + own.height / 2).sort((a, b) => a - b)[0];
+    return withNext(textAt(middle(own)), below === undefined ? "" : textAt(below));
   }
 
   function sourceClick(e: MouseEvent) {
@@ -185,14 +152,18 @@
     if (!span) return;
     e.preventDefault();
     e.stopPropagation();
-    const text = lineOf(span);
-    const around = aroundOf(e, span);
-    // the word as the line reads, its pieces joined (P4 of P and 4), else as the pointer is over it
-    if (text) onsource(text, pointOf(e), around.word || wordAt(e), around);
+    const spot = spotOf(e, span);
+    if (spot.line) onsource(spot);
   }
 
-  /** The words around the word under the pointer, in its line of the PDF and the lines before and after it (the
-   *  source has them around the same word): six before, six after. */
+  /** The click on `span`: its line, its place, and the word under the pointer with the words around it in the page's
+   *  text (the source has them around the same word): the word as the line reads, its pieces joined (P4 of P and 4),
+   *  else as the pointer is over it. */
+  function spotOf(e: MouseEvent, span: HTMLElement): Spot {
+    const around = aroundOf(e, span);
+    return { line: lineOf(span), at: pointOf(e), word: around.word || wordAt(e), before: around.before, after: around.after };
+  }
+
   /** The text of spans in reading order, with where each starts: a space between them, except between two that touch
    *  on a line (a word the PDF writes in pieces: P and 4 in another font, a ligature). */
   function joined(spans: { s: HTMLElement; r: DOMRect }[]): { text: string; starts: number[] } {
@@ -208,10 +179,12 @@
     return { text, starts };
   }
 
-  function aroundOf(e: MouseEvent, span: HTMLElement): { before: string[]; after: string[]; word?: string } {
+  /** The word under the pointer and the words around it, in the text layer's text in reading order. */
+  function aroundOf(e: MouseEvent, span: HTMLElement): { before: string[]; after: string[]; word: string } {
     const layer = span.closest(".textLayer");
     const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
-    if (!layer || !range) return { before: [], after: [] };
+    const none = { before: [], after: [], word: "" };
+    if (!layer || !range) return none;
     // the text layer's spans in reading order, and the place of the pointer in their text
     const spans = [...layer.querySelectorAll<HTMLElement>("span")].filter((s) => !s.querySelector("span") && s.textContent);
     // in reading order: grouped in lines (middles within half a line: a citation, a figure in another font sit a
@@ -230,34 +203,18 @@
     placed.forEach(({ s }, i) => {
       if (s.contains(range.startContainer)) at = starts[i] + range.startOffset;
     });
-    if (at < 0) return { before: [], after: [] };
-    const words = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
-    // the word itself out of both sides
-    let [from, to] = [at, at];
-    while (from > 0 && /[\p{L}\p{N}_-]/u.test(text[from - 1])) from--;
-    while (to < text.length && /[\p{L}\p{N}_-]/u.test(text[to])) to++;
-    return { before: words(text.slice(Math.max(0, from - 160), from)).slice(-6), after: words(text.slice(to, to + 160)).slice(0, 6), word: text.slice(from, to) };
+    return at < 0 ? none : wordAround(text, at);
   }
 
-  /** A right-click on the text: Go to Source (as a ⌃-click), the page's own item, and Copy. */
+  /** A right-click on the text: the menu of a PDF's text (pdfMenu). */
   async function sourceMenu(e: MouseEvent) {
     if (!onsource) return;
     const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
     if (!span) return;
     e.preventDefault();
-    const [text, at, word, around] = [lineOf(span), pointOf(e), wordAt(e), aroundOf(e, span)];
-    const mac = navigator.userAgent.includes("Mac");
+    const spot = spotOf(e, span);
     const selected = window.getSelection()?.toString().trim() ?? "";
-    const reading = await readAloudItems(selected || fromHere(span), selected ? "Read Aloud" : "Read Aloud from Here");
-    const items = await Promise.all([
-      ...reading,
-      MenuItem.new({ text: `Go to Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word, around) }),
-      ...(menuItem ? [MenuItem.new(menuItem)] : []),
-      PredefinedMenuItem.new({ item: "Separator" }),
-      PredefinedMenuItem.new({ item: "Copy" }),
-    ]);
-    // at the pointer (without a place, it opens elsewhere in the window)
-    await popupReleased(await Menu.new({ items }), new LogicalPosition(e.clientX, e.clientY));
+    await pdfMenu(spot.line ? spot : null, selected, selected ? "" : fromHere(span), { onsource, menuItem }, e.clientX, e.clientY);
   }
 
   /** The page's text from `span` to its end, as a selection of it would copy it (its lines and spaces). */
@@ -272,8 +229,7 @@
     selection.addRange(range);
     const text = selection.toString();
     selection.removeAllRanges();
-    // a word broken at a line's end joined again
-    return text.replace(/(\p{L})-\n(\p{Ll})/gu, "$1$2").replace(/\s+/g, " ").trim();
+    return spoken(text);
   }
 
   /** The word under the pointer, in the text layer. */
@@ -289,18 +245,10 @@
     return text.slice(from, to);
   }
 
-  /** The place of a source line shown and marked (Show in PDF): `box`, the line of the PDF it most likely is, scrolled
-   *  to; `regions`, where the paragraph the source line made is (each page's band, in PDF points from the page's
-   *  top); `word` and the words around it in the source (`before`, `after`), which pick the place of the word in the
-   *  regions: the one whose neighbours in the PDF are most like them, the nearest to `box` among equals. What was
-   *  marked, said. */
-  export function showBox(
-    box: { page: number; x: number; y: number; width: number; height: number },
-    word = "",
-    regions: { page: number; top: number; bottom: number }[] = [],
-    before: string[] = [],
-    after: string[] = [],
-  ): string {
+  /** Show in PDF: `box`, the line of the PDF the source line most likely is, scrolled to; the word marked in the
+   *  paragraph's pages (`regions`) where its neighbours are most like the source's (`bestPlace`), the nearest to `box`
+   *  among equals. What was marked, said. */
+  export async function show({ box, word, regions, before, after }: Target): Promise<string> {
     const pageView = viewer?.getPageView(box.page - 1);
     if (!viewer || !pageView) return "the PDF is not read yet";
     const [, , , top] = pageView.viewport.viewBox;
@@ -328,9 +276,6 @@
     for (const span of container.querySelectorAll<HTMLElement>(".synced-line")) span.classList.remove("highlight", "selected", "synced-line");
   }
 
-  /** The words of a text as they compare: lower case, letters and digits. */
-  const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
-
   /** The mark drawn in the text layers, as pdf.js marks what Find found (a box laid over the page is not drawn over
    *  its canvas by WebKitGTK): the word where its neighbours are most like the source's, else the most likely line's
    *  spans. What was marked, said. */
@@ -338,10 +283,7 @@
     if (!marked || !viewer) return "";
     const m = marked;
     if (container.querySelector(".synced-word, .synced-line")) return "marked";
-    const pattern = m.word ? new RegExp(`(?<![\\p{L}\\p{N}])${m.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "giu") : null;
-    const before = new Set(m.before.map((w) => w.toLowerCase()));
-    const after = new Set(m.after.map((w) => w.toLowerCase()));
-    let best: { score: number; distance: number; parts: { span: HTMLElement; from: number; to: number }[] } | null = null;
+    let best: (Found & { parts: { span: HTMLElement; from: number; to: number }[] }) | null = null;
     let waiting = false;
     // the pages of the paragraph, whole: the map can give a paragraph's lines to other lines of the source, and the
     // words around the word, not the place, pick the right one; the most likely line only breaks ties
@@ -385,21 +327,16 @@
           flat += span.textContent ?? "";
         });
       }
-      if (!pattern) continue;
-      for (const found of flat.matchAll(pattern)) {
-        const at = found.index ?? 0;
-        const end = at + found[0].length;
-        // the pieces the word is in (one, or several where the PDF writes it in pieces)
-        const parts = pieces
-          .filter((p) => p.start < end && p.start + (p.span.textContent?.length ?? 0) > at)
-          .map((p) => ({ span: p.span, from: Math.max(0, at - p.start), to: Math.min(p.span.textContent?.length ?? 0, end - p.start), middle: p.middle }));
-        if (!parts.length) continue;
-        const score =
-          wordsOf(flat.slice(Math.max(0, at - 90), at)).slice(-6).filter((w) => before.has(w)).length +
-          wordsOf(flat.slice(end, end + 90)).slice(0, 6).filter((w) => after.has(w)).length;
-        const distance = lineMiddle === null ? 1e6 : Math.abs(parts[0].middle - lineMiddle);
-        if (!best || score > best.score || (score === best.score && distance < best.distance)) best = { score, distance, parts };
-      }
+      // the pieces a stretch of the text is in (one, or several where the PDF writes a word in pieces)
+      const partsOf = (from: number, to: number) =>
+        pieces
+          .filter((p) => p.start < to && p.start + (p.span.textContent?.length ?? 0) > from)
+          .map((p) => ({ span: p.span, from: Math.max(0, from - p.start), to: Math.min(p.span.textContent?.length ?? 0, to - p.start), middle: p.middle }));
+      const found = bestPlace(flat, m.word, m.before, m.after, (from, to) => {
+        const first = partsOf(from, to)[0];
+        return lineMiddle === null || !first ? 1e6 : Math.abs(first.middle - lineMiddle);
+      });
+      if (found) best = better(best, { ...found, parts: partsOf(found.from, found.to) });
     }
     if (best) {
       // each piece marked (from the last, so that the earlier ones' places hold)
@@ -428,7 +365,6 @@
     }
     return lines ? "line marked (the word is not in the PDF's text there)" : "nothing of the page's text there to mark";
   }
-
 
   /** The characters [from, to) of a span's text wrapped in a mark, through whichever text nodes hold them (a span's
    *  text can be in several: Find's highlights split it). */
@@ -469,17 +405,8 @@
     after: string[];
   } | null = null;
 
-
-
-
-
-
-
-
-
-
   /** The place of a click in the PDF: its page, and its point in PDF points from the page's top left. */
-  function pointOf(e: MouseEvent): { page: number; x: number; y: number } | null {
+  function pointOf(e: MouseEvent): At | null {
     const pageDiv = (e.target as HTMLElement).closest<HTMLElement>(".page[data-page-number]");
     const page = Number(pageDiv?.dataset.pageNumber);
     const pageView = page && viewer?.getPageView(page - 1);

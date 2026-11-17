@@ -173,8 +173,14 @@
     path = (await invoke<{ path: string | null }>("document")).path;
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
-    const going = await invoke<{ at: number; end: number } | null>("pending_go_to").catch(() => null);
-    if (going) queueMicrotask(() => editor?.select(going.at, going.end));
+    const going = await invoke<{ at: number; end: number; mark: boolean } | null>("pending_go_to").catch(() => null);
+    if (going) queueMicrotask(() => goTo(going));
+  }
+
+  /** A place to go to: a match selected, or a place found from a PDF marked (the cursor at its start). */
+  function goTo(go: { at: number; end: number; mark: boolean }) {
+    if (go.mark) editor?.markFound(go.at, go.end);
+    else editor?.select(go.at, go.end);
   }
 
   /** the reviews sent back and joined to this document (the backend says them, a window made for it is not listening yet) */
@@ -567,7 +573,7 @@
       listen("pdf-beside", togglePdf),
       listen("show-in-pdf", () => void showInPdf()),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
-      listen<{ at: number; end: number }>("go-to", (e) => editor?.select(e.payload.at, e.payload.end)),
+      listen<{ at: number; end: number; mark: boolean }>("go-to", (e) => goTo(e.payload)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
       listen<string>("find", (e) => findCommand(e.payload)),
       listen<Format>("format", (e) => editor?.format(e.payload)),

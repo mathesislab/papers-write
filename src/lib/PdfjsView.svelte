@@ -35,7 +35,7 @@
     onopen: (count: number) => void;
     /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
      *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
-    onsource?: (text: string, at: { page: number; x: number; y: number } | null) => void;
+    onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string) => void;
   } = $props();
 
   let area: HTMLDivElement;
@@ -166,7 +166,20 @@
     e.preventDefault();
     e.stopPropagation();
     const text = lineOf(span);
-    if (text) onsource(text, pointOf(e));
+    if (text) onsource(text, pointOf(e), wordAt(e));
+  }
+
+  /** The word under the pointer, in the text layer. */
+  function wordAt(e: MouseEvent): string {
+    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    const node = range?.startContainer;
+    if (!range || !node || node.nodeType !== Node.TEXT_NODE) return "";
+    const text = node.textContent ?? "";
+    const isWord = (c: string) => /[\p{L}\p{N}_-]/u.test(c);
+    let [from, to] = [range.startOffset, range.startOffset];
+    while (from > 0 && isWord(text[from - 1])) from--;
+    while (to < text.length && isWord(text[to])) to++;
+    return text.slice(from, to);
   }
 
   /** A box of the PDF (SyncTeX's: its page, its left and baseline in PDF points from the page's top left, its width

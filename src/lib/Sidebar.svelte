@@ -135,7 +135,7 @@
       onnew={make}
       onreveal={(path) => revealItemInDir(path).catch((e) => onsay(String(e)))}
       ondefault={(path) => openPath(path).catch((e) => onsay(String(e)))}
-      ontrash={(node) => (trashing = node)}
+      ontrash={(node, now) => (now ? trash(node) : (trashing = node))}
     />
   </div>
   <div class="body" class:hidden={tab !== "outline"}>

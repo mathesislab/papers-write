@@ -4,6 +4,7 @@
   // to the same one (pandoc's Markdown reader has no source positions, so the blocks are matched by their order).
   // `error` is what pandoc said, in a bar at the foot.
 
+  import { readAloudItems } from "$lib/readAloud";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   const keysOf = (k: string) => (navigator.userAgent.includes("Mac") ? k : "Ctrl");
@@ -124,7 +125,11 @@
         const at = clicked(e);
         if (!at) return;
         e.preventDefault();
+        // Read Aloud: the selection, else the block (paragraph) clicked
+        const selected = doc.getSelection()?.toString().trim() ?? "";
+        const reading = await readAloudItems(selected || at.text, selected ? "Read Aloud" : "Read Aloud Paragraph");
         const items = await Promise.all([
+          ...reading,
           MenuItem.new({ text: `Find in Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word, at.around) }),
           PredefinedMenuItem.new({ item: "Copy" }),
         ]);

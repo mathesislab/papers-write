@@ -31,6 +31,7 @@
   // `pending_go_to` for a window made for it), Replace All of the search as `replace-all` to the windows of the files
   // it changes.
 
+  import { readAloudItems, spokenOf } from "$lib/readAloud";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -297,11 +298,26 @@
     } else void showInPdf();
   }
 
-  /** A right-click in the text: Show in Preview or in PDF, and the edits of the selection. */
+  /** What Read Aloud reads in the text: the selection, else the paragraph of the cursor (between empty lines). */
+  function spokenHere(): string {
+    const view = editor?.view();
+    if (!view) return "";
+    const { doc, selection } = view.state;
+    const { from, to } = selection.main;
+    if (from !== to) return spokenOf(doc.sliceString(from, to));
+    let [first, last] = [doc.lineAt(from).number, doc.lineAt(from).number];
+    while (first > 1 && doc.line(first - 1).text.trim()) first--;
+    while (last < doc.lines && doc.line(last + 1).text.trim()) last++;
+    return spokenOf(doc.sliceString(doc.line(first).from, doc.line(last).to));
+  }
+
+  /** A right-click in the text: Read Aloud (when set), Show in Preview or in PDF, and the edits of the selection. */
   async function editorMenu(e: MouseEvent) {
     const where = previewing && markdown ? "Preview" : "PDF";
     const mac = navigator.userAgent.includes("Mac");
+    const reading = await readAloudItems(spokenHere(), editor?.view()?.state.selection.main.empty ? "Read Aloud Paragraph" : "Read Aloud");
     const items = await Promise.all([
+      ...reading,
       MenuItem.new({ text: `Show in ${where} (${mac ? "⌘" : "Ctrl"}-click)`, enabled: !!path, action: syncHere }),
       PredefinedMenuItem.new({ item: "Separator" }),
       PredefinedMenuItem.new({ item: "Cut" }),

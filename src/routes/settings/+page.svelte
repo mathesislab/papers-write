@@ -333,6 +333,20 @@
           </div>
         {/each}
       </section>
+      <section>
+        <h2>Read Aloud</h2>
+        <label class="row">
+          <span class="grow">
+            <span class="label">Command</span>
+            <span class="hint">
+              Given the selection, or the paragraph under the pointer (Read Aloud, in the right-click menus); <code>{"{text}"}</code> stands for
+              the text, else it is the command's input. Empty: no Read Aloud. For example <code>bard --text {"{text}"}</code>,
+              or <code>say {"{text}"}</code> on macOS.
+            </span>
+          </span>
+          <input class="text path" bind:value={settings.read_aloud} onchange={save} placeholder={"bard --text {text}"} autocomplete="off" spellcheck="false" aria-label="Read Aloud command" />
+        </label>
+      </section>
     </div>
 
     <div class="panel" role="tabpanel" id="panel-window" aria-labelledby="tab-window" hidden={tab !== "window"}>

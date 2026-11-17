@@ -23,6 +23,8 @@ export type Settings = {
   quarto_path: string;
   latexmk_path: string;
   pandoc_path: string;
+  /** Read Aloud: the command given the text ({text}); empty: none */
+  read_aloud: string;
   tabs: boolean;
   project_colour_bar: boolean;
   /** look for updates at start and twice a day; they are installed only when asked */

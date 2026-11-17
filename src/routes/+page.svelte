@@ -747,6 +747,15 @@
   onfocus={() => editor?.focus()}
 >
   <div class="body">
+  <!-- the column of text dragged at its edges: its width kept (COLUMN_WIDTH_EVENT) -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="panes" bind:this={panes} {@attach (el) => {
+    const kept = (e: Event) => invoke("set_text_width", { width: (e as CustomEvent<number>).detail });
+    el.addEventListener(COLUMN_WIDTH_EVENT, kept);
+    return () => el.removeEventListener(COLUMN_WIDTH_EVENT, kept);
+  }}>
+  <!-- the text's column: its toolbar above it, so that its tools stay with it when a pane is beside it -->
+  <div class="text">
   <Toolbar
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
@@ -771,14 +780,7 @@
     onsize={(by) => invoke("step_editor_size", { by })}
     onappearance={(a) => invoke("set_appearance", { appearance: a })}
   />
-  <!-- the column of text dragged at its edges: its width kept (COLUMN_WIDTH_EVENT) -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="panes" bind:this={panes} {@attach (el) => {
-    const kept = (e: Event) => invoke("set_text_width", { width: (e as CustomEvent<number>).detail });
-    el.addEventListener(COLUMN_WIDTH_EVENT, kept);
-    return () => el.removeEventListener(COLUMN_WIDTH_EVENT, kept);
-  }}>
-  <div class="text">
+  <div class="editor">
   {#if path !== undefined}
     {#key path}
       {@const file = path}
@@ -821,6 +823,7 @@
       />
     {/key}
   {/if}
+  </div>
   </div>
   {#if previewing && markdown}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -956,10 +959,16 @@
     color: var(--error);
   }
   .text {
-    position: relative;
     flex: 1;
     min-width: 0;
     height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .editor {
+    position: relative;
+    flex: 1;
+    min-height: 0;
   }
   .split {
     flex: none;

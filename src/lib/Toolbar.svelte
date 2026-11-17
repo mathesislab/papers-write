@@ -6,6 +6,7 @@
   // review panel, shown or hidden, with the number of open suggestions and comments, and the
   // mode, Editing or Suggesting (ModeControl). Each button says its key, where it has one (the menus give them).
 
+  import { popupReleased } from "$lib/contextMenu";
   import { TEXT_WIDTH, keys, type FindBar, type Format, type ReviewMode, type ReviewView } from "papers-write/editor";
   import ModeControl from "$lib/ModeControl.svelte";
   import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
@@ -105,7 +106,7 @@
     const items = await Promise.all(
       choices.map(([a, text]) => CheckMenuItem.new({ text, checked: appearance === a, action: () => onappearance(a) })),
     );
-    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+    await popupReleased(await Menu.new({ items }), new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
   /** the popover of the column's width is open; the width last set, kept while the text is full width */
   let sizing = $state(false);

@@ -16,7 +16,16 @@
 
   type At = { page: number; x: number; y: number };
   type Around = { before: string[]; after: string[] };
-  let { onsource, onsay }: { onsource: (pdf: string, text: string, at: At | null, word: string, around: Around) => void; onsay: (what: string) => void } = $props();
+  let {
+    onsource,
+    onsay,
+    onpreview,
+  }: {
+    onsource: (pdf: string, text: string, at: At | null, word: string, around: Around) => void;
+    onsay: (what: string) => void;
+    /** the pane switched to the Markdown preview (a Markdown text only): first in the PDF's list, and in its menu */
+    onpreview?: () => void;
+  } = $props();
 
   type Offered = { path: string; name: string; modified: number };
   type Side = { pdf: string | null; offered: Offered[] };
@@ -55,6 +64,8 @@
       (side?.offered ?? []).slice(0, 15).map((o) => MenuItem.new({ text: o.name, action: () => void choose(o.path) })),
     );
     const items = [
+      // the preview of the text instead, for now: not the document's PDF
+      ...(onpreview ? [await MenuItem.new({ text: "Markdown Preview", action: onpreview }), await PredefinedMenuItem.new({ item: "Separator" })] : []),
       ...offered,
       ...(offered.length ? [await PredefinedMenuItem.new({ item: "Separator" })] : []),
       await MenuItem.new({ text: "Other…", action: () => void other() }),
@@ -160,6 +171,7 @@
           onhistory={(h: { back: boolean; forward: boolean }) => (history = h)}
           onoutline={(items: { level: number; title: string; page: number | null }[]) => (outline = items)}
           onsource={(text: string, at: At | null, word: string, around: Around) => side?.pdf && onsource(side.pdf, text, at, word, around)}
+          menuItem={onpreview ? { text: "Show Markdown Preview", action: onpreview } : null}
         />
       {/key}
     {:else if side}

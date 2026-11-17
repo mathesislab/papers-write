@@ -19,6 +19,7 @@
   // opened from the tree shows in a tab of its own, another page: that page's tree takes the keys back, on the file
   // (`FOCUS`, which the pages of an app share).
 
+  import { popupReleased } from "$lib/contextMenu";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { REVEAL } from "../editor/platform";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -178,7 +179,7 @@
     e.preventDefault();
     const tools = folderItems(root);
     const items = await Promise.all([...tools, ...(tools.length ? [separator()] : []), item(REVEAL, () => onreveal(root))]);
-    await (await Menu.new({ items })).popup(new LogicalPosition(e.clientX, e.clientY));
+    await popupReleased(await Menu.new({ items }), new LogicalPosition(e.clientX, e.clientY));
   }
 
   /** the name of the project folder */
@@ -200,7 +201,7 @@
     if (outside && top && onunlink) items.push(separator(), item("Remove Link", () => onunlink(node)));
     if (!outside && ontrash) items.push(separator(), item("Move to Trash…", () => ontrash(node)));
     // at the pointer (without a place, it opens elsewhere in the window)
-    await (await Menu.new({ items: await Promise.all(items) })).popup(new LogicalPosition(e.clientX, e.clientY));
+    await popupReleased(await Menu.new({ items: await Promise.all(items) }), new LogicalPosition(e.clientX, e.clientY));
   }
 
   /** the folder a Markdown file is being named in, and the name typed so far */

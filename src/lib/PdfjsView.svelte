@@ -5,6 +5,7 @@
   // text gives the line clicked (`onsource`), for the page to open its source there.
 
   import { readAloudItems } from "$lib/readAloud";
+  import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -24,6 +25,7 @@
     onhistory,
     onopen,
     onsource,
+    menuItem = null,
     onoutline,
   }: {
     path: string;
@@ -40,6 +42,8 @@
     /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
      *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
     onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string, around: { before: string[]; after: string[] }) => void;
+    /** an item of the page's own in the menu, after Go to Source (the pane: Show Markdown Preview) */
+    menuItem?: { text: string; action: () => void } | null;
     /** the PDF's outline (its bookmarks), in order, each with its depth and the page it goes to (none: unknown) */
     onoutline?: (items: { level: number; title: string; page: number | null }[]) => void;
   } = $props();
@@ -235,7 +239,7 @@
     return { before: words(text.slice(Math.max(0, from - 160), from)).slice(-6), after: words(text.slice(to, to + 160)).slice(0, 6), word: text.slice(from, to) };
   }
 
-  /** A right-click on the text: Find in Source (as a ⌃-click), and Copy. */
+  /** A right-click on the text: Go to Source (as a ⌃-click), the page's own item, and Copy. */
   async function sourceMenu(e: MouseEvent) {
     if (!onsource) return;
     const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
@@ -247,11 +251,13 @@
     const reading = await readAloudItems(selected || fromHere(span), selected ? "Read Aloud" : "Read Aloud from Here");
     const items = await Promise.all([
       ...reading,
-      MenuItem.new({ text: `Find in Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word, around) }),
+      MenuItem.new({ text: `Go to Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word, around) }),
+      ...(menuItem ? [MenuItem.new(menuItem)] : []),
+      PredefinedMenuItem.new({ item: "Separator" }),
       PredefinedMenuItem.new({ item: "Copy" }),
     ]);
     // at the pointer (without a place, it opens elsewhere in the window)
-    await (await Menu.new({ items })).popup(new LogicalPosition(e.clientX, e.clientY));
+    await popupReleased(await Menu.new({ items }), new LogicalPosition(e.clientX, e.clientY));
   }
 
   /** The page's text from `span` to its end, as a selection of it would copy it (its lines and spaces). */

@@ -114,6 +114,8 @@
     {#each TABS as [id, name] (id)}
       <button role="tab" aria-selected={tab === id} class:on={tab === id} onclick={() => (id === "search" ? find() : (tab = id))}>{name}</button>
     {/each}
+    <!-- the sidebar hidden, as View ▸ Show Sidebar and a click on the project's tile do -->
+    <button class="close" onclick={onclose} title="Hide Sidebar" aria-label="Hide Sidebar">×</button>
   </div>
   <div class="body" class:hidden={tab !== "files"}>
     {#if trashing}
@@ -166,6 +168,15 @@
     gap: 2px;
     padding: 6px 6px 5px;
     border-bottom: 1px solid var(--line);
+  }
+  .tabs .close {
+    flex: none;
+    width: 22px;
+    font-size: 15px;
+    line-height: 1;
+  }
+  .tabs .close:hover {
+    color: var(--fg);
   }
   .tabs button {
     flex: 1;

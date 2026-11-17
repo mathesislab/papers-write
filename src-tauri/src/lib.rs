@@ -56,6 +56,7 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
 }
 
 pub fn run() {
+    eprintln!("[papers-write {}] start", papers_tabs::stamp());
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -246,7 +247,7 @@ pub fn run() {
             // the files handed over while launching, or else a window of untitled text; files that come after this
             // take the blank window
             RunEvent::Ready => {
-                eprintln!("[papers-write] ready");
+                eprintln!("[papers-write {}] ready", papers_tabs::stamp());
                 documents::ready(app);
                 package::sweep(app);
             }

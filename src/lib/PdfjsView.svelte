@@ -4,7 +4,10 @@
   // element. Back and Forward are the pages the links and the jumps (Go to Page, first, last) left. A ⌃-click on the
   // text gives the line clicked (`onsource`), for the page to open its source there.
 
+  import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
+  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { GlobalWorkerOptions, getDocument, type PDFDocumentLoadingTask } from "pdfjs-dist";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
   import { EventBus, PDFFindController, PDFLinkService, PDFViewer } from "pdfjs-dist/web/pdf_viewer.mjs";
@@ -21,6 +24,7 @@
     onhistory,
     onopen,
     onsource,
+    menuItem = null,
     onoutline,
   }: {
     path: string;
@@ -37,6 +41,8 @@
     /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
      *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
     onsource?: (text: string, at: { page: number; x: number; y: number } | null, word: string, around: { before: string[]; after: string[] }) => void;
+    /** an item of the page's own in the menu, after Go to Source (the pane: Show Markdown Preview) */
+    menuItem?: { text: string; action: () => void } | null;
     /** the PDF's outline (its bookmarks), in order, each with its depth and the page it goes to (none: unknown) */
     onoutline?: (items: { level: number; title: string; page: number | null }[]) => void;
   } = $props();
@@ -232,6 +238,24 @@
     return { before: words(text.slice(Math.max(0, from - 160), from)).slice(-6), after: words(text.slice(to, to + 160)).slice(0, 6), word: text.slice(from, to) };
   }
 
+  /** A right-click on the text: Go to Source (as a ⌃-click), the page's own item, and Copy. */
+  async function sourceMenu(e: MouseEvent) {
+    if (!onsource) return;
+    const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
+    if (!span) return;
+    e.preventDefault();
+    const [text, at, word, around] = [lineOf(span), pointOf(e), wordAt(e), aroundOf(e, span)];
+    const mac = navigator.userAgent.includes("Mac");
+    const items = await Promise.all([
+      MenuItem.new({ text: `Go to Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word, around) }),
+      ...(menuItem ? [MenuItem.new(menuItem)] : []),
+      PredefinedMenuItem.new({ item: "Separator" }),
+      PredefinedMenuItem.new({ item: "Copy" }),
+    ]);
+    // at the pointer (without a place, it opens elsewhere in the window)
+    await popupReleased(await Menu.new({ items }), new LogicalPosition(e.clientX, e.clientY));
+  }
+
   /** The word under the pointer, in the text layer. */
   function wordAt(e: MouseEvent): string {
     const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
@@ -244,6 +268,195 @@
     while (to < text.length && isWord(text[to])) to++;
     return text.slice(from, to);
   }
+
+  /** The place of a source line shown and marked (Show in PDF): `box`, the line of the PDF it most likely is, scrolled
+   *  to; `regions`, where the paragraph the source line made is (each page's band, in PDF points from the page's
+   *  top); `word` and the words around it in the source (`before`, `after`), which pick the place of the word in the
+   *  regions: the one whose neighbours in the PDF are most like them, the nearest to `box` among equals. What was
+   *  marked, said. */
+  export function showBox(
+    box: { page: number; x: number; y: number; width: number; height: number },
+    word = "",
+    regions: { page: number; top: number; bottom: number }[] = [],
+    before: string[] = [],
+    after: string[] = [],
+  ): string {
+    const pageView = viewer?.getPageView(box.page - 1);
+    if (!viewer || !pageView) return "the PDF is not read yet";
+    const [, , , top] = pageView.viewport.viewBox;
+    // PDF space: from the bottom left
+    const [x1, y1, x2, y2] = [box.x, top - box.y - 3, box.x + box.width, top - box.y + box.height];
+    behind.push(here());
+    ahead = [];
+    told();
+    viewer.scrollPageIntoView({ pageNumber: box.page, destArray: [null, { name: "XYZ" }, x1, y2 + 40, null] });
+    // marked once the pages are drawn, and again each time pdf.js draws them anew, till the next click in the PDF
+    clearMarks();
+    const own = { page: box.page, top: box.y - box.height * 3, bottom: box.y + box.height };
+    marked = { page: box.page, line: [x1, y1, x2, y2], word, regions: regions.length ? regions : [own], before, after };
+    return drawMark();
+  }
+
+  /** The marks of Show in PDF taken off: the word's highlight unwrapped, the line's spans let go. */
+  function clearMarks() {
+    for (const mark of container.querySelectorAll<HTMLElement>(".synced-word")) {
+      const parent = mark.parentNode;
+      mark.replaceWith(...mark.childNodes);
+      // its text one node again, as pdf.js made it: split, the next search would read only a part of it
+      parent?.normalize();
+    }
+    for (const span of container.querySelectorAll<HTMLElement>(".synced-line")) span.classList.remove("highlight", "selected", "synced-line");
+  }
+
+  /** The words of a text as they compare: lower case, letters and digits. */
+  const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+
+  /** The mark drawn in the text layers, as pdf.js marks what Find found (a box laid over the page is not drawn over
+   *  its canvas by WebKitGTK): the word where its neighbours are most like the source's, else the most likely line's
+   *  spans. What was marked, said. */
+  function drawMark(): string {
+    if (!marked || !viewer) return "";
+    const m = marked;
+    if (container.querySelector(".synced-word, .synced-line")) return "marked";
+    const pattern = m.word ? new RegExp(`(?<![\\p{L}\\p{N}])${m.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "giu") : null;
+    const before = new Set(m.before.map((w) => w.toLowerCase()));
+    const after = new Set(m.after.map((w) => w.toLowerCase()));
+    let best: { score: number; distance: number; parts: { span: HTMLElement; from: number; to: number }[] } | null = null;
+    let waiting = false;
+    // the pages of the paragraph, whole: the map can give a paragraph's lines to other lines of the source, and the
+    // words around the word, not the place, pick the right one; the most likely line only breaks ties
+    for (const page of [...new Set(m.regions.map((r) => r.page))]) {
+      const pageView = viewer.getPageView(page - 1);
+      const pageDiv = pageView?.div as HTMLElement | undefined;
+      if (!pageView || !pageDiv) continue;
+      // the text layer's spans of text: not the wrappers of others (pdf.js's marked content), not the highlights inside
+      // them (Find's, the marks), which are of their span's text
+      const isMark = (e: Element) => e.classList.contains("highlight") || e.classList.contains("synced-word");
+      const leaves = [...pageDiv.querySelectorAll<HTMLElement>(".textLayer span")].filter(
+        (s) => !isMark(s) && ![...s.children].some((c) => c.tagName === "SPAN" && !isMark(c)) && !!s.textContent,
+      );
+      if (!leaves.length) {
+        waiting = true;
+        continue;
+      }
+      const [, , , top] = pageView.viewport.viewBox;
+      const yOf = (fromTop: number) => pageView.viewport.convertToViewportPoint(0, top - fromTop)[1] as number;
+      const origin = pageDiv.getBoundingClientRect().top + pageDiv.clientTop;
+      const lineMiddle = page === m.page ? (yOf(top - m.line[1]) + yOf(top - m.line[3])) / 2 : null;
+      // the spans in reading order: grouped in lines (their middles within half a line of each other: a citation, a
+      // figure in another font sit a little higher or lower), each line from left to right
+      const placed = leaves.map((span) => ({ span, rect: span.getBoundingClientRect() })).sort((x, y) => x.rect.top + x.rect.height / 2 - (y.rect.top + y.rect.height / 2));
+      const lines: (typeof placed)[] = [];
+      for (const p of placed) {
+        const last = lines[lines.length - 1];
+        const mid = (r: DOMRect) => r.top + r.height / 2;
+        if (last && Math.abs(mid(last[0].rect) - mid(p.rect)) < Math.max(p.rect.height, last[0].rect.height) / 2) last.push(p);
+        else lines.push([p]);
+      }
+      // their text, a space between spans except between two that touch (a word written in pieces: P and 4)
+      let flat = "";
+      const pieces: { span: HTMLElement; start: number; middle: number }[] = [];
+      for (const line of lines) {
+        line.sort((x, y) => x.rect.left - y.rect.left);
+        line.forEach(({ span, rect }, i) => {
+          const prev = line[i - 1]?.rect;
+          if (flat && !(prev && rect.left - prev.right < rect.height * 0.2)) flat += " ";
+          pieces.push({ span, start: flat.length, middle: rect.top + rect.height / 2 - origin });
+          flat += span.textContent ?? "";
+        });
+      }
+      if (!pattern) continue;
+      for (const found of flat.matchAll(pattern)) {
+        const at = found.index ?? 0;
+        const end = at + found[0].length;
+        // the pieces the word is in (one, or several where the PDF writes it in pieces)
+        const parts = pieces
+          .filter((p) => p.start < end && p.start + (p.span.textContent?.length ?? 0) > at)
+          .map((p) => ({ span: p.span, from: Math.max(0, at - p.start), to: Math.min(p.span.textContent?.length ?? 0, end - p.start), middle: p.middle }));
+        if (!parts.length) continue;
+        const score =
+          wordsOf(flat.slice(Math.max(0, at - 90), at)).slice(-6).filter((w) => before.has(w)).length +
+          wordsOf(flat.slice(end, end + 90)).slice(0, 6).filter((w) => after.has(w)).length;
+        const distance = lineMiddle === null ? 1e6 : Math.abs(parts[0].middle - lineMiddle);
+        if (!best || score > best.score || (score === best.score && distance < best.distance)) best = { score, distance, parts };
+      }
+    }
+    if (best) {
+      // each piece marked (from the last, so that the earlier ones' places hold)
+      for (const part of [...best.parts].reverse()) {
+        if (part.to <= part.from) continue;
+        markText(part.span, part.from, part.to);
+      }
+      return best.score ? "word marked" : "word marked (its neighbours differ)";
+    }
+    if (waiting) return "marked once the page is drawn";
+    // the word is not in the text (math, a citation): the most likely line
+    const pageView = viewer.getPageView(m.page - 1);
+    const pageDiv = pageView?.div as HTMLElement | undefined;
+    if (!pageView || !pageDiv) return "no such page";
+    const origin = pageDiv.getBoundingClientRect().top + pageDiv.clientTop;
+    const ys = [m.line[1], m.line[3]].map((y) => pageView.viewport.convertToViewportPoint(0, y)[1] as number);
+    const middle = (ys[0] + ys[1]) / 2;
+    const height = Math.abs(ys[1] - ys[0]);
+    let lines = 0;
+    for (const span of pageDiv.querySelectorAll<HTMLElement>(".textLayer span:not(.synced-word)")) {
+      const r = span.getBoundingClientRect();
+      if (Math.abs(r.top + r.height / 2 - origin - middle) <= height / 2 + 2) {
+        span.classList.add("highlight", "selected", "synced-line");
+        lines++;
+      }
+    }
+    return lines ? "line marked (the word is not in the PDF's text there)" : "nothing of the page's text there to mark";
+  }
+
+
+  /** The characters [from, to) of a span's text wrapped in a mark, through whichever text nodes hold them (a span's
+   *  text can be in several: Find's highlights split it). */
+  function markText(span: HTMLElement, from: number, to: number) {
+    const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+    const nodes: { node: Text; start: number }[] = [];
+    let at = 0;
+    for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+      nodes.push({ node: n, start: at });
+      at += n.length;
+    }
+    for (const { node, start } of nodes.reverse()) {
+      const a = Math.max(from, start) - start;
+      const b = Math.min(to, start + node.length) - start;
+      if (b <= a) continue;
+      const range = document.createRange();
+      range.setStart(node, a);
+      range.setEnd(node, b);
+      const mark = document.createElement("span");
+      mark.className = "highlight selected synced-word";
+      range.surroundContents(mark);
+    }
+  }
+
+  /** A page's text layer drawn anew (pdf.js makes it again as it draws the page): the mark drawn on it again. */
+  function redrawn({ pageNumber }: { pageNumber: number }) {
+    if (marked?.regions.some((r) => r.page === pageNumber)) drawMark();
+  }
+
+  /** The place marked by Show in PDF: the page and line (PDF space) most likely, the word, the paragraph's regions,
+   *  the source's words around the word. */
+  let marked: {
+    page: number;
+    line: number[];
+    word: string;
+    regions: { page: number; top: number; bottom: number }[];
+    before: string[];
+    after: string[];
+  } | null = null;
+
+
+
+
+
+
+
+
+
 
   /** The place of a click in the PDF: its page, and its point in PDF points from the page's top left. */
   function pointOf(e: MouseEvent): { page: number; x: number; y: number } | null {
@@ -262,6 +475,7 @@
   onMount(() => {
     let task: PDFDocumentLoadingTask | null = null;
     container.addEventListener("click", sourceClick, true);
+    container.addEventListener("contextmenu", sourceMenu);
     const pages = document.createElement("div");
     pages.className = "pdfViewer";
     container.append(pages);
@@ -286,6 +500,12 @@
       if (page > 1) view.currentPageNumber = Math.min(page, count);
     });
     bus.on("pagechanging", ({ pageNumber }: { pageNumber: number }) => onpage(pageNumber));
+    bus.on("textlayerrendered", redrawn);
+    // a click in the PDF: the mark of Show in PDF gone
+    container.addEventListener("pointerdown", () => {
+      marked = null;
+      clearMarks();
+    });
     // FOUND 0, NOT_FOUND 1, WRAPPED 2, PENDING 3
     bus.on("updatefindcontrolstate", ({ state }: { state: number }) => {
       if (state === 3 || !answer) return;
@@ -337,6 +557,7 @@
     })();
     return () => {
       container.removeEventListener("click", sourceClick, true);
+      container.removeEventListener("contextmenu", sourceMenu);
       resize.disconnect();
       task?.destroy();
     };
@@ -361,6 +582,11 @@
     overflow: auto;
     outline: none;
     background: var(--sidebar, #eeeef1);
+  }
+  /* what Find found, in a highlighter's yellow as the place Show in PDF found */
+  .pdf :global(.textLayer .highlight) {
+    --highlight-bg-color: rgba(255, 221, 0, 0.45);
+    --highlight-selected-bg-color: rgba(255, 170, 0, 0.6);
   }
   .error {
     position: absolute;

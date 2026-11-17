@@ -13,6 +13,7 @@
   // opened in the default app, removed from the project (a link) or moved to the Trash. The app adds its own: a pill
   // on a row (`badge`), items atop a file's menu (`extra`).
 
+  import { popupReleased } from "$lib/contextMenu";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import type { Kind, Node } from "./types";
 
@@ -71,7 +72,7 @@
     e.preventDefault();
     const tools = folderItems(root);
     const items = await Promise.all([...tools, ...(tools.length ? [separator()] : []), item("Reveal in Finder", () => onreveal(root))]);
-    await (await Menu.new({ items })).popup();
+    await popupReleased(await Menu.new({ items }));
   }
 
   /** the name of the project folder */
@@ -91,7 +92,7 @@
     if (!node.missing) items.push(item("Reveal in Finder", () => onreveal(node.path)));
     if (outside && top && onunlink) items.push(separator(), item("Remove Link", () => onunlink(node)));
     if (!outside && ontrash) items.push(separator(), item("Move to Trash…", () => ontrash(node)));
-    await (await Menu.new({ items: await Promise.all(items) })).popup();
+    await popupReleased(await Menu.new({ items: await Promise.all(items) }));
   }
 
   /** the folder a Markdown file is being named in, and the name typed so far */

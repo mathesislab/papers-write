@@ -31,7 +31,10 @@
   // `pending_go_to` for a window made for it), Replace All of the search as `replace-all` to the windows of the files
   // it changes.
 
+  import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
+  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { onMount, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
   import { ensureSyntaxTree } from "@codemirror/language";
@@ -75,6 +78,8 @@
   import GitBar from "$lib/GitBar.svelte";
   import Toolbar from "$lib/Toolbar.svelte";
   import Frame from "$lib/Frame.svelte";
+  import SidePdf from "$lib/SidePdf.svelte";
+  import { phrasesAt, plainOf } from "$lib/pdfSearch";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Appearance, type Settings } from "$lib/settings";
@@ -139,6 +144,9 @@
   let checking = $state<{ check?: Check; error?: string } | null>(null);
   /** the pane of the preview: shown, what pandoc made of the text, the block of the cursor, its width */
   let previewing = $state(false);
+  /** the PDF beside the text rather than the preview (View ▸ Show PDF), and its pane */
+  let pdfBeside = $state(false);
+  let sidePdf = $state<SidePdf>();
   let html = $state("");
   let said = $state("");
   let block = $state(0);
@@ -170,6 +178,7 @@
   async function ask() {
     log = [];
     path = (await invoke<{ path: string | null }>("document")).path;
+    void restorePane();
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
     const going = await invoke<{ at: number; end: number; mark: boolean } | null>("pending_go_to").catch(() => null);
@@ -221,6 +230,7 @@
 
   /** The top-level blocks of the text that pandoc shows, before and including the cursor's: front matter, link
    *  definitions, comments and raw LaTeX environments are not in its HTML. */
+  const HIDDEN_BLOCKS = new Set(["FrontMatter", "LinkReference", "CommentBlock", "LatexEnvironment"]);
   function follow() {
     const view = editor?.view();
     if (!previewing || !view || !follows) return;
@@ -228,10 +238,24 @@
     const head = state.selection.main.head;
     const tree = ensureSyntaxTree(state, state.doc.length, 50);
     if (!tree) return;
-    const hidden = new Set(["FrontMatter", "LinkReference", "CommentBlock", "LatexEnvironment"]);
     let index = -1;
-    for (let n = tree.topNode.firstChild; n && n.from <= head; n = n.nextSibling) if (!hidden.has(n.name)) index++;
+    for (let n = tree.topNode.firstChild; n && n.from <= head; n = n.nextSibling) if (!HIDDEN_BLOCKS.has(n.name)) index++;
     block = Math.max(index, 0);
+  }
+
+  /** A click in the preview: the text scrolled to the block clicked (the `index`th block pandoc shows, as `follow`
+   *  counts them), its start a little below the top; the cursor stays where it is. */
+  function scrollToBlock(index: number) {
+    const view = editor?.view();
+    if (!view) return;
+    const tree = ensureSyntaxTree(view.state, view.state.doc.length, 50);
+    if (!tree) return;
+    let i = -1;
+    for (let n = tree.topNode.firstChild; n; n = n.nextSibling) {
+      if (HIDDEN_BLOCKS.has(n.name) || ++i < index) continue;
+      view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: 48 }) });
+      return;
+    }
   }
 
   /** The cursor's moves, told a moment later. */
@@ -241,14 +265,166 @@
     following = setTimeout(follow, 150);
   });
 
-  function togglePreview() {
+  /** The pane beside a file (the preview, the PDF, or none), kept per file for when it opens again (localStorage: the
+   *  pages share it). */
+  const paneKey = (file: string) => `pane:${file}`;
+  function keepPane() {
+    if (!path) return;
+    try {
+      const pane = previewing ? "preview" : pdfBeside ? "pdf" : "";
+      if (pane) localStorage.setItem(paneKey(path), pane);
+      else localStorage.removeItem(paneKey(path));
+    } catch {}
+  }
+  async function restorePane() {
+    if (!path) return;
+    // a tab behind the one in front: when it first comes to the front (a PDF or a preview made for each tab at the
+    // start, all at once, made it slow)
+    if (!(await invoke<boolean>("page_in_front").catch(() => true))) {
+      const unlisten = await listen<boolean>("tab-shown", (e) => {
+        if (!e.payload) return;
+        void unlisten();
+        void restoreNow();
+      });
+      return;
+    }
+    restoreNow();
+  }
+  function restoreNow() {
+    if (!path) return;
+    let pane: string | null = null;
+    try {
+      pane = localStorage.getItem(paneKey(path));
+    } catch {}
+    if (pane === "pdf" && !pdfBeside) togglePdf(false);
+    else if (pane === "preview" && !previewing && markdown) togglePreview(false);
+  }
+
+  function togglePreview(keep = true) {
     if (!markdown) return;
     previewing = !previewing;
     if (previewing) {
       panel = false;
+      pdfBeside = false;
       follow();
       refresh();
     }
+    if (keep) keepPane();
+  }
+
+  /** View ▸ Show PDF: the PDF beside the text, in the preview's place. */
+  function togglePdf(keep = true) {
+    if (!path) return say("Save the document first, to show its PDF");
+    pdfBeside = !pdfBeside;
+    if (pdfBeside) [previewing, panel] = [false, false];
+    if (keep) keepPane();
+  }
+
+  let previewPane = $state<Preview>();
+
+  /** ⌃-click in the text, or Show in … of its menu: where the cursor is, shown in the pane beside it: the preview's
+   *  block when the preview is shown, else in the PDF (shown first when it is not). */
+  function syncHere() {
+    if (previewing && markdown) showInPreview();
+    else void showInPdf();
+  }
+
+  /** Show in Preview: the preview shown (in place of the PDF), scrolled to the cursor's block, which flashes. */
+  async function showInPreview() {
+    if (!markdown) return;
+    if (!previewing) {
+      togglePreview();
+      // its HTML made first
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    follow();
+    queueMicrotask(() => previewPane?.flash());
+  }
+
+  /** A right-click in the text: Show in Preview or in PDF, and the edits of the selection. */
+  async function editorMenu(e: MouseEvent) {
+    const where = previewing && markdown ? "Preview" : "PDF";
+    const mac = navigator.userAgent.includes("Mac");
+    const click = ` (${mac ? "⌘" : "Ctrl"}-click)`;
+    const items = await Promise.all([
+      // the pane shown says what ⌘-click does
+      ...(markdown ? [MenuItem.new({ text: `Show in Preview${where === "Preview" ? click : ""}`, action: () => void showInPreview() })] : []),
+      MenuItem.new({ text: `Show in PDF${where === "PDF" ? click : ""}`, enabled: !!path, action: () => void showInPdf() }),
+      PredefinedMenuItem.new({ item: "Separator" }),
+      PredefinedMenuItem.new({ item: "Cut" }),
+      PredefinedMenuItem.new({ item: "Copy" }),
+      PredefinedMenuItem.new({ item: "Paste" }),
+      PredefinedMenuItem.new({ item: "SelectAll" }),
+      // macOS: the system's Services, as its own menu had them (Look Up and Speech are not open to apps' menus)
+      ...(mac ? [PredefinedMenuItem.new({ item: "Separator" }), PredefinedMenuItem.new({ item: "Services" })] : []),
+    ]);
+    await popupReleased(await Menu.new({ items }), new LogicalPosition(e.clientX, e.clientY));
+  }
+
+  /** ⌃-click in the preview: the words of its block looked for in the text, the word clicked marked there. */
+  async function previewToSource(text: string, word: string, around: { before: string[]; after: string[] }) {
+    const place = await invoke<[number, number] | null>("place_in_text", { text: current(), query: text, word, around }).catch(() => null);
+    if (place) editor?.markFound(place[0], place[1]);
+    else say("Not found in the text");
+  }
+
+  // View ▸ Show Preview and Show PDF say Hide while shown: told as they change, and as the window comes to the front
+  $effect(() => {
+    const shown = { preview: previewing && markdown, pdf: pdfBeside };
+    const tell = () => invoke("view_shown", shown).catch(() => {});
+    tell();
+    window.addEventListener("focus", tell);
+    return () => window.removeEventListener("focus", tell);
+  });
+
+  /** Show in PDF: the place of the cursor in the PDF beside the text (shown first if it is not): exactly from the
+   *  map the build left beside the PDF, else by the words around the cursor, the longest phrase of them first. */
+  async function showInPdf() {
+    try {
+      await showInPdfNow();
+    } catch (e) {
+      say(`Show in PDF: ${e}`);
+      sidePdf?.tell(`Show in PDF: ${e}`);
+    }
+  }
+
+  async function showInPdfNow() {
+    const view = editor?.view();
+    if (!view || !path) return;
+    if (!pdfBeside) {
+      togglePdf();
+      // the pane and its PDF read first
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    const head = view.state.selection.main.head;
+    const line = view.state.doc.lineAt(head);
+    // exactly, from the map the build left beside the PDF; else by the words around the cursor
+    // the word selected, else the word at the cursor
+    const { from, to } = view.state.selection.main;
+    const selected = view.state.sliceDoc(from, to).trim();
+    const range = view.state.wordAt(head);
+    const word = selected && !/\s/.test(selected) ? selected : range ? view.state.sliceDoc(range.from, range.to) : "";
+    const along = line.length ? (head - line.from) / line.length : 0;
+    // the words around it, which pick its place among the word's places in the PDF
+    const words = (t: string) => plainOf(t).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+    const before = words(line.text.slice(0, Math.min(from, head) - line.from)).slice(-6);
+    const after = words(line.text.slice(Math.max(to, head) - line.from)).slice(0, 6);
+    const page = await sidePdf?.showSource(path, line.number, word, along, before, after);
+    if (page) return say(`Shown in the PDF: page ${page}`);
+    for (const phrase of phrasesAt(line.text, head - line.from)) {
+      if (await sidePdf?.find(phrase)) {
+        sidePdf?.tell(`found by its words: “${phrase}”`);
+        return say("Found in the PDF by its words (no map from the build beside it)");
+      }
+    }
+    sidePdf?.tell("not found");
+    say(sidePdf?.showing() ? "Not found in the PDF" : "Choose the PDF to show beside the text");
+  }
+
+  /** ⌃-click in the PDF beside the text: its source there (this text, or another file in its tab). */
+  async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null, word = "", around = { before: [] as string[], after: [] as string[] }) {
+    const found = await invoke<boolean>("open_source_at", { pdf, text, at, word, around }).catch(() => false);
+    if (!found) say("Not found in the project's sources");
   }
 
   /** The split dragged: the width of the preview, kept for the window. */
@@ -398,7 +574,7 @@
 
   function togglePanel() {
     panel = !panel;
-    if (panel) previewing = false;
+    if (panel) [previewing, pdfBeside] = [false, false];
   }
 
   /** A choice of the Review menu. */
@@ -452,8 +628,37 @@
     if (what === "find-project") {
       return frame?.findInProject();
     }
+    // the PDF beside the text in front: its own find (it cannot be replaced in)
+    if (pdfFront && pdfBeside && sidePdf && what !== "find-replace") {
+      if (what === "find") return sidePdf.focusFind();
+      if (what === "find-next" || what === "find-previous") return void sidePdf.findAgain(what === "find-previous");
+      if (what === "find-selection") return sidePdf.findSelection();
+    }
     editor?.find(what === "find-replace" ? "replace" : (what.replace(/^find-?/, "") || "find") as FindCommand);
   }
+
+  /** Whether the PDF beside the text had the keys last (a click in it, its find field), rather than the text: Find,
+   *  Find Next and Find Previous are then its own. */
+  let pdfFront = $state(false);
+  $effect(() => {
+    const focused = (e: FocusEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.(".side-pdf")) pdfFront = true;
+      else if (target?.closest?.(".editor, .toolbar")) pdfFront = false;
+    };
+    // F3 and ⇧F3 in the PDF, as Linux and Windows have them beside the menu's ⌘G and ⇧⌘G (the text's search has them)
+    const f3 = (e: KeyboardEvent) => {
+      if (e.key !== "F3" || e.ctrlKey || e.metaKey || e.altKey || !pdfFront) return;
+      e.preventDefault();
+      findCommand(e.shiftKey ? "find-previous" : "find-next");
+    };
+    document.addEventListener("focusin", focused);
+    document.addEventListener("keydown", f3, true);
+    return () => {
+      document.removeEventListener("focusin", focused);
+      document.removeEventListener("keydown", f3, true);
+    };
+  });
 
   /** The keys to the sheet as it opens, so Esc reaches it. */
   const grab = (node: HTMLElement) => node.focus();
@@ -582,7 +787,8 @@
       listen<string>("edit", (e) => edit(e.payload)),
       listen<string>("git-menu", (e) => git?.run(e.payload)),
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
-      listen("preview", togglePreview),
+      listen("preview", () => togglePreview()),
+      listen("pdf-beside", () => togglePdf()),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number; mark: boolean }>("go-to", (e) => goTo(e.payload)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -616,6 +822,15 @@
   onfocus={() => editor?.focus()}
 >
   <div class="body">
+  <!-- the column of text dragged at its edges: its width kept (COLUMN_WIDTH_EVENT) -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="panes" bind:this={panes} {@attach (el) => {
+    const kept = (e: Event) => invoke("set_text_width", { width: (e as CustomEvent<number>).detail });
+    el.addEventListener(COLUMN_WIDTH_EVENT, kept);
+    return () => el.removeEventListener(COLUMN_WIDTH_EVENT, kept);
+  }}>
+  <!-- the text's column: its toolbar above it, so that its tools stay with it when a pane is beside it -->
+  <div class="text">
   <Toolbar
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
@@ -637,14 +852,7 @@
     onsize={(by) => invoke("zoom_window", { by })}
     onappearance={(a) => invoke("set_appearance", { appearance: a })}
   />
-  <!-- the column of text dragged at its edges: its width kept (COLUMN_WIDTH_EVENT) -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="panes" bind:this={panes} {@attach (el) => {
-    const kept = (e: Event) => invoke("set_text_width", { width: (e as CustomEvent<number>).detail });
-    el.addEventListener(COLUMN_WIDTH_EVENT, kept);
-    return () => el.removeEventListener(COLUMN_WIDTH_EVENT, kept);
-  }}>
-  <div class="text">
+  <div class="editor">
   {#if path !== undefined}
     {#key path}
       {@const file = path}
@@ -666,6 +874,8 @@
         mono={!markdown && !latex}
         {latex}
         {prefs}
+        onsync={syncHere}
+        oncontext={editorMenu}
         {symbols}
         {completion}
         {hover}
@@ -683,10 +893,21 @@
     {/key}
   {/if}
   </div>
+  </div>
   {#if previewing && markdown}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
-    <div class="pane" style:width={width ? `${width * 100}%` : "45%"}><Preview {html} error={said} {block} /></div>
+    <div class="pane" style:width={width ? `${width * 100}%` : "45%"}>
+      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? () => togglePdf() : undefined} />
+      <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
+    </div>
+  {:else if pdfBeside && path}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="split" onpointerdown={drag}></div>
+    <div class="pane" style:width={width ? `${width * 100}%` : "45%"}>
+      <SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} onpreview={markdown ? () => togglePreview() : undefined} />
+      <button class="close-pane" onclick={() => togglePdf()} title="Hide PDF" aria-label="Hide PDF">×</button>
+    </div>
   {/if}
   {#if panel}
     <div class="pane review"><ReviewPanel {session} /></div>
@@ -795,10 +1016,16 @@
     color: var(--error);
   }
   .text {
-    position: relative;
     flex: 1;
     min-width: 0;
     height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .editor {
+    position: relative;
+    flex: 1;
+    min-height: 0;
   }
   .split {
     flex: none;
@@ -807,9 +1034,31 @@
     background: var(--line);
   }
   .pane {
+    position: relative;
     flex: none;
     min-width: 240px;
     max-width: 80%;
+  }
+  /* the pane closed: its × at the top right */
+  .close-pane {
+    position: absolute;
+    z-index: 4;
+    top: 3px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    opacity: 0.85;
+  }
+  .close-pane:hover {
+    color: var(--fg);
+    opacity: 1;
   }
   .review {
     width: 320px;

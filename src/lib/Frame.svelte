@@ -15,6 +15,7 @@
   // (⌥⌘O, `outline`) shows it on the outline. Shown or not, its tab, its width and its open folders are the same in
   // all the project's tabs (ProjectSidebar).
 
+  import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import { onMount, type Snippet } from "svelte";
@@ -109,6 +110,16 @@
     barTimer = setTimeout(loadBar, ms);
   }
 
+  // View ▸ Show Sidebar and Show Outline say Hide while they are shown: told as they change, and as the window comes
+  // to the front
+  $effect(() => {
+    const [shown, outline] = [side.shown, side.shown && sideTab === "outline"];
+    const tell = () => invoke("sidebar_shown", { shown, outline }).catch(() => {});
+    tell();
+    window.addEventListener("focus", tell);
+    return () => window.removeEventListener("focus", tell);
+  });
+
   export function toggleSidebar() {
     if (!sideRoot) return onsay("Save the document first, to see its folder");
     side.set({ shown: !side.shown });
@@ -149,7 +160,7 @@
       MenuItem.new({ text: "Project Info…", action: () => (carding = root) }),
       MenuItem.new({ text: "Remove from Bar", action: () => void invoke("remove_from_bar", { root }) }),
     ]);
-    await (await Menu.new({ items })).popup();
+    await popupReleased(await Menu.new({ items }));
   }
 
   function projectInfo() {

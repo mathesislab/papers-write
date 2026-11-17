@@ -164,6 +164,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
+            &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
             &separator()?,
@@ -342,7 +343,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "appearance-system" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::System),
         "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),
         "appearance-dark" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Dark),
-        "preview" | "outline" | "sidebar" => {
+        "preview" | "pdf-beside" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
             }
@@ -389,5 +390,32 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         _ => {}
+    }
+}
+
+/// An item of the menu bar, in whichever menu it is.
+fn item_of(app: &AppHandle, id: &str) -> Option<MenuItem<Wry>> {
+    let menu = app.menu()?;
+    menu.items().ok()?.into_iter().find_map(|kind| kind.as_submenu().and_then(|s| s.get(id)).and_then(|i| i.as_menuitem().cloned()))
+}
+
+/// View ▸ Show Sidebar and Show Outline saying Hide while the page in front shows them (as it tells, when it changes and when its
+/// window comes to the front); View ▸ Show Preview and Show PDF the same (`view_shown`).
+#[tauri::command]
+pub fn sidebar_shown(app: AppHandle, shown: bool, outline: bool) {
+    for (id, on, name) in [("sidebar", shown, "Sidebar"), ("outline", outline, "Outline")] {
+        if let Some(item) = item_of(&app, id) {
+            let _ = item.set_text(format!("{} {name}", if on { "Hide" } else { "Show" }));
+        }
+    }
+}
+
+/// View ▸ Show Preview and Show PDF saying Hide when the page in front shows them.
+#[tauri::command]
+pub fn view_shown(app: AppHandle, preview: bool, pdf: bool) {
+    for (id, shown, name) in [("preview", preview, "Preview"), ("pdf-beside", pdf, "PDF")] {
+        if let Some(item) = item_of(&app, id) {
+            let _ = item.set_text(format!("{} {name}", if shown { "Hide" } else { "Show" }));
+        }
     }
 }

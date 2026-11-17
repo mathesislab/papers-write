@@ -58,6 +58,8 @@
     prefs = PREFS,
     autosave = true,
     drafts,
+    onsync,
+    oncontext,
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
@@ -104,6 +106,11 @@
     autosave?: boolean;
     /** where the text typed and not saved is kept, with `autosave` off (`base`: the file's text it was typed over) */
     drafts?: { write: (path: string, text: string, base: string) => Promise<void>; drop: (path: string) => Promise<void> };
+    /** ⌃-click (⌘ on macOS) in the text: the cursor put there, then this (its place shown in the PDF or the preview);
+     *  extra cursors are made with ⌥-click instead */
+    onsync?: () => void;
+    /** a right-click in the text: the cursor put there (unless it is in the selection), then the app's menu */
+    oncontext?: (e: MouseEvent) => void;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -134,6 +141,32 @@
       // a highlighter's yellow: the text's own colours (links, citations, review) are often blue
       ".cm-found": { background: "rgba(255, 214, 0, 0.45)", borderRadius: "2px" },
       "&dark .cm-found": { background: "rgba(255, 214, 0, 0.32)" },
+    }),
+  ];
+
+  /** ⌃-click: the place shown elsewhere (`onsync`); a right-click: the app's menu (`oncontext`). */
+  const clicks = [
+    EditorView.clickAddsSelectionRange.of((e) => e.altKey),
+    EditorView.domEventHandlers({
+      mousedown(e, view) {
+        if (!onsync || e.button !== 0 || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        if (pos == null) return false;
+        e.preventDefault();
+        view.dispatch({ selection: { anchor: pos } });
+        view.focus();
+        onsync();
+        return true;
+      },
+      contextmenu(e, view) {
+        if (!oncontext) return false;
+        e.preventDefault();
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        const { from, to } = view.state.selection.main;
+        if (pos != null && (pos < from || pos > to)) view.dispatch({ selection: { anchor: pos } });
+        oncontext(e);
+        return true;
+      },
     }),
   ];
 
@@ -233,7 +266,7 @@
         diagnostics,
         spelling,
         placeholder,
-        extensions: [...extensions, selection, found, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
+        extensions: [...extensions, selection, found, clicks, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });
     if (review && reviewed !== review) {
       reviewed = review;

@@ -117,6 +117,37 @@ fn span_of(text: &str, line: u32, column: usize, word: &str, around: &Around) ->
     (offset_of(text, line, start), offset_of(text, line, end))
 }
 
+/// How long a lookup in a build's map may take (`texmark sync`, `synctex`): past it, the words are used.
+const LIMIT: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// A command's output, the command stopped when it takes longer than a limit.
+trait Within {
+    fn output_within(&mut self, limit: std::time::Duration) -> std::io::Result<std::process::Output>;
+}
+
+impl Within for std::process::Command {
+    fn output_within(&mut self, limit: std::time::Duration) -> std::io::Result<std::process::Output> {
+        use std::io::Read;
+        let mut child = self.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn()?;
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(status) = child.try_wait()? {
+                let mut stdout = Vec::new();
+                if let Some(mut out) = child.stdout.take() {
+                    out.read_to_end(&mut stdout)?;
+                }
+                return Ok(std::process::Output { status, stdout, stderr: Vec::new() });
+            }
+            if start.elapsed() > limit {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "took too long"));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+    }
+}
+
 /// A place in a PDF: its page (from 1) and a point of it in PDF points from the page's top left, as SyncTeX takes it.
 #[derive(serde::Deserialize, Clone, Copy)]
 pub struct At {
@@ -141,7 +172,8 @@ fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
             .arg(pdf)
             .args([at.page.to_string(), at.x.to_string(), at.y.to_string()])
             .env("PATH", crate::build::search_path(None))
-            .output()
+            .stdin(std::process::Stdio::null())
+            .output_within(LIMIT)
             .ok()?;
         let found: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
         let file = PathBuf::from(found.get("file")?.as_str()?);
@@ -155,7 +187,8 @@ fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
         .arg("-o")
         .arg(format!("{}:{}:{}:{}", at.page, at.x, at.y, pdf.display()))
         .env("PATH", crate::build::search_path(None))
-        .output()
+        .stdin(std::process::Stdio::null())
+        .output_within(LIMIT)
         .ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let field = |name: &str| text.lines().find_map(|l| l.strip_prefix(name)).map(str::trim);
@@ -163,6 +196,79 @@ fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
     let file = if file.is_absolute() { file } else { pdf.parent()?.join(file) };
     let line: u32 = field("Line:")?.parse().ok()?;
     (file.is_file() && line > 0).then_some((file, line))
+}
+
+/// Where text read off the preview (a block of it, and the word clicked) is in `text`, the document as typed: the
+/// start and end (UTF-16) of the word clicked, else of the words found; none when nothing matches.
+#[tauri::command]
+pub fn place_in_text(text: String, query: String, word: String, around: Option<Around>) -> Option<(usize, usize)> {
+    let place = srcmap::find_text(&[&text], &query).into_iter().next()?;
+    Some(span_of(&text, place.line, place.column, &word, &around.unwrap_or_default()))
+}
+
+/// A box of a PDF: its page, its left and baseline in PDF points from the page's top left, its size.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy)]
+pub struct Box {
+    page: u32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+/// Where line `line` (1-based) of `source` is in `pdf`, from the map the build left beside it: texmark's
+/// (`texmark sync forward`) for a Markdown source, SyncTeX's (`synctex view`) for a LaTeX one; none without one.
+#[tauri::command]
+pub async fn pdf_boxes(pdf: String, source: String, line: u32) -> Option<Vec<Box>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let pdf = Path::new(&pdf);
+        if beside(pdf, ".srcmap.json").is_some() && !source.ends_with(".tex") {
+            let texmark = crate::build::find_tool("texmark").ok()?;
+            let out = std::process::Command::new(texmark)
+                .args(["sync", "forward", &format!("{source}:{line}"), "--pdf"])
+                .arg(pdf)
+                .env("PATH", crate::build::search_path(None))
+                .stdin(std::process::Stdio::null())
+            .output_within(LIMIT)
+                .ok()?;
+            let found: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+            let boxes = if found.is_array() { found } else { serde_json::Value::Array(vec![found]) };
+            return serde_json::from_value(boxes).ok();
+        }
+        beside(pdf, ".synctex.gz")?;
+        let synctex = crate::build::find_tool("synctex").ok()?;
+        let out = std::process::Command::new(synctex)
+            .args(["view", "-i", &format!("{line}:0:{source}"), "-o"])
+            .arg(pdf)
+            .env("PATH", crate::build::search_path(None))
+            .stdin(std::process::Stdio::null())
+            .output_within(LIMIT)
+            .ok()?;
+        // records of `Page:`, `x:`, `y:`, `W:`, `H:` lines (`h:` and `v:` before them are the same, unrounded)
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut boxes = Vec::new();
+        let mut page = None;
+        let mut fields = std::collections::HashMap::new();
+        for l in text.lines() {
+            let Some((k, v)) = l.split_once(':') else { continue };
+            match k {
+                "Page" => page = v.trim().parse().ok(),
+                "h" | "v" | "W" | "H" => {
+                    fields.insert(k, v.trim().parse::<f64>().unwrap_or(0.0));
+                }
+                _ => {}
+            }
+            if k == "H"
+                && let (Some(page), Some(&x), Some(&y), Some(&w), Some(&h)) = (page, fields.get("h"), fields.get("v"), fields.get("W"), fields.get("H"))
+            {
+                boxes.push(Box { page, x, y, width: w, height: h });
+            }
+        }
+        (!boxes.is_empty()).then_some(boxes)
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 /// ⌃-click in a PDF: the source of the place clicked opened at it (as the sidebar's search opens a match), exactly

@@ -55,6 +55,12 @@ pub fn write(path: &Path, text: &str) -> std::io::Result<()> {
 /// window's page as `file-changed`. The page's own writes come too, which `FileEditor.changedOnDisk` finds to be what
 /// it wrote.
 pub fn watch(app: &AppHandle, label: &str, path: &Path) -> Result<(), String> {
+    watch_for(app, label, label, path, "file-changed")
+}
+
+/// `path` watched as `key` (a window's own file is watched as its label; other files of the window as keys of their
+/// own), a change sent to the window `label` as the event `told`. A watch of the same key before is given up.
+pub fn watch_for(app: &AppHandle, key: &str, label: &str, path: &Path, told: &'static str) -> Result<(), String> {
     let folder = path
         .parent()
         .and_then(|p| p.canonicalize().ok())
@@ -70,7 +76,7 @@ pub fn watch(app: &AppHandle, label: &str, path: &Path) -> Result<(), String> {
             )
             && event.paths.contains(&file)
         {
-            let _ = handle.emit_to(EventTarget::webview(target.clone()), "file-changed", ());
+            let _ = handle.emit_to(EventTarget::webview(target.clone()), told, ());
         }
     })
     .map_err(|e| format!("{}: not watched ({e})", path.display()))?;
@@ -81,7 +87,7 @@ pub fn watch(app: &AppHandle, label: &str, path: &Path) -> Result<(), String> {
         .0
         .lock()
         .unwrap()
-        .insert(label.to_string(), watcher);
+        .insert(key.to_string(), watcher);
     Ok(())
 }
 

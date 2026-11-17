@@ -68,7 +68,7 @@
 
   /** The place `line` (1-based) of the source `source` is at in the PDF, from the map its build left beside it
    *  (texmark's, or SyncTeX's for LaTeX), shown and marked; false without a map, or when it says nothing there. */
-  export async function showSource(source: string, line: number, word = "", along = 0): Promise<number | null> {
+  export async function showSource(source: string, line: number, word = "", along = 0, before: string[] = [], after: string[] = []): Promise<number | null> {
     if (!side?.pdf || !view || !("showBox" in view)) return null;
     status = "Looking it up in the build's map…";
     const boxes = await invoke<Box[] | null>("pdf_boxes", { pdf: side.pdf, source, line }).catch((e) => ((status = String(e)), null));
@@ -80,7 +80,13 @@
     // through the source line (a paragraph is often one source line)
     const lines = [...boxes].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
     const box = lines[Math.min(lines.length - 1, Math.max(0, Math.round(along * (lines.length - 1))))];
-    const how = (view as PdfjsView).showBox(box, word);
+    // the paragraph's band on each page, from its first line (one more above: the map can miss it) to its last
+    const regions = [...new Set(lines.map((l) => l.page))].map((page) => {
+      const own = lines.filter((l) => l.page === page);
+      const height = Math.max(...own.map((l) => l.height));
+      return { page, top: Math.min(...own.map((l) => l.y)) - height * 2.6, bottom: Math.max(...own.map((l) => l.y)) + height * 0.4 };
+    });
+    const how = (view as PdfjsView).showBox(box, word, regions, before, after);
     status = `→ page ${box.page}: ${how}`;
     return box.page;
   }

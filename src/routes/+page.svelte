@@ -80,7 +80,7 @@
   import Frame from "$lib/Frame.svelte";
   import { figureImage } from "$lib/pdfImage";
   import SidePdf from "$lib/SidePdf.svelte";
-  import { phrasesAt } from "$lib/pdfSearch";
+  import { phrasesAt, plainOf } from "$lib/pdfSearch";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Appearance, type Settings } from "$lib/settings";
@@ -351,7 +351,11 @@
     const range = view.state.wordAt(head);
     const word = selected && !/\s/.test(selected) ? selected : range ? view.state.sliceDoc(range.from, range.to) : "";
     const along = line.length ? (head - line.from) / line.length : 0;
-    const page = await sidePdf?.showSource(path, line.number, word, along);
+    // the words around it, which pick its place among the word's places in the PDF
+    const words = (t: string) => plainOf(t).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+    const before = words(line.text.slice(0, Math.min(from, head) - line.from)).slice(-6);
+    const after = words(line.text.slice(Math.max(to, head) - line.from)).slice(0, 6);
+    const page = await sidePdf?.showSource(path, line.number, word, along, before, after);
     if (page) return say(`Shown in the PDF: page ${page}`);
     for (const phrase of phrasesAt(line.text, head - line.from)) {
       if (await sidePdf?.find(phrase)) {

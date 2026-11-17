@@ -821,7 +821,7 @@ fn request(app: &AppHandle, window: &Webview, file: PathBuf, job: Job) {
 /// The document of the window, to build: Markdown (texmark or Quarto) or LaTeX (latexmk).
 fn document_of(window: &Webview) -> Result<PathBuf, String> {
     let path = documents::path_of(window.app_handle(), window.label())
-        .ok_or("Save the document first (⌘S): a file is built")?;
+        .ok_or_else(|| format!("{}: a file is built", documents::SAVE_FIRST))?;
     if kind_of(&path).is_some() {
         Ok(path)
     } else {

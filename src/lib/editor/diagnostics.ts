@@ -8,6 +8,7 @@ import { StateEffect, StateField, type EditorState, type Extension } from "@code
 import { Decoration, EditorView, ViewPlugin, hoverTooltip, type DecorationSet, type PluginValue, type Tooltip, type ViewUpdate } from "@codemirror/view";
 import { cellLabels } from "./lang/cite.ts";
 import type { Diagnostics } from "./types.ts";
+import { keys } from "./platform.ts";
 
 /** A key underlined: where, why, and how bad (an `error` is a reference that goes nowhere, a `warning` a citation not found). */
 export type Problem = { from: number; to: number; message: string; severity: "error" | "warning"; kind: "label" | "duplicate" | "citation" };
@@ -60,7 +61,7 @@ function problemsOf(state: EditorState, missing: ReadonlySet<string>, included: 
   if (missing.size) {
     for (const c of citationKeys(state)) {
       if (missing.has(c.key)) {
-        problems.push({ ...c, message: `${c.key} is not in the bibliography; ⌘. / Add from library`, severity: "warning", kind: "citation" });
+        problems.push({ ...c, message: keys(`${c.key} is not in the bibliography; ⌘. / Add from library`), severity: "warning", kind: "citation" });
       }
     }
   }

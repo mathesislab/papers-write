@@ -6,6 +6,7 @@
   // notes). The review panel is a button of its own (Toolbar).
 
   import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
+  import { keys } from "papers-write/editor";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import type { ReviewMode, ReviewView } from "papers-write/editor";
 
@@ -55,7 +56,7 @@
     onclick={() => onmode("edit")}
     role="radio"
     aria-checked={mode === "edit"}
-    title={mode === "edit" ? "Editing: the text changes as typed" : "Edit the text (⇧⌘E)"}
+    title={mode === "edit" ? "Editing: the text changes as typed" : keys("Edit the text (⇧⌘E)")}
   >
     Editing{#if mode === "edit" && view !== "markup"}<span class="view">· {viewName}</span>{/if}
   </button>
@@ -70,7 +71,7 @@
       ? "Save the document to suggest changes"
       : mode === "suggest"
         ? `Suggesting: what is typed is a suggestion${where ? `, kept ${where}` : ""}`
-        : `Suggest changes${where ? `, kept ${where}` : ""} (⇧⌘E)`}
+        : keys(`Suggest changes${where ? `, kept ${where}` : ""} (⇧⌘E)`)}
   >
     Suggesting{#if mode === "suggest" && where}<span class="view">· {where}</span>{/if}
   </button>

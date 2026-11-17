@@ -8,6 +8,7 @@
   // above the foot.
 
   import { onMount } from "svelte";
+  import { keys } from "./platform";
   import { citation, fullReference, latex, pandoc } from "./refs";
   import type { Found, Item, Span } from "./types";
 
@@ -169,7 +170,7 @@
           <span class="subtitle">{@render marks(h.subtitle)}</span>
         </span>
         {#if h.item.files.length}
-          <button class="pdf" onmousedown={(e) => e.preventDefault()} onclick={(e) => (e.stopPropagation(), pdf(h.item))} title="Open the PDF in a tab (⌘↵)">PDF</button>
+          <button class="pdf" onmousedown={(e) => e.preventDefault()} onclick={(e) => (e.stopPropagation(), pdf(h.item))} title={keys("Open the PDF in a tab (⌘↵)")}>PDF</button>
         {/if}
       </li>
     {:else}
@@ -182,7 +183,7 @@
     </p>
   {/if}
   <footer>
-    <span class="keys">{enter === "pandoc" ? "↵ [@key]" : "↵ cite · ⌘. [@key]"} · ⇧↵ reference · ⌘L \cite · {hit?.item.files.length ? "⌘↵ PDF · " : ""}esc</span>
+    <span class="keys">{keys(`${enter === "pandoc" ? "↵ [@key]" : "↵ cite · ⌘. [@key]"} · ⇧↵ reference · ⌘L \\cite · ${hit?.item.files.length ? "⌘↵ PDF · " : ""}esc`)}</span>
     <span class="sources" title={bibs.join("\n")}>
       {#if found && found.total > hits.length}{hits.length} of {found.total} ·{/if}
       {bibs.map(nameOf).join(", ")}

@@ -8,6 +8,7 @@
   // nothing. There is no Esc for a new one: it would drop it by a stray key.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { REVEAL } from "papers-write/editor";
   import { onMount } from "svelte";
   import { COLOURS, SHORT, initials, type Colour } from "papers-write/project";
   import "./card.css";
@@ -214,7 +215,7 @@
         <span class="label">Folder</span>
         <div class="row">
           <span class="path" title={root}>{root.replace(/^\/Users\/[^/]+/, "~")}</span>
-          <button type="button" onclick={() => invoke("reveal", { path: root }).catch((e) => (error = String(e)))}>Show in Finder</button>
+          <button type="button" onclick={() => invoke("reveal", { path: root }).catch((e) => (error = String(e)))}>{REVEAL}</button>
         </div>
       {/if}
     </div>

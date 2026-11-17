@@ -9,6 +9,7 @@
   // Every change is kept at once (settings.json of the app's data folder); the windows are told as it changes.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { keys as keyNames } from "papers-write/editor";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import { listen } from "$lib/events";
@@ -146,7 +147,7 @@
           aria-selected={tab === t.id}
           aria-controls="panel-{t.id}"
           class:on={tab === t.id}
-          title="⌘{i + 1}"
+          title={keyNames(`⌘${i + 1}`)}
           onclick={() => (tab = t.id)}>{t.name}</button
         >
       {/each}
@@ -167,7 +168,7 @@
         <label class="row">
           <span>
             <span class="label">Size</span>
-            <span class="hint">Also A− and A+ in the toolbar, and ⌘= ⌘− on a text</span>
+            <span class="hint">Also A− and A+ in the toolbar, and {keyNames("⌘= ⌘−")} on a text</span>
           </span>
           <span class="size">
             <input type="range" min="9" max="32" step="0.5" bind:value={settings.editor_size} onchange={save} />
@@ -177,7 +178,7 @@
         <label class="row">
           <span>
             <span class="label">Tab inserts</span>
-            <span class="hint">With lines selected, Tab indents them and ⇧Tab takes it out. In Markdown, 4 spaces or a tab begin a block of code</span>
+            <span class="hint">With lines selected, Tab indents them and {keyNames("⇧Tab")} takes it out. In Markdown, 4 spaces or a tab begin a block of code</span>
           </span>
           <select bind:value={settings.indent} onchange={save}>
             {#each INDENTS as [indent, name] (indent)}<option value={indent}>{name}</option>{/each}
@@ -204,7 +205,7 @@
         <label class="row">
           <span>
             <span class="label">Save automatically</span>
-            <span class="hint">Half a second after the typing stops; off: only with File ▸ Save (⌘S), a star in the tab until then</span>
+            <span class="hint">Half a second after the typing stops; off: only with File ▸ Save ({keyNames("⌘S")}), a star in the tab until then</span>
           </span>
           <input type="checkbox" class="switch" bind:checked={settings.autosave} onchange={save} />
         </label>
@@ -220,8 +221,8 @@
       <section>
         <h2>Typed symbols</h2>
         <p class="intro">
-          In Markdown, a sequence typed becomes its symbol as its last character is typed; ⌘Z gives back what was
-          typed. Tab after a LaTeX name (<code>\alpha</code>) gives its symbol; ⌘/ or Edit ▸ Symbols… lists them.
+          In Markdown, a sequence typed becomes its symbol as its last character is typed; {keyNames("⌘Z")} gives back what was
+          typed. Tab after a LaTeX name (<code>\alpha</code>) gives its symbol; {keyNames("⌘/")} or Edit ▸ Symbols… lists them.
         </p>
         <h3>Your own</h3>
         <ul class="pairs">

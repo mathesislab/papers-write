@@ -6,7 +6,7 @@
   // review panel, shown or hidden, with the number of open suggestions and comments, and the
   // mode, Editing or Suggesting (ModeControl). Each button says its key, where it has one (the menus give them).
 
-  import { TEXT_WIDTH, type FindBar, type Format, type ReviewMode, type ReviewView } from "papers-write/editor";
+  import { TEXT_WIDTH, keys, type FindBar, type Format, type ReviewMode, type ReviewView } from "papers-write/editor";
   import ModeControl from "$lib/ModeControl.svelte";
   import type { Appearance } from "$lib/settings";
 
@@ -86,20 +86,20 @@
     if (width !== null) lastWidth = width;
   });
   const INLINE: [Format, string][] = $derived([
-    ["bold", tex ? "Bold: \\textbf (⌘B)" : "Bold (⌘B)"],
-    ["italic", tex ? "Italic: \\emph (⌘I)" : "Italic (⌘I)"],
+    ["bold", keys(tex ? "Bold: \\textbf (⌘B)" : "Bold (⌘B)")],
+    ["italic", keys(tex ? "Italic: \\emph (⌘I)" : "Italic (⌘I)")],
     ["code", tex ? "Code: \\texttt" : "Code"],
-    ["link", tex ? "Link: \\href (⌘K)" : "Link (⌘K)"],
+    ["link", keys(tex ? "Link: \\href (⌘K)" : "Link (⌘K)")],
   ]);
   const BLOCKS: [Format, string][] = $derived([
-    ["heading", tex ? "Section: \\section, \\subsection, \\subsubsection, none (⇧⌘H)" : "Heading: #, ##, ###, none (⇧⌘H)"],
-    ["bullet", tex ? "Bulleted List: itemize (⇧⌘8)" : "Bulleted List (⇧⌘8)"],
-    ["numbered", tex ? "Numbered List: enumerate (⇧⌘7)" : "Numbered List (⇧⌘7)"],
-    ["quote", tex ? "Quote: the quote environment (⇧⌘9)" : "Quote (⇧⌘9)"],
+    ["heading", keys(tex ? "Section: \\section, \\subsection, \\subsubsection, none (⇧⌘H)" : "Heading: #, ##, ###, none (⇧⌘H)")],
+    ["bullet", keys(tex ? "Bulleted List: itemize (⇧⌘8)" : "Bulleted List (⇧⌘8)")],
+    ["numbered", keys(tex ? "Numbered List: enumerate (⇧⌘7)" : "Numbered List (⇧⌘7)")],
+    ["quote", keys(tex ? "Quote: the quote environment (⇧⌘9)" : "Quote (⇧⌘9)")],
   ]);
   const FIND: ["find" | "replace", string, string][] = [
-    ["find", "Find", "⌘F"],
-    ["replace", "Find and Replace", "⌥⌘F"],
+    ["find", "Find", keys("⌘F")],
+    ["replace", "Find and Replace", keys("⌥⌘F")],
   ];
 </script>
 
@@ -181,7 +181,7 @@
     <button
       onclick={oncomment}
       disabled={!reviewing}
-      title={reviewing ? "Add Comment on the selection (⌥⌘M)" : "Save the document to comment on it"}
+      title={reviewing ? keys("Add Comment on the selection (⌥⌘M)") : "Save the document to comment on it"}
       aria-label="Add Comment">{@render icon("comment")}</button
     >
   </div>
@@ -199,8 +199,8 @@
   </div>
   <!-- in the middle, how the text is shown -->
   <div class="middle">
-    <button class="size" onclick={() => onsize(-1)} title="Text Size − (⌘−)" aria-label="Smaller Text">A<sup>−</sup></button>
-    <button class="size" onclick={() => onsize(1)} title="Text Size + (⌘=)" aria-label="Larger Text">A<sup>+</sup></button>
+    <button class="size" onclick={() => onsize(-1)} title={keys("Text Size − (⌘−)")} aria-label="Smaller Text">A<sup>−</sup></button>
+    <button class="size" onclick={() => onsize(1)} title={keys("Text Size + (⌘=)")} aria-label="Larger Text">A<sup>+</sup></button>
     <button
       onclick={() => onappearance(NEXT[appearance])}
       title="Appearance: {NAMES[appearance]} (click for {NAMES[NEXT[appearance]]})"
@@ -245,7 +245,7 @@
       class:on={panel}
       onclick={onpanel}
       disabled={!reviewing}
-      title={reviewing ? `${panel ? "Hide" : "Show"} Review Panel (⌥⌘R)` : "Save the document to review it"}
+      title={reviewing ? keys(`${panel ? "Hide" : "Show"} Review Panel (⌥⌘R)`) : "Save the document to review it"}
       aria-label="{panel ? 'Hide' : 'Show'} Review Panel"
       aria-pressed={panel}
     >

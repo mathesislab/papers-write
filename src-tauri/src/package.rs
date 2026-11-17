@@ -123,7 +123,7 @@ pub struct Sent {
 /// says (beside the document to begin with). None when the dialog was cancelled.
 #[tauri::command]
 pub async fn send_for_review(app: AppHandle, window: Webview, round: String) -> Result<Option<Sent>, String> {
-    let doc = documents::path_of(&app, window.label()).ok_or("Save the document first (⌘S)")?;
+    let doc = documents::path_of(&app, window.label()).ok_or(documents::SAVE_FIRST)?;
     let round = round.trim().to_string();
     if round.is_empty() {
         return Err("Name the round (Draft of …)".into());
@@ -167,7 +167,7 @@ pub struct Returned {
 /// where a dialog says. None when the dialog was cancelled.
 #[tauri::command]
 pub async fn send_back(app: AppHandle, window: Webview) -> Result<Option<Returned>, String> {
-    let doc = documents::path_of(&app, window.label()).ok_or("Save the document first (⌘S)")?;
+    let doc = documents::path_of(&app, window.label()).ok_or(documents::SAVE_FIRST)?;
     let sent = package::of_unpacked(&doc).ok_or("This document was not opened from a review file: there is nothing to send back")?;
     let me: Person = review::me(&window)?;
     if !store::person_path(&doc, &slug(&me.name)).is_file() {

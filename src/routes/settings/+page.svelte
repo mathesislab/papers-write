@@ -168,7 +168,7 @@
         <label class="row">
           <span>
             <span class="label">Size</span>
-            <span class="hint">Also A− and A+ in the toolbar, and {keyNames("⌘= ⌘−")} on a text</span>
+            <span class="hint">Also A− and A+ in the toolbar. {keyNames("⌘= ⌘− ⌘0")} zoom the whole window</span>
           </span>
           <span class="size">
             <input type="range" min="9" max="32" step="0.5" bind:value={settings.editor_size} onchange={save} />

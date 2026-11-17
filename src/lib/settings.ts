@@ -34,6 +34,8 @@ export type Settings = {
   tabs: boolean;
   /** light or dark, or as the system is */
   appearance: Appearance;
+  /** the windows' zoom (⌘= ⌘− ⌘0 on a text): 1 is as designed */
+  zoom: number;
   project_colour_bar: boolean;
   /** look for updates at start and twice a day; they are installed only when asked */
   check_updates: boolean;

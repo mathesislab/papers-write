@@ -28,16 +28,29 @@ export type Settings = {
   latexmk_path: string;
   pandoc_path: string;
   tabs: boolean;
+  /** light or dark, or as the system is */
+  appearance: Appearance;
   project_colour_bar: boolean;
   /** look for updates at start and twice a day; they are installed only when asked */
   check_updates: boolean;
 };
 
-/** The settings now, and again with each change (in this or another window): `apply` is called with them at once. The
- *  function that stops it. */
+export type Appearance = "system" | "light" | "dark";
+
+/** The page light or dark as the settings say (`data-theme` on its root, which theme.css reads); none: as the system
+ *  is. */
+export function applyAppearance(appearance: Appearance | undefined) {
+  const root = document.documentElement;
+  if (appearance === "light" || appearance === "dark") root.dataset.theme = appearance;
+  else delete root.dataset.theme;
+}
+
+/** The settings now, and again with each change (in this or another window): `apply` is called with them at once,
+ *  the page's appearance set first. The function that stops it. */
 export function watchSettings(apply: (settings: Settings) => void): () => void {
-  invoke<Settings>("settings").then(apply);
-  const unlisten = listen<Settings>("settings-changed", (e) => apply(e.payload));
+  const both = (s: Settings) => (applyAppearance(s.appearance), apply(s));
+  invoke<Settings>("settings").then(both);
+  const unlisten = listen<Settings>("settings-changed", (e) => both(e.payload));
   return () => void unlisten.then((f) => f());
 }
 

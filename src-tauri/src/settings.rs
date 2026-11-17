@@ -21,6 +21,16 @@ pub enum EditorFont {
     Mono,
 }
 
+/// The colours of the windows: the system's, or light or dark whatever the system's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 /// What Tab puts in at the cursor.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -48,6 +58,8 @@ pub struct Settings {
     pub readable_width: bool,
     /// the width of that column (em), dragged at its edges or set from View and the toolbar
     pub text_width: f64,
+    /// light or dark, or as the system is
+    pub appearance: Appearance,
     pub line_numbers: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
@@ -89,6 +101,7 @@ impl Default for Settings {
             indent: Indent::default(),
             readable_width: true,
             text_width: 46.0,
+            appearance: Appearance::System,
             line_numbers: false,
             spelling: true,
             autosave: true,
@@ -168,6 +181,17 @@ pub fn init(app: &AppHandle) {
         let _ = DIR.set(dir);
     }
     chosen_tools(&get());
+    themed(app, get().appearance);
+}
+
+/// The windows' own parts (title bar, menus, dialogs) light or dark as the settings say; the pages follow the
+/// settings themselves (`data-theme`).
+fn themed(app: &AppHandle, appearance: Appearance) {
+    app.set_theme(match appearance {
+        Appearance::System => None,
+        Appearance::Light => Some(tauri::Theme::Light),
+        Appearance::Dark => Some(tauri::Theme::Dark),
+    });
 }
 
 /// The tools the settings name, where the core finds them itself (pandoc, for the Word round trip).
@@ -192,6 +216,7 @@ fn put(app: &AppHandle, settings: Settings) {
         changed
     };
     chosen_tools(&settings);
+    themed(app, settings.appearance);
     if let Some(dir) = DIR.get() {
         settings.save(dir);
     }
@@ -230,6 +255,28 @@ pub fn step_text_width(app: &AppHandle, by: f64) {
     }
     settings.readable_width = true;
     put(app, settings);
+}
+
+/// The size of the editors' text (points) a step larger (`by` > 0) or smaller: View ▸ Text Size + and −, ⌘= and ⌘−
+/// on a text, the toolbar's A+ and A−.
+pub fn step_text_size(app: &AppHandle, by: f64) {
+    let mut settings = get();
+    settings.editor_size += by;
+    put(app, settings);
+}
+
+/// The text a step larger or smaller (the toolbar).
+#[tauri::command]
+pub fn step_editor_size(app: AppHandle, by: f64) {
+    step_text_size(&app, by);
+}
+
+/// Light, dark, or as the system is (View ▸ Appearance, the toolbar).
+#[tauri::command]
+pub fn set_appearance(app: AppHandle, appearance: Appearance) {
+    let mut settings = get();
+    settings.appearance = appearance;
+    put(&app, settings);
 }
 
 /// View ▸ Full Width: the text as wide as the window, or a column again.
@@ -362,6 +409,7 @@ mod tests {
             indent: Indent::Four,
             readable_width: false,
             text_width: 60.0,
+            appearance: Appearance::Dark,
             line_numbers: true,
             spelling: false,
             autosave: false,

@@ -10,7 +10,9 @@
 
   const SHEET = `
     :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fdfdfd; --muted: #6e6e73; --rule: #888; --code: rgba(0,0,0,.05); --link: #2f6fde; }
-    @media (prefers-color-scheme: dark) { :root { --fg: #e8e8ea; --bg: #1e1e20; --muted: #9a9aa0; --rule: #888; --code: rgba(255,255,255,.08); --link: #7ea6f5; } }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme=light]) { --fg: #e8e8ea; --bg: #1e1e20; --muted: #9a9aa0; --rule: #888; --code: rgba(255,255,255,.08); --link: #7ea6f5; } }
+    :root[data-theme=dark] { color-scheme: dark; --fg: #e8e8ea; --bg: #1e1e20; --muted: #9a9aa0; --rule: #888; --code: rgba(255,255,255,.08); --link: #7ea6f5; }
+    :root[data-theme=light] { color-scheme: light; }
     html { background: var(--bg); }
     body { box-sizing: border-box; max-width: 42em; margin: 0 auto; padding: 2em 1.5em 40vh; color: var(--fg);
       font: 16px/1.55 "Iowan Old Style", "Palatino", "Charter", Georgia, serif; hyphens: auto; overflow-wrap: break-word; }
@@ -37,7 +39,14 @@
     .citation, .footnote-ref { white-space: nowrap; }
   `;
 
-  const doc = $derived(`<!doctype html><meta charset="utf-8"><style>${SHEET}</style><body>${html}</body>`);
+  /** light or dark as the window is (`data-theme` of its root, Settings ▸ Appearance), else as the system is */
+  let theme = $state(document.documentElement.dataset.theme ?? "");
+  $effect(() => {
+    const watch = new MutationObserver(() => (theme = document.documentElement.dataset.theme ?? ""));
+    watch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => watch.disconnect();
+  });
+  const doc = $derived(`<!doctype html><html${theme ? ` data-theme="${theme}"` : ""}><meta charset="utf-8"><style>${SHEET}</style><body>${html}</body></html>`);
 
   /** The frame scrolled so that the block is a little below its top. */
   function reveal() {

@@ -170,6 +170,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("text-wider", "Text Width +", None)?,
             &item("text-narrower", "Text Width −", None)?,
             &item("text-full", "Full Width", None)?,
+            &separator()?,
+            &item("text-larger", "Text Size +", None)?,
+            &item("text-smaller", "Text Size −", None)?,
+            &separator()?,
+            &item("appearance-system", "System Appearance", None)?,
+            &item("appearance-light", "Light Appearance", None)?,
+            &item("appearance-dark", "Dark Appearance", None)?,
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
@@ -327,6 +334,11 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "text-wider" => crate::settings::step_text_width(app, 1.0),
         "text-narrower" => crate::settings::step_text_width(app, -1.0),
         "text-full" => crate::settings::toggle_full_width(app),
+        "text-larger" => crate::settings::step_text_size(app, 1.0),
+        "text-smaller" => crate::settings::step_text_size(app, -1.0),
+        "appearance-system" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::System),
+        "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),
+        "appearance-dark" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Dark),
         "preview" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
@@ -337,9 +349,17 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "go", id);
             }
         }
+        // a PDF zoomed; a text's size changed instead (⌘= ⌘−)
         "zoom-in" | "zoom-out" | "zoom-fit" => {
             if let Some(window) = documents::front(app) {
-                let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id);
+                let pdf = documents::path_of(app, window.label()).is_some_and(|p| documents::is_pdf(&p));
+                match (pdf, id) {
+                    (false, "zoom-in") => crate::settings::step_text_size(app, 1.0),
+                    (false, "zoom-out") => crate::settings::step_text_size(app, -1.0),
+                    _ => {
+                        let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id);
+                    }
+                }
             }
         }
         "suggest" | "comment" | "panel" | "view-markup" | "view-accepted" | "view-original" | "accept-here" | "reject-here" | "accept-all" | "reject-all" | "next" | "previous" | "cleanup" => {

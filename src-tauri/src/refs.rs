@@ -156,8 +156,8 @@ pub(crate) fn own_bibs(window: &Webview, text: &str) -> Vec<PathBuf> {
     let Some(path) = crate::documents::path_of(window.app_handle(), window.label()) else {
         return Vec::new();
     };
-    let folder = path.parent().map(Path::to_path_buf).filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| PathBuf::from("."));
-    bibliography_of(&path, text).into_iter().map(|n| folder.join(n)).filter(|f| f.is_file()).collect()
+    // its own, else its main document's (a chapter of a thesis)
+    write_core::refs::document_bibliography(&path, text).into_iter().filter(|f| f.is_file()).collect()
 }
 
 /// The references offered for a citation key typed so far: the document's own first, then the keys that start

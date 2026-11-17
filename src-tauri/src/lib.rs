@@ -119,6 +119,7 @@ pub fn run() {
             panetabs::bring_tab,
             panetabs::page_path,
             menu::zoom_key,
+            projects::project_list,
             settings::settings,
             readaloud::read_aloud,
             readaloud::stop_reading,

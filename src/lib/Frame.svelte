@@ -22,11 +22,15 @@
   import { onMount, type Snippet } from "svelte";
   import { ProjectBar, ProjectFrame, ProjectSidebar, cssOf, part } from "papers-write/project";
   import type { Heading } from "papers-write/editor";
+  import SwitchProject from "$lib/SwitchProject.svelte";
   import ProjectCard from "$lib/ProjectCard.svelte";
   import Sidebar, { type Tab } from "$lib/Sidebar.svelte";
   import type { Bar } from "$lib/projects";
   import { listen } from "$lib/events";
   import { watchSettings } from "$lib/settings";
+
+  /** Switch Project (⌃⌥P) shown */
+  let switching = $state(false);
 
   let {
     path,
@@ -219,6 +223,7 @@
       listen("projects-changed", loadBar),
       listen("asking-project", askProject),
       listen("project-info", projectInfo),
+      listen("switch-project", () => (switching = true)),
       listen("outline", toggleOutline),
       listen("sidebar", toggleSidebar),
     ];
@@ -280,6 +285,7 @@
     {@render children()}
   </ProjectFrame>
 </div>
+{#if switching}<SwitchProject onclose={() => ((switching = false), onfocus?.())} />{/if}
 {#if asking}
   {#key asking}<ProjectCard root={asking} onclose={closeCard} />{/key}
 {:else if carding}

@@ -1,7 +1,8 @@
 <script lang="ts">
   // The Settings window (⌘,), set out as Papers Review's: a bar of tabs (⌘1…⌘4), the tab shown, which scrolls, and
   // the line at its foot. Editor: the font and size, what Tab puts in, the readable line length, line numbers, spelling,
-  // the preview following the cursor, the symbols typed (the defaults each turned off if not wanted, and the user's own).
+  // saving as the text is typed, the preview following the cursor, the symbols typed (the defaults each turned off if
+  // not wanted, and the user's own).
   // Review: the user's name, e-mail and colour (empty: from the git configuration, as before). Build: where texmark,
   // Quarto, latexmk and pandoc are (empty: found as usual, which the hint says). Window: files as tabs, the menu bar icon.
   // Every change is kept at once (settings.json of the app's data folder); the windows are told as it changes.
@@ -195,6 +196,13 @@
             <span class="hint">As the text is typed</span>
           </span>
           <input type="checkbox" class="switch" bind:checked={settings.spelling} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
+            <span class="label">Save automatically</span>
+            <span class="hint">Half a second after the typing stops; off: only with File ▸ Save (⌘S), a star in the tab until then</span>
+          </span>
+          <input type="checkbox" class="switch" bind:checked={settings.autosave} onchange={save} />
         </label>
         <label class="row">
           <span>

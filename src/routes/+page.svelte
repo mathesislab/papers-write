@@ -65,6 +65,8 @@
     type Heading,
     type ProjectQuery,
     type Format,
+    type FileRead,
+    type Status,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
   import Exchange from "$lib/Exchange.svelte";
@@ -463,6 +465,8 @@
   let follows = true;
   /** the system's spelling on the prose (Settings ▸ Editor) */
   let spelling = $state(true);
+  /** the file written as it is typed; off: only when saved, a draft kept meanwhile (Settings ▸ Editor) */
+  let autosave = $state(true);
   let who = "";
   /** how often the colours were set: the text and the lists are drawn again with them */
   let coloured = $state(0);
@@ -470,6 +474,7 @@
   function apply(s: Settings) {
     prefs = applyEditor(s);
     spelling = s.spelling;
+    autosave = s.autosave;
     symbols = s.symbols;
     colour = s.review_colour;
     follows = s.preview_follow;
@@ -502,11 +507,43 @@
   /** the text read the first time, for the tab to be shown (`ready`) */
   const textIn = part();
 
+  /** whether the file in the editor is as it is typed, and whether the backend was told it is not (the star of the
+   *  tab and window) */
+  let status = $state<Status>("saved");
+  let modified = false;
+  $effect(() => {
+    const now = !!path && status === "editing";
+    if (now !== modified) invoke("set_modified", { modified: (modified = now) });
+  });
+
+  /** The file read, with the draft of it typed and not saved, if any. */
+  async function readFile(file: string): Promise<FileRead> {
+    const [text, draft] = await Promise.all([
+      invoke<string>("read_text", { path: file }),
+      invoke<FileRead["draft"]>("draft_read", { path: file }).catch(() => null),
+    ]);
+    return { path: file, text, draft };
+  }
+
+  const drafts = {
+    write: (p: string, text: string, base: string) => invoke<void>("draft_write", { path: p, text, base }),
+    drop: (p: string) => invoke<void>("draft_drop", { path: p }),
+  };
+
+  /** Close ▸ Save: the file written, then its tab closed (unless the writing failed, which the editor says). */
+  async function saveAndClose() {
+    await editor?.flush();
+    if (status !== "saved") return;
+    await invoke("set_modified", { modified: (modified = false) });
+    await invoke("close_tab", { label: getCurrentWebview().label });
+  }
+
   onMount(() => {
     const stop = watchSettings(apply);
     ready(ask(), textIn.promise, frame?.loaded() ?? Promise.resolve());
     const unlisten = [
       listen("opened", ask),
+      listen("save-and-close", saveAndClose),
       listen("file-changed", () => {
         editor?.changedOnDisk();
         session.reload(300);
@@ -585,13 +622,15 @@
         load={file
           ? async () => {
               try {
-                return { path: file, text: await invoke<string>("read_text", { path: file }) };
+                return await readFile(file);
               } finally {
                 textIn.done();
               }
             }
           : async () => (textIn.done(), { path: "", text: "" })}
         save={file ? (p, text) => invoke("write_text", { path: p, text }) : async () => {}}
+        autosave={autosave || !file}
+        drafts={file ? drafts : undefined}
         mono={!markdown && !latex}
         {latex}
         {prefs}
@@ -607,6 +646,7 @@
         onchange={changed}
         bind:error
         bind:findbar
+        bind:status
       />
     {/key}
   {/if}

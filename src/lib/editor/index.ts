@@ -50,7 +50,7 @@ export type {
   Suggested,
 } from "./review/types";
 export { default as FileEditor } from "./FileEditor.svelte";
-export type { Status } from "./FileEditor.svelte";
+export type { FileRead, Status } from "./FileEditor.svelte";
 export { default as Outline } from "./Outline.svelte";
 export { default as RefList } from "./RefList.svelte";
 export { default as SymbolList } from "./SymbolList.svelte";

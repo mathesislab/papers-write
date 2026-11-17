@@ -49,6 +49,9 @@ pub struct Settings {
     pub line_numbers: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
+    /// a file written as it is typed (half a second after the typing stops); off: only when saved (⌘S), the text typed
+    /// kept meanwhile as a draft (drafts.rs)
+    pub autosave: bool,
     /// the user's own sequences typed that become symbols, each with what it becomes; an empty replacement turns off
     /// a default sequence
     pub symbols: Vec<(String, String)>,
@@ -85,6 +88,7 @@ impl Default for Settings {
             readable_width: true,
             line_numbers: false,
             spelling: true,
+            autosave: true,
             symbols: Vec::new(),
             review_name: String::new(),
             review_email: String::new(),
@@ -316,6 +320,7 @@ mod tests {
             readable_width: false,
             line_numbers: true,
             spelling: false,
+            autosave: false,
             symbols: vec![("(c)".into(), "©".into()), ("->".into(), String::new())],
             review_name: "A. Reviewer".into(),
             review_email: "a@example.org".into(),

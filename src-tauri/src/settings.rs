@@ -249,15 +249,20 @@ pub fn get() -> Settings {
 /// `settings` the current ones: kept in the data folder, and every window told.
 fn put(app: &AppHandle, settings: Settings) {
     let settings = settings.normalised();
-    let who_changed = {
+    let (who_changed, appearance_changed) = {
         let mut current = CURRENT.write().unwrap();
         let changed = (&current.review_name, &current.review_email, current.review_colour)
             != (&settings.review_name, &settings.review_email, settings.review_colour);
+        let appearance = current.appearance != settings.appearance;
         *current = settings.clone();
-        changed
+        (changed, appearance)
     };
     chosen_tools(&settings);
     themed(app, settings.appearance);
+    // the windows' own background, which shows before a page is drawn
+    if appearance_changed {
+        crate::tabs::repaint(app);
+    }
     for webview in app.webviews().values() {
         let _ = webview.set_zoom(settings.scale());
     }

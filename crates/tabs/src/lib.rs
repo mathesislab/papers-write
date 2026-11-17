@@ -169,8 +169,9 @@ pub trait Host: Send + Sync + 'static {
     /// The last window of tabs gone.
     fn none_left(&self, _app: &AppHandle) {}
 
-    /** The colour of a window and of its pages before they are drawn (`dark`: the system's theme is), so that a
-     *  window opening shows it rather than an empty or half-drawn area; none: the platform's. */
+    /** The colour of a window and of its pages before they are drawn (`dark`: the window's theme is, the system's
+     *  unless the app chose one), so that a window opening shows it rather than an empty or half-drawn area; none: the
+     *  platform's. The app calls `repaint` when what it gives changes. */
     fn background(&self, _app: &AppHandle, _dark: bool) -> Option<tauri::window::Color> {
         None
     }
@@ -434,6 +435,20 @@ pub fn add_beside(app: &AppHandle, label: &str, url: &str, beside: &str, title: 
 fn background_of(app: &AppHandle, window: &Window) -> Option<tauri::window::Color> {
     let dark = window.theme().is_ok_and(|t| t == tauri::Theme::Dark);
     host(app).background(app, dark)
+}
+
+/// The windows and their pages given their background again (`Host::background`), when it changes: the app's
+/// appearance or the system's.
+pub fn repaint(app: &AppHandle) {
+    let windows: Vec<String> = with_tabs(app, |w| w.keys().cloned().collect());
+    for label in windows {
+        let Some(window) = app.get_window(&label) else { continue };
+        let Some(colour) = background_of(app, &window) else { continue };
+        let _ = window.set_background_color(Some(colour));
+        for page in pages_of(app, &label).iter().filter_map(|p| app.get_webview(p)) {
+            let _ = page.set_background_color(Some(colour));
+        }
+    }
 }
 
 /// The page made as a tab of the set `window` shows first.

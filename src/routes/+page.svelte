@@ -50,6 +50,7 @@
   import CriticPanel from "$lib/CriticPanel.svelte";
   import NotesSearch from "$lib/NotesSearch.svelte";
   import { ReviewSession } from "$lib/review.svelte";
+  import { notesReview, textReview } from "$lib/reviewer";
   import { colorOf } from "$lib/reviewFormat";
   import { message, type Entry } from "$lib/commitLog";
   import { openPath } from "@tauri-apps/plugin-opener";
@@ -185,6 +186,11 @@
   const inText = $derived(store === "in-file");
   /** the CriticMarkup marks of the text (in-file) */
   let marks = $state.raw<Mark[]>([]);
+  /** what the Review menu acts on: the notes' suggestions, or the marks in the text */
+  const deps = { editor: () => editor, say: (what: string) => say(what) };
+  const byNotes = notesReview(session, deps);
+  const byMarks = textReview(() => marks, deps);
+  const reviewer = $derived(inText ? byMarks : byNotes);
   /** the user's initials, after the marks they write (Settings ▸ Review) */
   let initials = $state("");
 
@@ -635,48 +641,26 @@
   function reviewMenu(what: string) {
     if (notes) return;
     if (what === "suggest") session.toggleMode();
-    else if (what.startsWith("view-")) session.setView(what.slice(5) as ReviewView);
     else if (what === "panel") togglePanel();
     else if (what === "comment") comment();
-    else if (what === "accept-here" || what === "reject-here") changeHere(what === "accept-here" ? "accept" : "reject");
-    else if (inText && (what === "accept-all" || what === "reject-all")) void allMarks(what === "accept-all");
-    else if (inText && (what === "next" || what === "previous")) stepMarks(what === "next");
-    else if (inText && what.startsWith("view-")) say("Accepted and Original show the review's notes; the marks in the text are shown as they are");
-    else if (what === "accept-all") session.acceptAll().catch(() => {});
-    else if (what === "reject-all") session.rejectAll().catch(() => {});
-    else if (what === "cleanup") void session.cleanUp();
-    else if (what === "next" || what === "previous") session.step(what === "next");
-  }
-
-  /** Review ▸ Accept Change and Reject Change: the suggestion at the cursor (the first, where several meet). */
-  function changeHere(action: "accept" | "reject") {
-    const here = editor?.itemsHere().find((i) => i.kind === "suggestion" && i.id && session.items.some((s) => s.id === i.id && s.state === "open"));
-    if (!here) return say("No suggestion at the cursor");
-    session.act(here.id, action).catch(() => {});
-  }
-
-  /** Accept All and Reject All of the marks in the text, asked first. */
-  async function allMarks(accept: boolean) {
-    const n = marks.filter((m) => m.kind !== "comment" && m.kind !== "highlight").length;
-    if (!n) return say("No suggestions in the text");
-    const verb = accept ? "Accept" : "Reject";
-    const ok = await invoke<boolean>("review_confirm", { message: `${verb} the ${n} suggestion${n === 1 ? "" : "s"} in the text?`, ok: `${verb} All` }).catch(() => false);
-    if (ok) editor?.decideAllMarks(accept);
-  }
-
-  /** Next Change and Previous Change among the marks in the text. */
-  function stepMarks(forward: boolean) {
-    if (!marks.length) return say("No changes or comments to go to");
-    const head = editor?.view()?.state.selection.main.head ?? 0;
-    const mark = forward ? (marks.find((m) => m.from > head) ?? marks[0]) : (marks.findLast((m) => m.to < head) ?? marks[marks.length - 1]);
-    editor?.select(mark.from, mark.to);
+    else if (what === "accept-here" || what === "reject-here") reviewer.decideHere(what === "accept-here");
+    else if (what === "accept-all" || what === "reject-all") void reviewer.decideAll(what === "accept-all");
+    else if (what === "next" || what === "previous") reviewer.step(what === "next");
+    else if (what.startsWith("view-")) {
+      if (reviewer.setView) reviewer.setView(what.slice(5) as ReviewView);
+      else say("Accepted and Original show the review's notes; the marks in the text are shown as they are");
+    } else if (what === "cleanup") {
+      if (reviewer.cleanUp) void reviewer.cleanUp();
+      else say("Clean Up Review tidies the review's notes; the marks in the text are the text's own");
+    }
   }
 
   /** Add Comment…: the box beside the end of the selection. */
   function comment() {
     const view = editor?.view();
     if (!view) return;
-    if (!session.me && !inText) return say("Save the document first, to comment on it");
+    const why = reviewer.cannotComment();
+    if (why) return say(why);
     const { from, to } = view.state.selection.main;
     if (from === to) return say("Select the text to comment on");
     const at = view.coordsAtPos(to) ?? view.coordsAtPos(from);
@@ -687,8 +671,7 @@
     const c = commenting;
     commenting = null;
     editor?.focus();
-    if (c && inText) editor?.commentInText(c.from, c.to, body);
-    else if (c) await session.comment(c.from, c.to, body).catch(() => {});
+    if (c) await reviewer.comment(c.from, c.to, body);
   }
 
   function edit(what: string) {
@@ -928,8 +911,8 @@
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
     view={session.view}
-    open={inText ? marks.length : session.items.filter((item) => item.state === "open").length}
-    where={inText ? "in the text" : "in notes"}
+    open={reviewer.open()}
+    where={reviewer.where}
     {store}
     onstore={(s) => invoke("set_review_store", { store: s }).then(askStore).catch((e) => say(String(e)))}
     colour={userColour}
@@ -1016,7 +999,7 @@
           {marks}
           text={current}
           ondecide={(m, accept) => editor?.decideMarkAt(m, accept)}
-          onall={(accept) => void allMarks(accept)}
+          onall={(accept) => void byMarks.decideAll(accept)}
           onshow={(m) => editor?.select(m.from, m.to)}
         />
       {:else}

@@ -56,6 +56,16 @@
   /** the popover of the column's width is open; the width last set, kept while the text is full width */
   let sizing = $state(false);
   let lastWidth = $state(46);
+  let sizer = $state<HTMLElement>();
+  // the popover closes on a press anywhere outside it (or on its button, which toggles it)
+  $effect(() => {
+    if (!sizing) return;
+    const away = (e: PointerEvent) => {
+      if (!sizer?.contains(e.target as Node)) sizing = false;
+    };
+    window.addEventListener("pointerdown", away, true);
+    return () => window.removeEventListener("pointerdown", away, true);
+  });
   $effect(() => {
     if (width !== null) lastWidth = width;
   });
@@ -165,7 +175,7 @@
   </div>
   <!-- in the middle, how the text is shown -->
   <div class="middle">
-    <div class="sizing">
+    <div class="sizing" bind:this={sizer}>
       <button
         class:on={sizing}
         onclick={() => (sizing = !sizing)}
@@ -185,7 +195,7 @@
               step="1"
               value={width ?? lastWidth}
               disabled={width === null}
-              onchange={(e) => onwidth(Number(e.currentTarget.value))}
+              oninput={(e) => onwidth(Number(e.currentTarget.value))}
             />
             <span class="value">{width === null ? "—" : `${width} em`}</span>
           </label>

@@ -112,6 +112,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            projects::project_list,
             settings::settings,
             readaloud::read_aloud,
             readaloud::stop_reading,

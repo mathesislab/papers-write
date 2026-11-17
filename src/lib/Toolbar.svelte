@@ -1,10 +1,11 @@
 <script lang="ts">
   // The toolbar above a text, under the tabs: the formats (bold, italic, code, a link; a heading, bullets, numbers, a
   // quotation: Markdown, or LaTeX in a .tex file; none in plain text), a comment on the selection, Find and Find and
-  // Replace (the one the bar shows is pressed, and a click on it closes the bar); at the right the review panel, shown or hidden, with the number of open suggestions and comments, and the
+  // Replace (the one the bar shows is pressed, and a click on it closes the bar); in the middle the width of the column
+  // of text (a slider and Full Width, in a popover); at the right the review panel, shown or hidden, with the number of open suggestions and comments, and the
   // mode, Editing or Suggesting (ModeControl). Each button says its key, where it has one (the menus give them).
 
-  import type { FindBar, Format, ReviewMode, ReviewView } from "papers-write/editor";
+  import { TEXT_WIDTH, type FindBar, type Format, type ReviewMode, type ReviewView } from "papers-write/editor";
   import ModeControl from "$lib/ModeControl.svelte";
 
   let {
@@ -20,6 +21,8 @@
     oncomment,
     onfind,
     onpanel,
+    width,
+    onwidth,
     onmode,
     onview,
   }: {
@@ -42,11 +45,20 @@
     /** the bar shown, Find or Find and Replace; or closed */
     onfind: (what: "find" | "replace" | "close") => void;
     onpanel: () => void;
+    /** the width of the column of text (em); none: as wide as the window */
+    width: number | null;
+    onwidth: (width: number | null) => void;
     onmode: (mode: ReviewMode) => void;
     onview: (view: ReviewView) => void;
   } = $props();
 
   const tex = $derived(kind === "latex");
+  /** the popover of the column's width is open; the width last set, kept while the text is full width */
+  let sizing = $state(false);
+  let lastWidth = $state(46);
+  $effect(() => {
+    if (width !== null) lastWidth = width;
+  });
   const INLINE: [Format, string][] = $derived([
     ["bold", tex ? "Bold: \\textbf (⌘B)" : "Bold (⌘B)"],
     ["italic", tex ? "Italic: \\emph (⌘I)" : "Italic (⌘I)"],
@@ -65,7 +77,7 @@
   ];
 </script>
 
-{#snippet icon(what: Format | "comment" | "find" | "replace" | "panel")}
+{#snippet icon(what: Format | "comment" | "find" | "replace" | "panel" | "width")}
   <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
     {#if what === "bold"}
       <path d="M4.5 2.75h4.25a2.6 2.6 0 0 1 0 5.2H4.5zM4.5 7.95h5a2.65 2.65 0 0 1 0 5.3h-5z" stroke-width="1.9" />
@@ -99,6 +111,8 @@
       <circle cx="6" cy="6" r="3.5" />
       <path d="M8.6 8.6 10.5 10.5" />
       <path d="M9.5 13.5h4.25l-1.5-1.5M13.75 13.5l-1.5 1.5" stroke-width="1.2" />
+    {:else if what === "width"}
+      <path d="M2.25 2.75v10.5M13.75 2.75v10.5M5 8h6M6.5 6.25 4.75 8l1.75 1.75M9.5 6.25 11.25 8 9.5 9.75" />
     {:else if what === "panel"}
       <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
       <path d="M10 2.75v10.5M11.6 5.5h1M11.6 7.75h1" />
@@ -108,7 +122,13 @@
 
 <!-- a press on a button leaves the keys and the selection with the text -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div class="toolbar" role="toolbar" aria-label="Text" tabindex="-1" onmousedown={(e) => e.preventDefault()}>
+<div
+  class="toolbar"
+  role="toolbar"
+  aria-label="Text"
+  tabindex="-1"
+  onmousedown={(e) => !(e.target as HTMLElement).closest(".popover") && e.preventDefault()}
+>
   {#if kind !== "text"}
     <div class="group">
       {#each INLINE as [what, title] (what)}
@@ -142,6 +162,40 @@
         aria-pressed={findbar === what}>{@render icon(what)}</button
       >
     {/each}
+  </div>
+  <!-- in the middle, how the text is shown -->
+  <div class="middle">
+    <div class="sizing">
+      <button
+        class:on={sizing}
+        onclick={() => (sizing = !sizing)}
+        title="Text Width"
+        aria-label="Text Width"
+        aria-expanded={sizing}>{@render icon("width")}</button
+      >
+      {#if sizing}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="popover" onkeydown={(e) => e.key === "Escape" && (sizing = false)}>
+          <label>
+            <span>Width</span>
+            <input
+              type="range"
+              min={TEXT_WIDTH.least}
+              max={TEXT_WIDTH.most}
+              step="1"
+              value={width ?? lastWidth}
+              disabled={width === null}
+              onchange={(e) => onwidth(Number(e.currentTarget.value))}
+            />
+            <span class="value">{width === null ? "—" : `${width} em`}</span>
+          </label>
+          <label>
+            <input type="checkbox" checked={width === null} onchange={(e) => onwidth(e.currentTarget.checked ? null : lastWidth)} />
+            <span>Full width</span>
+          </label>
+        </div>
+      {/if}
+    </div>
   </div>
   <!-- at the right, together on a line of their own in a narrow window -->
   <div class="end">
@@ -186,6 +240,44 @@
     height: 16px;
     margin: 0 4px;
     background: var(--line);
+  }
+  .middle {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+  }
+  .sizing {
+    position: relative;
+  }
+  .popover {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    white-space: nowrap;
+  }
+  .popover label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--fg);
+  }
+  .popover input[type="range"] {
+    width: 140px;
+  }
+  .popover .value {
+    min-width: 44px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
   }
   .end {
     margin-left: auto;

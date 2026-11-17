@@ -103,6 +103,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             settings::settings,
             settings::set_settings,
+            settings::set_text_width,
             settings::tools_found,
             settings::choose_tool,
             documents::document,

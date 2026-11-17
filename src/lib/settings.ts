@@ -10,6 +10,8 @@ export type Settings = {
   editor_size: number;
   indent: Indent;
   readable_width: boolean;
+  /** the width of the column of text (em) */
+  text_width: number;
   line_numbers: boolean;
   spelling: boolean;
   /** the user's own sequences typed that become symbols; an empty replacement turns off a default */

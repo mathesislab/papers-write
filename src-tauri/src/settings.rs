@@ -46,6 +46,8 @@ pub struct Settings {
     pub indent: Indent,
     /// the text a column of a readable width, a margin on each side down to a narrow window
     pub readable_width: bool,
+    /// the width of that column (em), dragged at its edges or set from View and the toolbar
+    pub text_width: f64,
     pub line_numbers: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
@@ -83,6 +85,7 @@ impl Default for Settings {
             editor_size: 13.5,
             indent: Indent::default(),
             readable_width: true,
+            text_width: 46.0,
             line_numbers: false,
             spelling: true,
             symbols: Vec::new(),
@@ -130,6 +133,11 @@ impl Settings {
         }
         self.editor_size = if self.editor_size.is_finite() { self.editor_size.clamp(9.0, 32.0) } else { Settings::default().editor_size };
         self.review_colour = self.review_colour.filter(|c| (1..=REVIEW_COLOURS).contains(c));
+        self.text_width = if self.text_width.is_finite() {
+            self.text_width.clamp(TEXT_WIDTH.0, TEXT_WIDTH.1)
+        } else {
+            Settings::default().text_width
+        };
         self
     }
 
@@ -190,6 +198,41 @@ fn put(app: &AppHandle, settings: Settings) {
     if let Err(e) = app.emit("settings-changed", settings) {
         eprintln!("settings-changed: {e}");
     }
+}
+
+/// The narrowest and widest column of text (em).
+pub const TEXT_WIDTH: (f64, f64) = (24.0, 120.0);
+/// How much View ▸ Wider Text and Narrower Text change it (em).
+const TEXT_STEP: f64 = 4.0;
+
+/// The column of text set to `width` (em), or none: as wide as the window (dragged at its edges, the toolbar's
+/// control).
+#[tauri::command]
+pub fn set_text_width(app: AppHandle, width: Option<f64>) {
+    let mut settings = get();
+    match width {
+        Some(w) => (settings.readable_width, settings.text_width) = (true, w),
+        None => settings.readable_width = false,
+    }
+    put(&app, settings);
+}
+
+/// View ▸ Wider Text (`by` > 0) and Narrower Text: the column a step wider or narrower (a column again when the text
+/// was as wide as the window).
+pub fn step_text_width(app: &AppHandle, by: f64) {
+    let mut settings = get();
+    if settings.readable_width {
+        settings.text_width += by * TEXT_STEP;
+    }
+    settings.readable_width = true;
+    put(app, settings);
+}
+
+/// View ▸ Full Width: the text as wide as the window, or a column again.
+pub fn toggle_full_width(app: &AppHandle) {
+    let mut settings = get();
+    settings.readable_width = !settings.readable_width;
+    put(app, settings);
 }
 
 /// The settings, for the Settings window and the document pages.
@@ -314,6 +357,7 @@ mod tests {
             editor_size: 16.0,
             indent: Indent::Four,
             readable_width: false,
+            text_width: 60.0,
             line_numbers: true,
             spelling: false,
             symbols: vec![("(c)".into(), "©".into()), ("->".into(), String::new())],

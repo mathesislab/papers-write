@@ -2,11 +2,14 @@
 //! `spd-say {text}` or `say {text}`. The command is split as a shell would split it (quotes kept together), without a
 //! shell; `{text}` in it stands for the text, as one argument, and without `{text}` the text is written to the
 //! command's input. One reading at a time: a new one stops the one before, as Stop Reading does. On Unix the command
-//! runs in a process group of its own, so that what it starts (a player) stops with it.
+//! runs in a process group of its own, so that what it starts (a player) stops with it. The windows are told as a
+//! reading starts and ends ("reading-changed"), for the toolbar's button.
 
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter};
 
 static READING: Mutex<Option<Child>> = Mutex::new(None);
 
@@ -32,12 +35,43 @@ fn stop(child: &mut Child) {
 
 /// The text read aloud by the command of the settings, the reading before stopped; what went wrong in a dialog.
 #[tauri::command]
-pub fn read_aloud(app: tauri::AppHandle, text: String) -> Result<(), String> {
+pub fn read_aloud(app: AppHandle, text: String) -> Result<(), String> {
     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-    start(&text).inspect_err(|e| app.dialog().message(e).kind(MessageDialogKind::Error).title("Read Aloud").show(|_| {}))
+    match start(&text) {
+        Ok(id) => {
+            let _ = app.emit("reading-changed", true);
+            watch(app, id);
+            Ok(())
+        }
+        Err(e) => {
+            app.dialog().message(&e).kind(MessageDialogKind::Error).title("Read Aloud").show(|_| {});
+            Err(e)
+        }
+    }
 }
 
-fn start(text: &str) -> Result<(), String> {
+/// The windows told when the reading `id` ends by itself (not when another takes its place: that one is watched).
+fn watch(app: AppHandle, id: u32) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(400));
+        let mut reading = READING.lock().unwrap();
+        match reading.as_mut() {
+            Some(child) if child.id() == id => {
+                if let Ok(None) = child.try_wait() {
+                    continue;
+                }
+                *reading = None;
+                let _ = app.emit("reading-changed", false);
+                return;
+            }
+            // stopped (Stop Reading tells it) or followed by another
+            _ => return,
+        }
+    });
+}
+
+/// The reading started; its process.
+fn start(text: &str) -> Result<u32, String> {
     let text = text.trim();
     if text.is_empty() {
         return Err("Nothing to read".into());
@@ -54,7 +88,7 @@ fn start(text: &str) -> Result<(), String> {
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
-    let mut child = command.spawn().map_err(|e| format!("{} could not be run ({e}). The command is set in Settings ▸ Build ▸ Read Aloud.", words[0]))?;
+    let mut child = command.spawn().map_err(|e| format!("{} could not be run ({e}). The command is set in Settings ▸ Read Aloud.", words[0]))?;
     // the text as the command's input, written aside: a command reading slowly does not hold the app
     if let (false, Some(mut input)) = (placed, child.stdin.take()) {
         let text = text.to_string();
@@ -62,16 +96,18 @@ fn start(text: &str) -> Result<(), String> {
             let _ = input.write_all(text.as_bytes());
         });
     }
+    let id = child.id();
     *reading = Some(child);
-    Ok(())
+    Ok(id)
 }
 
 /// Stop Reading.
 #[tauri::command]
-pub fn stop_reading() {
+pub fn stop_reading(app: AppHandle) {
     if let Some(mut child) = READING.lock().unwrap().take() {
         stop(&mut child);
     }
+    let _ = app.emit("reading-changed", false);
 }
 
 /// Whether the command is reading (for the menus' Stop Reading).

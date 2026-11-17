@@ -21,6 +21,7 @@
     { id: "editor", name: "Editor" },
     { id: "review", name: "Review" },
     { id: "build", name: "Build" },
+    { id: "read-aloud", name: "Read Aloud" },
     { id: "window", name: "Window" },
     { id: "updates", name: "Updates" },
   ] as const;
@@ -333,13 +334,16 @@
           </div>
         {/each}
       </section>
+    </div>
+
+    <div class="panel" role="tabpanel" id="panel-read-aloud" aria-labelledby="tab-read-aloud" hidden={tab !== "read-aloud"}>
       <section>
         <h2>Read Aloud</h2>
         <label class="row">
           <span class="grow">
             <span class="label">Command</span>
             <span class="hint">
-              Given the selection, or the paragraph under the pointer (Read Aloud, in the right-click menus); <code>{"{text}"}</code> stands for
+              Given the selection, or the paragraph under the pointer (the speaker button of the toolbar, and Read Aloud in the right-click menus); <code>{"{text}"}</code> stands for
               the text, else it is the command's input. Empty: no Read Aloud. For example <code>bard --text {"{text}"}</code>,
               or <code>say {"{text}"}</code> on macOS.
             </span>

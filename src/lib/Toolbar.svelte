@@ -6,6 +6,7 @@
 
   import type { FindBar, Format, ReviewMode, ReviewView } from "papers-write/editor";
   import ModeControl from "$lib/ModeControl.svelte";
+  import ReadAloudButton from "$lib/ReadAloudButton.svelte";
 
   let {
     kind,
@@ -22,7 +23,10 @@
     onpanel,
     onmode,
     onview,
+    speak,
   }: {
+    /** what Read Aloud reads (its button, when a command is set) */
+    speak?: () => string;
     /** what the text is: the formats are Markdown's, LaTeX's, or none */
     kind: "markdown" | "latex" | "text";
     mode: ReviewMode;
@@ -143,6 +147,10 @@
       >
     {/each}
   </div>
+  {#if speak}
+    <span class="rule"></span>
+    <div class="group"><ReadAloudButton text={speak} /></div>
+  {/if}
   <!-- at the right, together on a line of their own in a narrow window -->
   <div class="end">
     <button

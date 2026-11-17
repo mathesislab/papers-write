@@ -747,6 +747,7 @@
   <!-- the text's column: its toolbar above it, so that its tools stay with it when a pane is beside it -->
   <div class="text">
   <Toolbar
+    speak={spokenHere}
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
     view={session.view}

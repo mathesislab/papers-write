@@ -101,6 +101,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            menu::zoom_key,
             settings::settings,
             settings::set_settings,
             settings::set_text_width,

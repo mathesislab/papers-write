@@ -171,9 +171,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("text-narrower", "Text Width −", None)?,
             &item("text-full", "Full Width", None)?,
             &separator()?,
-            &item("zoom-window-in", "Zoom In", None)?,
-            &item("zoom-window-out", "Zoom Out", None)?,
-            &item("zoom-window-reset", "Actual Size", None)?,
+            // the keys of zooming, whatever the tab: a text's window zoomed, a PDF's pages (the PDF menu's, without
+            // keys); ⌃+ itself where + is a key of its own (Italian, German…) is the page's (`zoom_key`)
+            &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
+            &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
+            &item("zoom-fit", "Actual Size (a PDF: Fit Width)", Some("CmdOrCtrl+0"))?,
             &separator()?,
             &item("appearance-system", "System Appearance", None)?,
             &item("appearance-light", "Light Appearance", None)?,
@@ -219,9 +221,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         "PDF",
         true,
         &[
-            &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
-            &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
-            &item("zoom-fit", "Fit Width", Some("CmdOrCtrl+0"))?,
+            &item("pdf-zoom-in", "Zoom In", None)?,
+            &item("pdf-zoom-out", "Zoom Out", None)?,
+            &item("pdf-zoom-fit", "Fit Width", None)?,
         ],
     )?;
     let review = Submenu::with_items(
@@ -281,7 +283,22 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
-    let id = event.id().as_ref();
+    command(app, event.id().as_ref());
+}
+
+/// ⌃+ (⌘+) where + is a key of its own (an Italian or German keyboard): the menu's ⌃= is ⌃⇧0 there, so the page
+/// says it (`step` 1; -1 and 0 the same for ⌃- and ⌃0, should a layout need them).
+#[tauri::command]
+pub fn zoom_key(app: AppHandle, step: i32) {
+    command(&app, match step.signum() {
+        1 => "zoom-in",
+        -1 => "zoom-out",
+        _ => "zoom-fit",
+    });
+}
+
+/// What a menu item does, by its id.
+fn command(app: &AppHandle, id: &str) {
     match id {
         "new" => {
             if let Err(e) = documents::make(app, None) {
@@ -330,9 +347,12 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "text-narrower" => crate::settings::step_text_width(app, -1.0),
         "text-full" => crate::settings::toggle_full_width(app),
         // the whole window, text and all (the text's own size is Settings ▸ Editor ▸ Size)
-        "zoom-window-in" => crate::settings::step_zoom(app, 1.0),
-        "zoom-window-out" => crate::settings::step_zoom(app, -1.0),
-        "zoom-window-reset" => crate::settings::step_zoom(app, 0.0),
+        // the PDF menu's: the pages of a PDF tab
+        "pdf-zoom-in" | "pdf-zoom-out" | "pdf-zoom-fit" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id.trim_start_matches("pdf-"));
+            }
+        }
         "appearance-system" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::System),
         "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),
         "appearance-dark" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Dark),

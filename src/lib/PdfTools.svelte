@@ -1,11 +1,11 @@
 <script lang="ts">
-  // The tools of a PDF, the same in a PDF's tab and in the pane beside a text: Back and Forward (the pages links and
-  // jumps left), the page in view (a click asks for another), the zoom (−, Fit, +), the outline (its bookmarks, when it
-  // has any) and Find (Enter the next match, ⇧Enter the one before, ✕ or Esc clears it). What is at either end is the
-  // page's (`lead`, `trail`): the tab's name, the pane's PDF and what it did.
+  // The tools of a PDF, the same in a PDF's tab and in the pane beside a text: the page in view (a click asks for
+  // another), the zoom (−, Fit, +), the section in view (the outline's, when the PDF has one; a click lists them all)
+  // and Find (Enter the next match, ⇧Enter the one before, ✕ or Esc clears it). Back and Forward are the Go menu's.
+  // What is at either end is the page's (`lead`, `trail`): the tab's name, the pane's PDF and what it did.
 
   import { tick, type Snippet } from "svelte";
-  import { Menu, MenuItem } from "@tauri-apps/api/menu";
+  import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
 
   /** What the tools ask of the view (PdfjsView, PdfView). */
@@ -23,7 +23,6 @@
     view,
     current,
     count,
-    history,
     outline = [],
     lead,
     trail,
@@ -32,8 +31,8 @@
     view: View | undefined;
     current: number;
     count: number;
-    history: { back: boolean; forward: boolean };
-    outline?: { level: number; title: string }[];
+    /** the outline (bookmarks), each with the page it goes to (none: not known) */
+    outline?: { level: number; title: string; page: number | null }[];
     lead?: Snippet;
     trail?: Snippet;
     /** room kept at the right (px): the pane's ×, which the page lays over it */
@@ -89,18 +88,27 @@
     view?.focus();
   }
 
+  /** The section in view: the last of the outline that begins on the page in view or before it. */
+  const here = $derived.by(() => {
+    let at = -1;
+    outline.forEach((o, i) => {
+      if (o.page !== null && o.page <= current) at = i;
+    });
+    return at;
+  });
+
   async function outlineMenu(e: MouseEvent) {
     const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const items = await Promise.all(
-      outline.slice(0, 200).map((o, i) => MenuItem.new({ text: `${"    ".repeat(Math.max(0, o.level - 1))}${o.title}`, action: () => view?.goToOutline?.(i) })),
+      outline
+        .slice(0, 200)
+        .map((o, i) => CheckMenuItem.new({ text: `${"    ".repeat(Math.max(0, o.level - 1))}${o.title}`, checked: i === here, action: () => view?.goToOutline?.(i) })),
     );
     await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
 </script>
 
 <div class="tools" style:padding-right={room ? `${room + 8}px` : null}>
-  <button class="icon" disabled={!history.back} onclick={() => view?.back()} title="Back (⌘[)" aria-label="Back">‹</button>
-  <button class="icon" disabled={!history.forward} onclick={() => view?.forward()} title="Forward (⌘])" aria-label="Forward">›</button>
   {@render lead?.()}
   {#if typing !== null}
     <!-- svelte-ignore a11y_autofocus -->
@@ -126,7 +134,11 @@
     <button onclick={() => view?.zoom(0)} title="Fit Width (⌘0)">Fit</button>
     <button onclick={() => view?.zoom(1)} title="Zoom In (⌘=)" aria-label="Zoom In">+</button>
   </span>
-  {#if outline.length}<button onclick={outlineMenu} title="Outline: the PDF's sections">Outline ▾</button>{/if}
+  {#if outline.length}
+    <button class="section" onclick={outlineMenu} title={here >= 0 ? `${outline[here].title} (a click lists the sections)` : "The sections"}>
+      <span>{here >= 0 ? outline[here].title : "Outline"}</span> ▾
+    </button>
+  {/if}
   <span class="find" class:missing={notFound}>
     <input
       bind:this={field}
@@ -176,8 +188,23 @@
   button:disabled {
     opacity: 0.4;
   }
-  .icon {
-    padding: 1px 6px;
+  /* the section in view: a fixed width, a long title fading out at its end */
+  .section {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: 16em;
+    max-width: 30%;
+    flex: 0 1 auto;
+    text-align: left;
+  }
+  .section span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    -webkit-mask-image: linear-gradient(to right, #000 82%, transparent);
+    mask-image: linear-gradient(to right, #000 82%, transparent);
   }
   .page {
     background: none;

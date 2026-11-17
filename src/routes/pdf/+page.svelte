@@ -151,7 +151,7 @@
   onsay={say}
   onfocus={() => view?.focus()}
 >
-  <PdfTools bind:this={tools} view={view as never} {current} {count} {history} outline={outline.map((h) => ({ level: h.level, title: h.title }))}>
+  <PdfTools bind:this={tools} view={view as never} {current} {count} outline={outline.map((h, i) => ({ level: h.level, title: h.title, page: outlinePages[i] ?? null }))}>
     {#snippet lead()}<span class="name" class:said={note} title={note || path || ""}>{note || name}</span>{/snippet}
   </PdfTools>
   <div class="viewer">

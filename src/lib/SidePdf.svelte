@@ -105,7 +105,7 @@
   type Box = { page: number; x: number; y: number; width: number; height: number };
 
   /** the PDF's outline (its bookmarks, pdf.js), each with its depth */
-  let outline = $state.raw<{ level: number; title: string }[]>([]);
+  let outline = $state.raw<{ level: number; title: string; page: number | null }[]>([]);
   /** the tools over the PDF (PdfTools, as a PDF's tab has them): Find is theirs */
   let tools = $state<PdfTools>();
   /** the pages in view, their count, and whether there is a page to go back to or forward */
@@ -140,7 +140,7 @@
 <aside class="side-pdf">
   <!-- the tools of a PDF as its tab has them, then what was done and which PDF it is, last before the page's × that
        closes the pane -->
-  <PdfTools bind:this={tools} view={side?.pdf ? (view as never) : undefined} current={page} {count} {history} {outline} room={30}>
+  <PdfTools bind:this={tools} view={side?.pdf ? (view as never) : undefined} current={page} {count} {outline} room={30}>
     {#snippet trail()}
       {#if status}<span class="status" title={status}>{status}</span>{/if}
       <button class="name" onclick={changeMenu} disabled={!side} title="{side?.pdf ?? ''} (a click changes it)">{side?.pdf ? nameOf(side.pdf) : "PDF"} ▾</button>
@@ -158,7 +158,7 @@
           onpage={(p) => (page = p)}
           onopen={(c: number) => ((count = c), (page = Math.min(page, c)))}
           onhistory={(h: { back: boolean; forward: boolean }) => (history = h)}
-          onoutline={(items: { level: number; title: string }[]) => (outline = items)}
+          onoutline={(items: { level: number; title: string; page: number | null }[]) => (outline = items)}
           onsource={(text: string, at: At | null, word: string, around: Around) => side?.pdf && onsource(side.pdf, text, at, word, around)}
         />
       {/key}

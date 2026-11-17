@@ -12,6 +12,9 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager, Wry};
 
 use crate::documents;
 
+/// The keys of macOS, else those of Linux and Windows.
+const MAC: bool = cfg!(target_os = "macos");
+
 /// File ▸ Open Recent, kept to be filled again when the list of recent projects changes.
 pub struct RecentMenu(Submenu<Wry>);
 
@@ -164,8 +167,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
-            &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
-            &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
+            // the sidebar on a tab (pressed again: hidden); outside macOS O for the files (open), I for the outline (an
+            // index), as Ctrl+Shift+F is the search's
+            &item("sidebar", "Show Files", Some(if MAC { "Alt+CmdOrCtrl+S" } else { "Ctrl+Alt+O" }))?,
+            &item("outline", "Show Outline", Some(if MAC { "Alt+CmdOrCtrl+O" } else { "Ctrl+Alt+I" }))?,
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)

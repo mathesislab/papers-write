@@ -121,6 +121,14 @@
     onfocus?.();
   }
 
+  /** View ▸ Show Files: the sidebar on its files, or hidden when it shows them (each tab of the sidebar has its key,
+   *  which hides it when that tab is the one shown). */
+  export function toggleFiles() {
+    if (!sideRoot) return onsay("Save the document first, to see its folder");
+    if (side.shown && sideTab === "files") return hideSidebar();
+    side.set({ shown: true, tab: "files" });
+  }
+
   /** View ▸ Show Outline: the sidebar on its outline, or hidden when it shows it. */
   export function toggleOutline() {
     if (side.shown && sideTab === "outline") return toggleSidebar();
@@ -130,6 +138,8 @@
   /** Edit ▸ Find ▸ Find in Project…: the sidebar on its search. */
   export function findInProject() {
     if (!sideRoot) return onsay("Save the document first, to search its folder");
+    // asked again with the search's field in hand: the sidebar hidden, as the other tabs' keys do
+    if (side.shown && sideTab === "search" && document.activeElement?.closest(".side")) return hideSidebar();
     side.set({ shown: true });
     queueMicrotask(() => list?.find());
   }
@@ -181,7 +191,7 @@
       listen("asking-project", askProject),
       listen("project-info", projectInfo),
       listen("outline", toggleOutline),
-      listen("sidebar", toggleSidebar),
+      listen("sidebar", toggleFiles),
     ];
     return () => {
       stops.forEach((stop) => stop());

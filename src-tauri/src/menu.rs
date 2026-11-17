@@ -190,23 +190,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                     &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, false, None::<&str>)?,
                 ],
             )?,
+            &separator()?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
-            &separator()?,
-            &item("text-wider", "Text Width +", None)?,
-            &item("text-narrower", "Text Width −", None)?,
-            &item("text-full", "Full Width", None)?,
-            &separator()?,
-            // the keys of zooming, whatever the tab: a text's window zoomed, a PDF's pages (the PDF menu's, without
-            // keys); ⌃+ itself where + is a key of its own (Italian, German…) is the page's (`zoom_key`)
-            &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
-            &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
-            &item("zoom-fit", "Actual Size (a PDF: Fit Width)", Some("CmdOrCtrl+0"))?,
-            &separator()?,
-            &item("appearance-system", "System Appearance", None)?,
-            &item("appearance-light", "Light Appearance", None)?,
-            &item("appearance-dark", "Dark Appearance", None)?,
-            &item("figures-inline", "Show Figures in the Text", None)?,
             // the project bar hidden at the window's left edge till the pointer comes there (Settings ▸ Window)
             &CheckMenuItem::with_id(
                 app,
@@ -215,6 +201,36 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                 true,
                 crate::settings::get().project_bar == crate::settings::ProjectBar::Hover,
                 None::<&str>,
+            )?,
+            &separator()?,
+            // the keys of zooming, whatever the tab: a text's window zoomed, a PDF's pages (the PDF menu's, without
+            // keys); ⌃+ itself where + is a key of its own (Italian, German…) is the page's (`zoom_key`); in the menu
+            // itself, not a submenu, for their keys to be seen
+            &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
+            &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
+            &item("zoom-fit", "Actual Size (a PDF: Fit Width)", Some("CmdOrCtrl+0"))?,
+            &separator()?,
+            &Submenu::with_items(
+                app,
+                "Text",
+                true,
+                &[
+                    &item("text-wider", "Wider", None)?,
+                    &item("text-narrower", "Narrower", None)?,
+                    &item("text-full", "Full Width", None)?,
+                    &separator()?,
+                    &item("figures-inline", "Show Figures in the Text", None)?,
+                ],
+            )?,
+            &Submenu::with_items(
+                app,
+                "Appearance",
+                true,
+                &[
+                    &item("appearance-system", "As the System", None)?,
+                    &item("appearance-light", "Light", None)?,
+                    &item("appearance-dark", "Dark", None)?,
+                ],
             )?,
         ],
     )?;

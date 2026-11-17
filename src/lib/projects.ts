@@ -17,6 +17,8 @@ export type Manifest = {
   review: "notes" | "in-file" | null;
   /** the build profile a fresh checkout starts with */
   profile: string | null;
+  /** a paper (none) or a folder of notes */
+  kind: "paper" | "notes" | null;
 };
 
 /** mirrors projects::Card */

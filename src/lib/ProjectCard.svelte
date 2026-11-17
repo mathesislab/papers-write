@@ -32,6 +32,10 @@
   let engine = $state<"texmark" | "quarto">("texmark");
   /** where the suggestions and comments are kept */
   let reviewStore = $state<"notes" | "in-file">("notes");
+  /** a paper or a folder of notes; the notes app that keeps the folder, if one does (it makes notes the choice) */
+  let kind = $state<"paper" | "notes">("paper");
+  let keptBy = $state<string | null>(null);
+  const notes = $derived(kind === "notes");
   let library = $state("");
   let error = $state("");
   /** asked of the app, not yet answered */
@@ -61,6 +65,8 @@
       engine = m.engine ?? "texmark";
       reviewStore = m.review ?? "notes";
       library = m.library ?? "";
+      keptBy = await invoke<string | null>("kept_by", { root }).catch(() => null);
+      kind = m.kind ?? (!next.defined && keptBy ? "notes" : "paper");
       main = m.main[0] ?? likelyMain(next.documents) ?? (next.defined ? "" : NEW);
     } catch (e) {
       error = String(e);
@@ -88,7 +94,7 @@
       short: unless(shortName, initials(name.trim() || folder), was.short),
       // no colour set and none chosen: unset still
       colour: was.colour === null && colour === "none" ? null : colour,
-      main: [chosen, ...was.main.slice(1)].filter(Boolean),
+      main: notes ? was.main : [chosen, ...was.main.slice(1)].filter(Boolean),
       build: blank(build),
       // texmark and none set: unset still
       engine: was.engine === null && engine === "texmark" ? null : engine,
@@ -96,6 +102,8 @@
       review: was.review === null && reviewStore === "notes" ? null : reviewStore,
       library: blank(library),
       profile: was.profile,
+      // a paper and none set: unset still
+      kind: was.kind === null && kind === "paper" ? null : kind,
     };
   }
 
@@ -104,7 +112,7 @@
     const manifest = edited(card);
     busy = true;
     try {
-      if (fresh) await invoke("create_project", { root, manifest, paper: main === NEW && !existing });
+      if (fresh) await invoke("create_project", { root, manifest, paper: !notes && main === NEW && !existing });
       else if (JSON.stringify(manifest) !== JSON.stringify(card.manifest)) await invoke("set_project_info", { root, manifest });
       onclose();
     } catch (e) {
@@ -163,6 +171,18 @@
         {/each}
       </div>
 
+      <label for="project-kind">Kind</label>
+      <div class="row">
+        <select id="project-kind" bind:value={kind}>
+          <option value="paper">A paper (documents built into a PDF)</option>
+          <option value="notes">Notes</option>
+        </select>
+        <span class="hint">
+          {#if notes}opened on the last note changed, searched by title, name and text (⇧⌘F){#if keptBy} — this folder is kept by {keptBy}{/if}{:else}its main document opens first{/if}
+        </span>
+      </div>
+
+      {#if !notes}
       <label for="project-main">Main document</label>
       <div class="column">
         <select id="project-main" bind:value={main}>
@@ -179,6 +199,7 @@
           {/if}
         {/if}
       </div>
+      {/if}
 
       {#if !fresh}
         <label for="project-build">Build folder</label>
@@ -224,7 +245,7 @@
   {#if error}<p class="error">{error}</p>{/if}
   <footer>
     <button type="button" onclick={cancel} disabled={busy}>Cancel</button>
-    <button type="submit" class="default" disabled={!card || busy || (fresh && !chosen)}>{fresh ? "Create" : "Done"}</button>
+    <button type="submit" class="default" disabled={!card || busy || (fresh && !notes && !chosen)}>{fresh ? "Create" : "Done"}</button>
   </footer>
 </form>
 

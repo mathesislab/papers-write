@@ -99,6 +99,25 @@ pub fn review_store_of(document: &Path) -> ReviewStore {
     }
 }
 
+/// What a project is: a paper (or a book, a report: documents built into a PDF; the default), or a folder of notes
+/// (crate::notes: opened on the last note changed, searched by title, name and text).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    #[default]
+    Paper,
+    Notes,
+}
+
+impl Kind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Kind::Paper => "paper",
+            Kind::Notes => "notes",
+        }
+    }
+}
+
 /// What builds the Markdown document `document`: Quarto for a `.qmd`, else what its project's `write.toml` says
 /// (`engine`), else texmark.
 pub fn engine_of(document: &Path) -> Engine {
@@ -134,6 +153,9 @@ pub struct Manifest {
     /// the build profile (`.papers-write/build/<name>.toml`) a fresh checkout starts with; the user's choice takes over
     #[serde(default)]
     pub profile: Option<String>,
+    /// a paper (none) or a folder of notes
+    #[serde(default)]
+    pub kind: Option<Kind>,
 }
 
 /// `main = "paper.md"` or `main = ["paper.md", "supplement.md"]`.
@@ -269,6 +291,9 @@ impl Project {
         if manifest.profile != old.profile {
             text(doc, "profile", manifest.profile.as_deref());
         }
+        if manifest.kind != old.kind {
+            text(doc, "kind", manifest.kind.filter(|k| *k != Kind::Paper).map(Kind::name));
+        }
     }
 
     /// The name, else the folder's.
@@ -323,6 +348,7 @@ impl Manifest {
             library: path(&self.library),
             review: self.review,
             profile: text(&self.profile),
+            kind: self.kind.filter(|k| *k != Kind::Paper),
         }
     }
 }

@@ -6,6 +6,7 @@
   // changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last).
 
   import { invoke } from "@tauri-apps/api/core";
+  import { keys } from "papers-write/editor";
   import { onMount, tick } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
   import PdfjsView from "$lib/PdfjsView.svelte";
@@ -143,8 +144,8 @@
 
 <Frame bind:this={frame} bind:covering={carded} {path} onsay={say} onfocus={() => view?.focus()}>
   <div class="tools">
-    <button class="icon" disabled={!history.back} onclick={() => view?.back()} title="Back (⌘[)" aria-label="Back">‹</button>
-    <button class="icon" disabled={!history.forward} onclick={() => view?.forward()} title="Forward (⌘])" aria-label="Forward">›</button>
+    <button class="icon" disabled={!history.back} onclick={() => view?.back()} title={keys("Back (⌘[)")} aria-label="Back">‹</button>
+    <button class="icon" disabled={!history.forward} onclick={() => view?.forward()} title={keys("Forward (⌘])")} aria-label="Forward">›</button>
     <span class="name" class:said={note} title={note || path || ""}>{note || name}</span>
     {#if typing !== null}
       <!-- svelte-ignore a11y_autofocus -->
@@ -163,11 +164,11 @@
       />
       <span class="page">of {count}</span>
     {:else if count}
-      <button class="page" onclick={() => (typing = String(current))} title="Go to Page… (⌥⌘G)">Page {current} of {count}</button>
+      <button class="page" onclick={() => (typing = String(current))} title={keys("Go to Page… (⌥⌘G)")}>Page {current} of {count}</button>
     {/if}
-    <button onclick={() => view?.zoom(-1)} title="Zoom Out (⌘-)">−</button>
-    <button onclick={() => view?.zoom(0)} title="Fit Width (⌘0)">Fit</button>
-    <button onclick={() => view?.zoom(1)} title="Zoom In (⌘=)">+</button>
+    <button onclick={() => view?.zoom(-1)} title={keys("Zoom Out (⌘-)")}>−</button>
+    <button onclick={() => view?.zoom(0)} title={keys("Fit Width (⌘0)")}>Fit</button>
+    <button onclick={() => view?.zoom(1)} title={keys("Zoom In (⌘=)")}>+</button>
     {#if finding}
       <input
         bind:this={field}
@@ -185,7 +186,7 @@
       />
       <button onclick={stopFind} title="Close Find (esc)">Done</button>
     {:else}
-      <button onclick={startFind} title="Find (⌘F)">Find</button>
+      <button onclick={startFind} title={keys("Find (⌘F)")}>Find</button>
     {/if}
   </div>
   <div class="viewer">

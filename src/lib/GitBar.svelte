@@ -5,6 +5,7 @@
   // opens the Commit sheet. Nothing shows for a document that is not in a repository.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { keys } from "papers-write/editor";
   import { onMount } from "svelte";
   import { summary, type GitState } from "$lib/git";
 
@@ -50,7 +51,7 @@
 </script>
 
 {#if state}
-  <button class="git" title={state.upstream ? `${state.branch} follows ${state.upstream}. Commit… (⌥⌘K)` : `${state.branch}, no upstream. Commit… (⌥⌘K)`} onclick={onopen}>
+  <button class="git" title={keys(state.upstream ? `${state.branch} follows ${state.upstream}. Commit… (⌥⌘K)` : `${state.branch}, no upstream. Commit… (⌥⌘K)`)} onclick={onopen}>
     <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3">
       <circle cx="4.5" cy="3.5" r="1.75" /><circle cx="4.5" cy="12.5" r="1.75" /><circle cx="11.5" cy="5.5" r="1.75" />
       <path d="M4.5 5.25v5.5M11.5 7.25c0 2.5-3 2.5-6.2 4" />

@@ -54,3 +54,4 @@ export type { Status } from "./FileEditor.svelte";
 export { default as Outline } from "./Outline.svelte";
 export { default as RefList } from "./RefList.svelte";
 export { default as SymbolList } from "./SymbolList.svelte";
+export { OPEN_FOLDER, REVEAL, keys, mac } from "./platform";

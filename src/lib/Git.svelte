@@ -26,6 +26,7 @@
   // what happened; the commit is the user's, through the Commit sheet.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { keys } from "papers-write/editor";
   import { said, type Added, type Changed } from "$lib/git";
 
   type Revision = { rev: string; label: string; kind: "tag" | "commit"; detail: string };
@@ -248,7 +249,7 @@
       {/each}
     </ul>
     <!-- the keys to the message as the sheet opens: typing writes it, ⌘↵ commits, Esc cancels -->
-    <textarea rows="3" placeholder="Message (⌘↵ commits)" bind:value={committing.message} use:grab></textarea>
+    <textarea rows="3" placeholder={keys("Message (⌘↵ commits)")} bind:value={committing.message} use:grab></textarea>
     {#if committing.error}<p class="error">{committing.error}</p>{/if}
     <div class="buttons">
       <button onclick={close}>Cancel</button>

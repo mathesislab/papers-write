@@ -7,6 +7,7 @@
   // Every change is kept at once (settings.json of the app's data folder); the windows are told as it changes.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { keys as keyNames } from "papers-write/editor";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import { listen } from "$lib/events";
@@ -144,7 +145,7 @@
           aria-selected={tab === t.id}
           aria-controls="panel-{t.id}"
           class:on={tab === t.id}
-          title="⌘{i + 1}"
+          title={keyNames(`⌘${i + 1}`)}
           onclick={() => (tab = t.id)}>{t.name}</button
         >
       {/each}
@@ -172,7 +173,7 @@
         <label class="row">
           <span>
             <span class="label">Tab inserts</span>
-            <span class="hint">With lines selected, Tab indents them and ⇧Tab takes it out. In Markdown, 4 spaces or a tab begin a block of code</span>
+            <span class="hint">With lines selected, Tab indents them and {keyNames("⇧Tab")} takes it out. In Markdown, 4 spaces or a tab begin a block of code</span>
           </span>
           <select bind:value={settings.indent} onchange={save}>
             {#each INDENTS as [indent, name] (indent)}<option value={indent}>{name}</option>{/each}
@@ -208,8 +209,8 @@
       <section>
         <h2>Typed symbols</h2>
         <p class="intro">
-          In Markdown, a sequence typed becomes its symbol as its last character is typed; ⌘Z gives back what was
-          typed. Tab after a LaTeX name (<code>\alpha</code>) gives its symbol; ⌘/ or Edit ▸ Symbols… lists them.
+          In Markdown, a sequence typed becomes its symbol as its last character is typed; {keyNames("⌘Z")} gives back what was
+          typed. Tab after a LaTeX name (<code>\alpha</code>) gives its symbol; {keyNames("⌘/")} or Edit ▸ Symbols… lists them.
         </p>
         <h3>Your own</h3>
         <ul class="pairs">

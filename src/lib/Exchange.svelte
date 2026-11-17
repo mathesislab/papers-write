@@ -25,6 +25,7 @@
   // (also in File ▸ Exchange).
 
   import { onMount } from "svelte";
+  import { REVEAL } from "papers-write/editor";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "$lib/events";
   import { said, type Added } from "$lib/git";
@@ -227,7 +228,7 @@
         <p class="where">Not included ({r.skipped.length}):</p>
         <ul>{#each r.skipped as line (line)}<li>{line}</li>{/each}</ul>
       {/if}
-      <div class="buttons"><button onclick={() => invoke("reveal", { path: r.path }).catch((e) => (problem = String(e)))}>Reveal in Finder</button></div>
+      <div class="buttons"><button onclick={() => invoke("reveal", { path: r.path }).catch((e) => (problem = String(e)))}>{REVEAL}</button></div>
     {:else}
       <p class="where">
         One file for someone who has Papers Write: this document as it is now, the figures and bibliography it shows, and the review so far. Their suggestions and
@@ -253,7 +254,7 @@
       <code title={r.path}>{nameOf(r.path)}</code>: {r.suggestions} suggestion{r.suggestions === 1 ? "" : "s"} and {r.comments} comment{r.comments === 1 ? "" : "s"}
       for {r.to}.
     </p>
-    <div class="buttons"><button onclick={() => invoke("reveal", { path: r.path }).catch((e) => (problem = String(e)))}>Reveal in Finder</button></div>
+    <div class="buttons"><button onclick={() => invoke("reveal", { path: r.path }).catch((e) => (problem = String(e)))}>{REVEAL}</button></div>
   </div>
 {/if}
 {#if comparing}
@@ -308,7 +309,7 @@
       <p class="where">Left out ({exported.skipped.length}):</p>
       <ul>{#each exported.skipped as line (line)}<li>{line}</li>{/each}</ul>
     {/if}
-    <div class="buttons"><button onclick={() => invoke("reveal", { path }).catch((e) => (problem = String(e)))}>Reveal in Finder</button></div>
+    <div class="buttons"><button onclick={() => invoke("reveal", { path }).catch((e) => (problem = String(e)))}>{REVEAL}</button></div>
   </div>
 {/if}
 {#if importing}

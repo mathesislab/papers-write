@@ -1,5 +1,6 @@
 <script lang="ts">
   // A small box beside the selection to write a comment in: ⌘↵ posts it, esc closes it.
+  import { keys } from "papers-write/editor";
   let { x, y, onpost, oncancel }: { x: number; y: number; onpost: (body: string) => void; oncancel: () => void } = $props();
   let body = $state("");
   const grab = (node: HTMLTextAreaElement) => node.focus();
@@ -15,7 +16,7 @@
 <div class="box" role="dialog" aria-label="Add Comment" style:left="{Math.max(8, Math.min(x, window.innerWidth - 308))}px" style:top="{Math.min(y, window.innerHeight - 150)}px">
   <textarea bind:value={body} use:grab onkeydown={key} placeholder="Comment" rows="3"></textarea>
   <div>
-    <span>⌘↵ posts</span>
+    <span>{keys("⌘↵ posts")}</span>
     <button onclick={oncancel}>Cancel</button>
     <button class="post" disabled={!body.trim()} onclick={() => onpost(body)}>Comment</button>
   </div>

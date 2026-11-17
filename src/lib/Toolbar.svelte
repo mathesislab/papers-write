@@ -2,12 +2,14 @@
   // The toolbar above a text, under the tabs: the formats (bold, italic, code, a link; a heading, bullets, numbers, a
   // quotation: Markdown, or LaTeX in a .tex file; none in plain text), a comment on the selection, Find and Find and
   // Replace (the one the bar shows is pressed, and a click on it closes the bar); in the middle how the text is shown:
-  // its size (A− A+), light or dark, the width of its column (a slider and Full Width, in a popover); at the right the
+  // its size (A− A+), light or dark (a click switches to the other, a right-click offers Match System), the width of its column (a slider and Full Width, in a popover); at the right the
   // review panel, shown or hidden, with the number of open suggestions and comments, and the
   // mode, Editing or Suggesting (ModeControl). Each button says its key, where it has one (the menus give them).
 
   import { TEXT_WIDTH, type FindBar, type Format, type ReviewMode, type ReviewView } from "papers-write/editor";
   import ModeControl from "$lib/ModeControl.svelte";
+  import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
   import type { Appearance } from "$lib/settings";
 
   let {
@@ -64,8 +66,33 @@
 
   const tex = $derived(kind === "latex");
   /** the appearance a click on its button goes to, and what the button says */
-  const NEXT: Record<Appearance, Appearance> = { system: "light", light: "dark", dark: "system" };
-  const NAMES: Record<Appearance, string> = { system: "As the System", light: "Light", dark: "Dark" };
+  /** the system's own appearance, as it is now: what "Match System" shows */
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  let systemDark = $state(darkQuery.matches);
+  $effect(() => {
+    const changed = (e: MediaQueryListEvent) => (systemDark = e.matches);
+    darkQuery.addEventListener("change", changed);
+    return () => darkQuery.removeEventListener("change", changed);
+  });
+  /** what is shown: light or dark, the system's when it is matched */
+  const shown = $derived<"light" | "dark">(appearance === "system" ? (systemDark ? "dark" : "light") : appearance);
+  const other = $derived(shown === "dark" ? "light" : "dark");
+  const NAMES = { light: "Light", dark: "Dark" };
+
+  /** A right-click on the appearance button: Match System, Light or Dark, the one set ticked. */
+  async function appearanceMenu(e: MouseEvent) {
+    e.preventDefault();
+    const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const choices: [Appearance, string][] = [
+      ["system", "Match System"],
+      ["light", "Light"],
+      ["dark", "Dark"],
+    ];
+    const items = await Promise.all(
+      choices.map(([a, text]) => CheckMenuItem.new({ text, checked: appearance === a, action: () => onappearance(a) })),
+    );
+    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+  }
   /** the popover of the column's width is open; the width last set, kept while the text is full width */
   let sizing = $state(false);
   let lastWidth = $state(46);
@@ -100,7 +127,7 @@
   ];
 </script>
 
-{#snippet icon(what: Format | "comment" | "find" | "replace" | "panel" | "width" | Appearance)}
+{#snippet icon(what: Format | "comment" | "find" | "replace" | "panel" | "width" | "light" | "dark")}
   <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
     {#if what === "bold"}
       <path d="M4.5 2.75h4.25a2.6 2.6 0 0 1 0 5.2H4.5zM4.5 7.95h5a2.65 2.65 0 0 1 0 5.3h-5z" stroke-width="1.9" />
@@ -139,9 +166,6 @@
       <path d="M8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.6 3.6l1.05 1.05M11.35 11.35l1.05 1.05M3.6 12.4l1.05-1.05M11.35 4.65l1.05-1.05" />
     {:else if what === "dark"}
       <path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z" />
-    {:else if what === "system"}
-      <circle cx="8" cy="8" r="5.5" />
-      <path d="M8 2.5v11a5.5 5.5 0 0 0 0-11z" fill="currentColor" />
     {:else if what === "width"}
       <path d="M2.25 2.75v10.5M13.75 2.75v10.5M5 8h6M6.5 6.25 4.75 8l1.75 1.75M9.5 6.25 11.25 8 9.5 9.75" />
     {:else if what === "panel"}
@@ -199,9 +223,10 @@
     <button class="size" onclick={() => onsize(-1)} title="Text Size − (⌘−)" aria-label="Smaller Text">A<sup>−</sup></button>
     <button class="size" onclick={() => onsize(1)} title="Text Size + (⌘=)" aria-label="Larger Text">A<sup>+</sup></button>
     <button
-      onclick={() => onappearance(NEXT[appearance])}
-      title="Appearance: {NAMES[appearance]} (click for {NAMES[NEXT[appearance]]})"
-      aria-label="Appearance: {NAMES[appearance]}">{@render icon(appearance)}</button
+      onclick={() => onappearance(other)}
+      oncontextmenu={appearanceMenu}
+      title="{NAMES[shown]}{appearance === 'system' ? ' (matching the system)' : ''}. Click: {NAMES[other]}. Right-click: Match System, Light or Dark"
+      aria-label="Appearance: {NAMES[shown]}; switch to {NAMES[other]}">{@render icon(shown)}</button
     >
     <div class="sizing" bind:this={sizer}>
       <button

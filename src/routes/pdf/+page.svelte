@@ -133,7 +133,7 @@
   {headings}
   here={sectionAt(outline, current)}
   outlined={outline.length > 0}
-  onheading={(h) => view?.goToOutline?.(h.from)}
+  onheading={(h) => view?.goToOutline(h.from)}
   onsay={say}
   onfocus={() => view?.focus()}
 >

@@ -5,11 +5,11 @@
 
   import { onMount } from "svelte";
   import * as pdfkit from "tauri-plugin-pdfkit-api";
-  import type { Turn } from "tauri-plugin-pdfkit-api";
-  import type { PdfViewProps } from "$lib/pdf";
+  import type { Entry, Turn } from "tauri-plugin-pdfkit-api";
+  import type { OutlineItem, PdfViewProps } from "$lib/pdf";
 
   // `covered`: hidden while the page shows a card over it, as the view lies above all of the page
-  let { path, page = 1, covered = false, onpage, onhistory, onopen }: PdfViewProps = $props();
+  let { path, page = 1, covered = false, onpage, onhistory, onopen, onoutline }: PdfViewProps = $props();
 
   let area: HTMLDivElement;
   // names this view for `cover` and `close`: the PDF read again has a view made anew while the old one goes
@@ -47,6 +47,30 @@
     send(() => pdfkit.pageTo(page));
   }
 
+  /** where each item of the outline told (`onoutline`) goes, in its order */
+  let targets: number[][] = [];
+
+  /** To the item `i` of the outline. */
+  export function goToOutline(i: number) {
+    const target = targets[i];
+    if (target) send(() => pdfkit.go(target));
+  }
+
+  /** The outline told, depth first, each item with its depth. */
+  function tellOutline(outline: Entry[]) {
+    const items: OutlineItem[] = [];
+    targets = [];
+    const walk = (entries: Entry[], level: number) => {
+      for (const e of entries) {
+        targets.push(e.target);
+        items.push({ level, title: e.title, page: e.page });
+        walk(e.items, level + 1);
+      }
+    };
+    walk(outline, 1);
+    onoutline?.(items);
+  }
+
   /** To the first, previous, next or last page. */
   export function turn(to: Turn) {
     send(() => pdfkit.turn(to));
@@ -76,9 +100,10 @@
     const unlisten = pdfkit.onPage((p) => onpage(p));
     const unlistenHistory = pdfkit.onHistory((h) => onhistory?.(h));
     send(() => pdfkit.open(id, shown, page, pdfkit.frameOf(area), covered))
-      .then(({ count }) => {
+      .then(({ count, outline }) => {
         opened = true;
         onopen(count);
+        tellOutline(outline);
       })
       .catch((e) => (error = String(e)));
     return () => {

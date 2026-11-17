@@ -38,8 +38,8 @@ export interface PdfViewer {
   turn(to: Turn): void;
   /** `text` found: the first place, or `again` the next (the one before, `backwards`); an empty text clears */
   find(text: string, again?: boolean, backwards?: boolean): Promise<boolean>;
-  /** to the item `i` of the outline told (`onoutline`); not PDFKit's yet */
-  goToOutline?(i: number): void;
+  /** to the item `i` of the outline told (`onoutline`) */
+  goToOutline(i: number): void;
   /** Show in PDF: the place scrolled to and marked, till the next click; what was marked, said; not PDFKit's yet */
   show?(target: Target): Promise<string>;
 }

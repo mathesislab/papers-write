@@ -87,7 +87,7 @@
     const items = await Promise.all(
       outline
         .slice(0, 200)
-        .map((o, i) => CheckMenuItem.new({ text: `${"    ".repeat(Math.max(0, o.level - 1))}${o.title}`, checked: i === here, action: () => view?.goToOutline?.(i) })),
+        .map((o, i) => CheckMenuItem.new({ text: `${"    ".repeat(Math.max(0, o.level - 1))}${o.title}`, checked: i === here, action: () => view?.goToOutline(i) })),
     );
     await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
   }

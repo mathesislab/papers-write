@@ -194,7 +194,12 @@
 
 {#snippet tiles()}
   {#if projects.current && projects.tiles.length}
-    <ProjectBar items={projects.tiles} onswitch={switchProject} onmenu={tileMenu} onadd={() => invoke("choose_project")} addTitle="Open Project… (⇧⌘O)" />
+    <ProjectBar
+      items={projects.tiles}
+      onswitch={switchProject}
+      onmenu={tileMenu}
+      onmove={(root, to) => void invoke("move_in_bar", { root, to }).then(loadBar).catch((e) => onproblem(String(e)))}
+      onadd={() => invoke("choose_project")} addTitle="Open Project… (⇧⌘O)" />
   {/if}
 {/snippet}
 {#snippet files(root: string)}

@@ -224,6 +224,30 @@ pub fn open_project_in_new_window(app: AppHandle, root: String) -> Result<(), St
     crate::tabs::show_project(&app, &project.root, crate::tabs::Target::New)
 }
 
+/// A project's tile dragged to place `to` in the bar.
+#[tauri::command]
+pub fn move_in_bar(app: AppHandle, root: String, to: usize) {
+    let root = PathBuf::from(root);
+    let moved = with_saved(&app, |saved| {
+        // the window's project is a tile of its own when it is not in the bar yet: dragged, it joins it
+        let Some(from) = saved.bar.iter().position(|r| *r == root) else {
+            let to = to.min(saved.bar.len());
+            saved.bar.insert(to, root.clone());
+            return true;
+        };
+        let to = to.min(saved.bar.len() - 1);
+        if from == to {
+            return false;
+        }
+        let project = saved.bar.remove(from);
+        saved.bar.insert(to, project);
+        true
+    });
+    if moved {
+        changed(&app);
+    }
+}
+
 #[tauri::command]
 pub fn remove_from_bar(app: AppHandle, root: String) {
     with_saved(&app, |saved| saved.removed(Path::new(&root)));

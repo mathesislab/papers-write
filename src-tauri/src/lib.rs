@@ -180,6 +180,7 @@ pub fn run() {
             projects::switch_project,
             projects::open_project_in_new_window,
             projects::remove_from_bar,
+            projects::move_in_bar,
             projects::project_card,
             projects::set_project_info,
             projects::asking_project,

@@ -166,31 +166,47 @@
     e.preventDefault();
     e.stopPropagation();
     const text = lineOf(span);
-    if (text) onsource(text, pointOf(e), wordAt(e), aroundOf(e, span));
+    const around = aroundOf(e, span);
+    // the word as the line reads, its pieces joined (P4 of P and 4), else as the pointer is over it
+    if (text) onsource(text, pointOf(e), around.word || wordAt(e), around);
   }
 
   /** The words around the word under the pointer, in its line of the PDF and the lines before and after it (the
    *  source has them around the same word): six before, six after. */
-  function aroundOf(e: MouseEvent, span: HTMLElement): { before: string[]; after: string[] } {
+  /** The text of spans in reading order, with where each starts: a space between them, except between two that touch
+   *  on a line (a word the PDF writes in pieces: P and 4 in another font, a ligature). */
+  function joined(spans: { s: HTMLElement; r: DOMRect }[]): { text: string; starts: number[] } {
+    let text = "";
+    const starts: number[] = [];
+    spans.forEach(({ s, r }, i) => {
+      const prev = spans[i - 1]?.r;
+      const touching = prev && Math.abs(prev.top + prev.height / 2 - (r.top + r.height / 2)) < r.height / 2 && r.left - prev.right < r.height * 0.2;
+      if (i > 0 && !touching) text += " ";
+      starts.push(text.length);
+      text += s.textContent ?? "";
+    });
+    return { text, starts };
+  }
+
+  function aroundOf(e: MouseEvent, span: HTMLElement): { before: string[]; after: string[]; word?: string } {
     const layer = span.closest(".textLayer");
     const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
     if (!layer || !range) return { before: [], after: [] };
     // the text layer's spans in reading order, and the place of the pointer in their text
     const spans = [...layer.querySelectorAll<HTMLElement>("span")].filter((s) => !s.querySelector("span") && s.textContent);
     const placed = spans.map((s) => ({ s, r: s.getBoundingClientRect() })).sort((a, b) => Math.round(a.r.top - b.r.top) || a.r.left - b.r.left);
-    let text = "";
+    const { text, starts } = joined(placed);
     let at = -1;
-    for (const { s } of placed) {
-      if (s.contains(range.startContainer)) at = text.length + range.startOffset;
-      text += (s.textContent ?? "") + " ";
-    }
+    placed.forEach(({ s }, i) => {
+      if (s.contains(range.startContainer)) at = starts[i] + range.startOffset;
+    });
     if (at < 0) return { before: [], after: [] };
     const words = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
     // the word itself out of both sides
     let [from, to] = [at, at];
     while (from > 0 && /[\p{L}\p{N}_-]/u.test(text[from - 1])) from--;
     while (to < text.length && /[\p{L}\p{N}_-]/u.test(text[to])) to++;
-    return { before: words(text.slice(Math.max(0, from - 160), from)).slice(-6), after: words(text.slice(to, to + 160)).slice(0, 6) };
+    return { before: words(text.slice(Math.max(0, from - 160), from)).slice(-6), after: words(text.slice(to, to + 160)).slice(0, 6), word: text.slice(from, to) };
   }
 
   /** The word under the pointer, in the text layer. */

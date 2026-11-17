@@ -273,6 +273,13 @@
           </span>
           <input class="text name" bind:value={settings.review_email} onchange={save} placeholder="you@example.org" autocomplete="off" spellcheck="false" />
         </label>
+        <label class="row">
+          <span>
+            <span class="label">Initials</span>
+            <span class="hint">For projects whose suggestions are in the text (CriticMarkup): put after each one, as {"{>>@MP<<}"}; empty: none</span>
+          </span>
+          <input class="text name" bind:value={settings.review_initials} onchange={save} placeholder="MP" autocomplete="off" spellcheck="false" />
+        </label>
         <div class="row">
           <span>
             <span class="label">Colour</span>

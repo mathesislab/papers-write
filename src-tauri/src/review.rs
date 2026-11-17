@@ -231,6 +231,16 @@ fn comment(doc: &Path, me: &Person, text: &str, from: usize, to: usize, body: &s
 
 /// Who the user is: the git `user.name` and `user.email` of the document's folder, else the full name of the user in
 /// the system, else `$USER`.
+/// Where the suggestions and comments of the page's document are kept: "notes" (the review's files) or "in-file"
+/// (CriticMarkup in the text), as its project says.
+#[tauri::command]
+pub fn review_store(window: Webview) -> &'static str {
+    match crate::documents::path_of(window.app_handle(), window.label()) {
+        Some(path) => write_core::project::review_store_of(&path).name(),
+        None => "notes",
+    }
+}
+
 #[tauri::command]
 pub async fn review_me(window: Webview) -> Result<Me, String> {
     Ok(Me::of(&setup(&window)?.1))

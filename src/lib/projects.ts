@@ -13,6 +13,8 @@ export type Manifest = {
   /** what builds the Markdown documents: texmark (none) or Quarto; a `.qmd` is always Quarto's */
   engine: "texmark" | "quarto" | null;
   library: string | null;
+  /** where the suggestions and comments are kept: notes (none) or in the text as CriticMarkup */
+  review: "notes" | "in-file" | null;
 };
 
 /** mirrors projects::Card */

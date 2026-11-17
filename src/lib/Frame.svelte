@@ -212,6 +212,9 @@
       }
     };
     window.addEventListener("keydown", plus);
+    // ⌃ let go: Switch to Recent Tab (⌃Tab) over, the tab it came to the most recent
+    const ctrlUp = (e: KeyboardEvent) => e.key === "Control" && void invoke("recent_done").catch(() => {});
+    window.addEventListener("keyup", ctrlUp);
     const unlisten = [
       listen("projects-changed", loadBar),
       listen("asking-project", askProject),
@@ -225,6 +228,7 @@
       clearTimeout(slideTimer);
       window.removeEventListener("focus", loadBar);
       window.removeEventListener("keydown", plus);
+      window.removeEventListener("keyup", ctrlUp);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });

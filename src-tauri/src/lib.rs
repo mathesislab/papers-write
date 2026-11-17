@@ -145,6 +145,7 @@ pub fn run() {
             tabs::commands::folders,
             tabs::commands::page_ready,
             tabs::commands::page_in_front,
+            tabs::commands::recent_done,
             tabs::commands::set_folders,
             files::read_text,
             files::read_pdf,

@@ -25,8 +25,8 @@
     /** a click in the preview (not a selection): the index of the top-level block clicked, for the text to scroll
      *  to it */
     onblock?: (index: number) => void;
-    /** Show PDF, in the menu: the pane switched to the PDF */
-    onpdf?: () => void;
+    /** Show in PDF, in the menu: the place clicked found in the text, then shown in the PDF (the block, the word) */
+    onpdf?: (text: string, word: string, around: { before: string[]; after: string[] }) => void;
   } = $props();
 
   let frame: HTMLIFrameElement;
@@ -157,7 +157,7 @@
         e.preventDefault();
         const items = await Promise.all([
           MenuItem.new({ text: `Go to Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word, at.around) }),
-          ...(onpdf ? [MenuItem.new({ text: "Show PDF", action: onpdf })] : []),
+          ...(onpdf ? [MenuItem.new({ text: "Show in PDF", action: () => onpdf(at.text, at.word, at.around) })] : []),
           PredefinedMenuItem.new({ item: "Separator" }),
           PredefinedMenuItem.new({ item: "Copy" }),
         ]);

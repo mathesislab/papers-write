@@ -226,8 +226,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("zoom-fit", "Fit Width", Some("CmdOrCtrl+0"))?,
         ],
     )?;
-    let review = Submenu::with_items(
+    let review = Submenu::with_id_and_items(
         app,
+        "review",
         "Review",
         true,
         &[

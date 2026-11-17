@@ -193,6 +193,7 @@ pub fn run() {
             review::review_decide,
             review::review_counter,
             review::review_mode,
+            review::review_off,
             review::review_view,
             review::review_confirm,
             review::review_received,

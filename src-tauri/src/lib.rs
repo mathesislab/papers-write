@@ -194,6 +194,7 @@ pub fn run() {
             sidebar::replace_in_project,
             sidebar::open_at,
             pdfsync::open_source_at,
+            pdfsync::pdf_boxes,
             sidepdf::side_pdf,
             sidepdf::set_side_pdf,
             sidepdf::choose_side_pdf,

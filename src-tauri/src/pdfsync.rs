@@ -107,6 +107,69 @@ fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
     (file.is_file() && line > 0).then_some((file, line))
 }
 
+/// A box of a PDF: its page, its left and baseline in PDF points from the page's top left, its size.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy)]
+pub struct Box {
+    page: u32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+/// Where line `line` (1-based) of `source` is in `pdf`, from the map the build left beside it: texmark's
+/// (`texmark sync forward`) for a Markdown source, SyncTeX's (`synctex view`) for a LaTeX one; none without one.
+#[tauri::command]
+pub async fn pdf_boxes(pdf: String, source: String, line: u32) -> Option<Vec<Box>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let pdf = Path::new(&pdf);
+        if beside(pdf, ".srcmap.json").is_some() && !source.ends_with(".tex") {
+            let texmark = crate::build::find_tool("texmark").ok()?;
+            let out = std::process::Command::new(texmark)
+                .args(["sync", "forward", &format!("{source}:{line}"), "--pdf"])
+                .arg(pdf)
+                .env("PATH", crate::build::search_path(None))
+                .output()
+                .ok()?;
+            let found: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+            let boxes = if found.is_array() { found } else { serde_json::Value::Array(vec![found]) };
+            return serde_json::from_value(boxes).ok();
+        }
+        beside(pdf, ".synctex.gz")?;
+        let synctex = crate::build::find_tool("synctex").ok()?;
+        let out = std::process::Command::new(synctex)
+            .args(["view", "-i", &format!("{line}:0:{source}"), "-o"])
+            .arg(pdf)
+            .env("PATH", crate::build::search_path(None))
+            .output()
+            .ok()?;
+        // records of `Page:`, `x:`, `y:`, `W:`, `H:` lines (`h:` and `v:` before them are the same, unrounded)
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut boxes = Vec::new();
+        let mut page = None;
+        let mut fields = std::collections::HashMap::new();
+        for l in text.lines() {
+            let Some((k, v)) = l.split_once(':') else { continue };
+            match k {
+                "Page" => page = v.trim().parse().ok(),
+                "h" | "v" | "W" | "H" => {
+                    fields.insert(k, v.trim().parse::<f64>().unwrap_or(0.0));
+                }
+                _ => {}
+            }
+            if k == "H"
+                && let (Some(page), Some(&x), Some(&y), Some(&w), Some(&h)) = (page, fields.get("h"), fields.get("v"), fields.get("W"), fields.get("H"))
+            {
+                boxes.push(Box { page, x, y, width: w, height: h });
+            }
+        }
+        (!boxes.is_empty()).then_some(boxes)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
 /// ⌃-click in a PDF: the source of the place clicked opened at it (as the sidebar's search opens a match), exactly
 /// from the build's map when there is one, else by the words clicked; false when it is found in none of the sources.
 #[tauri::command]

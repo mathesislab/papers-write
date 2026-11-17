@@ -198,6 +198,7 @@ pub fn run() {
             pdfsync::pdf_boxes,
             pdfsync::place_in_text,
             menu::view_shown,
+            menu::sidebar_shown,
             sidepdf::side_pdf,
             sidepdf::set_side_pdf,
             sidepdf::choose_side_pdf,

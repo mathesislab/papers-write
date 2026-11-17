@@ -60,6 +60,8 @@ pub struct Settings {
     pub text_width: f64,
     /// light or dark, or as the system is
     pub appearance: Appearance,
+    /// the windows' zoom, all they show (⌘= ⌘− ⌘0 on a text): 1 is as designed
+    pub zoom: f64,
     pub line_numbers: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
@@ -99,6 +101,7 @@ impl Default for Settings {
             readable_width: true,
             text_width: 46.0,
             appearance: Appearance::System,
+            zoom: 1.0,
             line_numbers: false,
             spelling: true,
             symbols: Vec::new(),
@@ -146,6 +149,7 @@ impl Settings {
         }
         self.editor_size = if self.editor_size.is_finite() { self.editor_size.clamp(9.0, 32.0) } else { Settings::default().editor_size };
         self.review_colour = self.review_colour.filter(|c| (1..=REVIEW_COLOURS).contains(c));
+        self.zoom = if self.zoom.is_finite() && self.zoom > 0.0 { self.zoom.clamp(ZOOM.0, ZOOM.1) } else { 1.0 };
         self.text_width = if self.text_width.is_finite() {
             self.text_width.clamp(TEXT_WIDTH.0, TEXT_WIDTH.1)
         } else {
@@ -213,6 +217,9 @@ fn put(app: &AppHandle, settings: Settings) {
     };
     chosen_tools(&settings);
     themed(app, settings.appearance);
+    for webview in app.webviews().values() {
+        let _ = webview.set_zoom(settings.zoom);
+    }
     if let Some(dir) = DIR.get() {
         settings.save(dir);
     }
@@ -253,8 +260,8 @@ pub fn step_text_width(app: &AppHandle, by: f64) {
     put(app, settings);
 }
 
-/// The size of the editors' text (points) a step larger (`by` > 0) or smaller: View ▸ Text Size + and −, ⌘= and ⌘−
-/// on a text, the toolbar's A+ and A−.
+/// The size of the editors' text (points) a step larger (`by` > 0) or smaller: View ▸ Text Size + and −, the
+/// toolbar's A+ and A−.
 pub fn step_text_size(app: &AppHandle, by: f64) {
     let mut settings = get();
     settings.editor_size += by;
@@ -282,10 +289,24 @@ pub fn toggle_full_width(app: &AppHandle) {
     put(app, settings);
 }
 
-/// The settings, for the Settings window and the document pages.
+/// The settings, for the Settings window and the document pages; the page asking zoomed as they say.
 #[tauri::command]
-pub fn settings() -> Settings {
-    get()
+pub fn settings(webview: tauri::Webview) -> Settings {
+    let settings = get();
+    if settings.zoom != 1.0 {
+        let _ = webview.set_zoom(settings.zoom);
+    }
+    settings
+}
+
+/// The least and most zoom of the windows.
+const ZOOM: (f64, f64) = (0.5, 2.0);
+
+/// ⌘= and ⌘− on a text (`by` 1 or −1): the windows zoomed a step in or out, all they show; ⌘0 (`by` 0): as designed.
+pub fn step_zoom(app: &AppHandle, by: f64) {
+    let mut settings = get();
+    settings.zoom = if by == 0.0 { 1.0 } else { ((settings.zoom + by * 0.1) * 10.0).round() / 10.0 };
+    put(app, settings);
 }
 
 /// The settings changed in the Settings window.
@@ -406,6 +427,7 @@ mod tests {
             readable_width: false,
             text_width: 60.0,
             appearance: Appearance::Dark,
+            zoom: 1.2,
             line_numbers: true,
             spelling: false,
             symbols: vec![("(c)".into(), "©".into()), ("->".into(), String::new())],

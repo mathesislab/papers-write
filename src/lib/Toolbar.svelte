@@ -220,8 +220,8 @@
   </div>
   <!-- in the middle, how the text is shown -->
   <div class="middle">
-    <button class="size" onclick={() => onsize(-1)} title="Text Size − (⌘−)" aria-label="Smaller Text">A<sup>−</sup></button>
-    <button class="size" onclick={() => onsize(1)} title="Text Size + (⌘=)" aria-label="Larger Text">A<sup>+</sup></button>
+    <button class="size" onclick={() => onsize(-1)} title="Smaller Text (the whole window: ⌘−)" aria-label="Smaller Text">A<sup>−</sup></button>
+    <button class="size" onclick={() => onsize(1)} title="Larger Text (the whole window: ⌘=)" aria-label="Larger Text">A<sup>+</sup></button>
     <button
       onclick={() => onappearance(other)}
       oncontextmenu={appearanceMenu}

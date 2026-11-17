@@ -348,8 +348,10 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
             if let Some(window) = documents::front(app) {
                 let pdf = documents::path_of(app, window.label()).is_some_and(|p| documents::is_pdf(&p));
                 match (pdf, id) {
-                    (false, "zoom-in") => crate::settings::step_text_size(app, 1.0),
-                    (false, "zoom-out") => crate::settings::step_text_size(app, -1.0),
+                    // a text: the window zoomed, all it shows (the text's own size is A− A+, View ▸ Text Size)
+                    (false, "zoom-in") => crate::settings::step_zoom(app, 1.0),
+                    (false, "zoom-out") => crate::settings::step_zoom(app, -1.0),
+                    (false, "zoom-fit") => crate::settings::step_zoom(app, 0.0),
                     _ => {
                         let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id);
                     }

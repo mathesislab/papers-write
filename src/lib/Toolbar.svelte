@@ -11,6 +11,7 @@
   import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import type { Appearance } from "$lib/settings";
+  import ReadAloudButton from "$lib/ReadAloudButton.svelte";
 
   let {
     kind,
@@ -35,7 +36,10 @@
     onstore,
     onmode,
     onview,
+    speak,
   }: {
+    /** what Read Aloud reads (its button, when a command is set) */
+    speak?: () => string;
     /** what the text is: the formats are Markdown's, LaTeX's, or none */
     kind: "markdown" | "latex" | "text";
     mode: ReviewMode;
@@ -235,6 +239,7 @@
       title="{NAMES[shown]}{appearance === 'system' ? ' (matching the system)' : ''}. Click: {NAMES[other]}. Right-click: Match System, Light or Dark"
       aria-label="Appearance: {NAMES[shown]}; switch to {NAMES[other]}">{@render icon(shown)}</button
     >
+    {#if speak}<ReadAloudButton text={speak} />{/if}
     <div class="sizing" bind:this={sizer}>
       <button
         class:on={sizing}

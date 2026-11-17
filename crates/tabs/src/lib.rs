@@ -197,8 +197,15 @@ pub struct Tabs {
     focused: Mutex<Option<String>>,
     /// the app is quitting: its windows close, but stay saved as open
     quitting: AtomicBool,
-    /// the windows are being opened again at the start: nothing is saved meanwhile
+    /// the windows are being opened again at the start: nothing is saved meanwhile (till the pages made empty are
+    /// all loaded: `load_later`)
     restoring: AtomicBool,
+    /// the tabs of the windows being made at the start (`restore`): their pages made empty, loaded one at a time after
+    deferring: AtomicBool,
+    /// the pages made empty at the start, each with the address it loads (`load_later`)
+    later: Mutex<Vec<(String, String)>>,
+    /// the address of the app's pages, from the first page made (what `WebviewUrl::App` joins to)
+    base: Mutex<Option<tauri::Url>>,
     /// the folders open in the file tree of each project's sidebar (none: of the pages of no project), the same in
     /// all its pages; not saved: a project opens with its folders closed
     folders: Mutex<HashMap<Option<PathBuf>, Vec<String>>>,
@@ -220,6 +227,9 @@ impl Tabs {
             focused: Mutex::default(),
             quitting: AtomicBool::new(false),
             restoring: AtomicBool::new(false),
+            deferring: AtomicBool::new(false),
+            later: Mutex::default(),
+            base: Mutex::default(),
             folders: Mutex::default(),
             ready: Mutex::default(),
             on_top: Mutex::default(),
@@ -399,11 +409,22 @@ fn background_of(app: &AppHandle, window: &Window) -> Option<tauri::window::Colo
 /// The page made as a tab of the set `window` shows first.
 fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Option<String>) -> tauri::Result<Webview> {
     let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
-    let mut builder = WebviewBuilder::new(label, WebviewUrl::App(url.into())).auto_resize();
+    let state = app.state::<Tabs>();
+    // at the start, the pages after the first are made empty and loaded one at a time once the windows are there
+    // (`load_later`): twenty tabs loading at once kept every one of them, the one in view too, from showing for
+    // seconds
+    let later = state.deferring.load(Ordering::SeqCst) && state.base.lock().unwrap().is_some();
+    let address = if later { WebviewUrl::External("about:blank".parse().expect("a URL")) } else { WebviewUrl::App(url.into()) };
+    let mut builder = WebviewBuilder::new(label, address).auto_resize();
     if let Some(colour) = background_of(app, window) {
         builder = builder.background_color(colour);
     }
     let page = window.add_child(builder, LogicalPosition::new(0.0, 0.0), LogicalSize::new(size.width, size.height))?;
+    if later {
+        state.later.lock().unwrap().push((label.to_string(), url.to_string()));
+    } else if state.base.lock().unwrap().is_none() {
+        *state.base.lock().unwrap() = page.url().ok().and_then(|u| u.join("/").ok());
+    }
     // behind the page in view till it says it is drawn (`page_ready`); one that never says so comes to the front
     // after a while all the same
     let on_top = app.state::<Tabs>().on_top.lock().unwrap().get(window.label()).cloned();
@@ -416,15 +437,10 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
             let _ = page.hide();
         }
     }
-    let (handle, waited) = (app.clone(), label.to_string());
-    eprintln!("[papers-write {}] page {label} added", stamp());
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(2));
-        if !handle.state::<Tabs>().ready.lock().unwrap().contains(&waited) {
-            eprintln!("[papers-write {}] page {waited} not drawn after 2 s: shown all the same", stamp());
-        }
-        ready(&handle, &waited);
-    });
+    eprintln!("[papers-write {}] page {label} added{}", stamp(), if later { " (loaded later)" } else { "" });
+    if !later {
+        show_after_a_while(app, label);
+    }
     with_tabs(app, |w| w.entry(window.label().to_string()).or_default().insert(label, title));
     host(app).added(app, window, label);
     select(app, label);
@@ -436,6 +452,64 @@ pub fn stamp() -> String {
     let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
     let s = ms / 1000;
     format!("{:02}:{:02}:{:02}.{:03}", s / 3600 % 24, s / 60 % 60, s % 60, ms % 1000)
+}
+
+/// A page that never says it is drawn shown all the same, after a while.
+fn show_after_a_while(app: &AppHandle, page: &str) {
+    let (handle, waited) = (app.clone(), page.to_string());
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        if !handle.state::<Tabs>().ready.lock().unwrap().contains(&waited) {
+            eprintln!("[papers-write {}] page {waited} not drawn after 2 s: shown all the same", stamp());
+        }
+        ready(&handle, &waited);
+    });
+}
+
+/// The pages made empty at the start loaded, one at a time, each once the one before is drawn (or a few seconds
+/// passed): first the tab in front of a window, then those in front of its other projects, then the others, a tab
+/// chosen meanwhile coming next. Nothing is saved till they all are (a quit meanwhile keeps the tabs as saved).
+fn load_later(app: &AppHandle) {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let app = &handle;
+        let state = app.state::<Tabs>();
+        let base = state.base.lock().unwrap().clone();
+        loop {
+            let next = {
+                let mut later = state.later.lock().unwrap();
+                let rank = |label: &str| {
+                    let window = window_of(app, label);
+                    if window.as_deref().and_then(|w| front_of(app, w)).as_deref() == Some(label) {
+                        0
+                    } else if with_tabs(app, |w| w.values().any(|win| win.sets.iter().any(|s| s.front.as_deref() == Some(label)))) {
+                        1
+                    } else {
+                        2
+                    }
+                };
+                let best = (0..later.len()).min_by_key(|&i| rank(&later[i].0));
+                best.map(|i| later.remove(i))
+            };
+            let Some((label, url)) = next else { break };
+            let (Some(page), Some(base)) = (app.get_webview(&label), base.as_ref()) else { continue };
+            let address = if url == "index.html" { Ok(base.clone()) } else { base.join(&url) };
+            let Ok(address) = address else { continue };
+            eprintln!("[papers-write {}] page {label} loading", stamp());
+            if page.navigate(address).is_err() {
+                continue;
+            }
+            show_after_a_while(app, &label);
+            for _ in 0..80 {
+                if state.ready.lock().unwrap().contains(&label) || app.get_webview(&label).is_none() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+        state.restoring.store(false, Ordering::SeqCst);
+        save(app);
+    });
 }
 
 /// A page drawn (`page_ready`, or the wait for it over): shown when its tab is in front.
@@ -862,6 +936,7 @@ pub fn restore(app: &AppHandle) -> bool {
     let windows = host(app).saved_windows(app);
     let state = app.state::<Tabs>();
     state.restoring.store(true, Ordering::SeqCst);
+    state.deferring.store(true, Ordering::SeqCst);
     let mut any_made = false;
     for saved in windows {
         let projects: Vec<&PathBuf> = saved.projects.iter().filter(|p| p.is_dir() && window_of_project(app, p).is_none()).collect();
@@ -884,8 +959,9 @@ pub fn restore(app: &AppHandle) -> bool {
         }
         let _ = show_project(app, first, Target::Window(window));
     }
-    state.restoring.store(false, Ordering::SeqCst);
-    save(app);
+    state.deferring.store(false, Ordering::SeqCst);
+    // the pages made empty loaded now, one at a time; saving waits for them
+    load_later(app);
     any_made
 }
 

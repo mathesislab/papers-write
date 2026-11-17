@@ -211,9 +211,18 @@
     return text.slice(from, to);
   }
 
-  /** A box of the PDF (SyncTeX's: its page, its left and baseline in PDF points from the page's top left, its width
-   *  and height above the baseline) brought into view, and marked a moment. */
-  export function showBox(box: { page: number; x: number; y: number; width: number; height: number }, word = ""): string {
+  /** The place of a source line shown and marked (Show in PDF): `box`, the line of the PDF it most likely is, scrolled
+   *  to; `regions`, where the paragraph the source line made is (each page's band, in PDF points from the page's
+   *  top); `word` and the words around it in the source (`before`, `after`), which pick the place of the word in the
+   *  regions: the one whose neighbours in the PDF are most like them, the nearest to `box` among equals. What was
+   *  marked, said. */
+  export function showBox(
+    box: { page: number; x: number; y: number; width: number; height: number },
+    word = "",
+    regions: { page: number; top: number; bottom: number }[] = [],
+    before: string[] = [],
+    after: string[] = [],
+  ): string {
     const pageView = viewer?.getPageView(box.page - 1);
     if (!viewer || !pageView) return "the PDF is not read yet";
     const [, , , top] = pageView.viewport.viewBox;
@@ -223,10 +232,10 @@
     ahead = [];
     told();
     viewer.scrollPageIntoView({ pageNumber: box.page, destArray: [null, { name: "XYZ" }, x1, y2 + 40, null] });
-    // marked once the page is drawn, and again each time pdf.js draws it anew, till the next click in the PDF: the
-    // word in that line of the text layer, else the line
+    // marked once the pages are drawn, and again each time pdf.js draws them anew, till the next click in the PDF
     clearMarks();
-    marked = { page: box.page, line: [x1, y1, x2, y2], word };
+    const own = { page: box.page, top: box.y - box.height * 3, bottom: box.y + box.height };
+    marked = { page: box.page, line: [x1, y1, x2, y2], word, regions: regions.length ? regions : [own], before, after };
     return drawMark();
   }
 
@@ -236,65 +245,109 @@
     for (const span of container.querySelectorAll<HTMLElement>(".synced-line")) span.classList.remove("highlight", "selected", "synced-line");
   }
 
-  /** The mark drawn on its page's text layer, as pdf.js marks what Find found (a box laid over the page is not drawn
-   *  over its canvas by WebKitGTK): the word, wrapped in a highlight where it is in the line, else the line's spans. */
+  /** The words of a text as they compare: lower case, letters and digits. */
+  const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+
+  /** The mark drawn in the text layers, as pdf.js marks what Find found (a box laid over the page is not drawn over
+   *  its canvas by WebKitGTK): the word where its neighbours are most like the source's, else the most likely line's
+   *  spans. What was marked, said. */
   function drawMark(): string {
-    if (!marked) return "";
-    const pageView = viewer?.getPageView(marked.page - 1);
-    const pageDiv = pageView?.div as HTMLElement | undefined;
-    const spans = [...(pageDiv?.querySelectorAll<HTMLElement>(".textLayer span:not(.synced-word)") ?? [])];
-    if (!pageView) return "no such page";
-    if (!spans.length) return "marked once the page is drawn";
-    if (pageView.div.querySelector(".synced-word, .synced-line")) return "marked";
-    // pdf.js 6 converts points only: the line's two corners
-    const [x1, y1, x2, y2] = marked.line;
-    const [a, b] = pageView.viewport.convertToViewportPoint(x1, y1);
-    const [c, d] = pageView.viewport.convertToViewportPoint(x2, y2);
-    const origin = pageView.div.getBoundingClientRect();
-    const middle = origin.top + pageView.div.clientTop + (b + d) / 2;
-    const height = Math.abs(d - b);
-    const near = (r: DOMRect, slack: number) => Math.abs(r.top + r.height / 2 - middle) <= slack;
-    if (marked.word) {
-      const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${marked.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
-      let best: { range: Range; distance: number } | null = null;
-      for (const span of spans) {
-        const node = span.firstChild;
-        if (!node || node.nodeType !== Node.TEXT_NODE) continue;
-        const found = pattern.exec(node.textContent ?? "");
-        if (!found) continue;
-        const range = document.createRange();
-        range.setStart(node, found.index);
-        range.setEnd(node, found.index + found[0].length);
-        const r = range.getBoundingClientRect();
-        // a few lines either way: the map can miss a paragraph's first line (SyncTeX gives it to the TeX line before), the
-        // nearest place of the word wins
-        if (!near(r, height * 3.5 + 8)) continue;
-        const distance = Math.abs(r.top + r.height / 2 - middle);
-        if (!best || distance < best.distance) best = { range, distance };
+    if (!marked || !viewer) return "";
+    const m = marked;
+    if (container.querySelector(".synced-word, .synced-line")) return "marked";
+    const pattern = m.word ? new RegExp(`(?<![\\p{L}\\p{N}])${m.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "giu") : null;
+    const before = new Set(m.before.map((w) => w.toLowerCase()));
+    const after = new Set(m.after.map((w) => w.toLowerCase()));
+    let best: { score: number; distance: number; node: Text; at: number; length: number } | null = null;
+    let waiting = false;
+    for (const region of m.regions) {
+      const pageView = viewer.getPageView(region.page - 1);
+      const pageDiv = pageView?.div as HTMLElement | undefined;
+      if (!pageView || !pageDiv) continue;
+      const leaves = [...pageDiv.querySelectorAll<HTMLElement>(".textLayer span:not(.synced-word)")].filter((s) => s.firstChild?.nodeType === Node.TEXT_NODE);
+      if (!leaves.length) {
+        waiting = true;
+        continue;
       }
-      if (best) {
-        const mark = document.createElement("span");
-        mark.className = "highlight selected synced-word";
-        best.range.surroundContents(mark);
-        return "word marked";
+      // the band of the region in the page's pixels, and the most likely line's middle there
+      const [, , , top] = pageView.viewport.viewBox;
+      const yOf = (fromTop: number) => pageView.viewport.convertToViewportPoint(0, top - fromTop)[1] as number;
+      const origin = pageDiv.getBoundingClientRect().top + pageDiv.clientTop;
+      const [bandTop, bandBottom] = [yOf(region.top), yOf(region.bottom)].sort((a, b) => a - b);
+      const lineMiddle = region.page === m.page ? (yOf(top - m.line[1]) + yOf(top - m.line[3])) / 2 : null;
+      const inBand = leaves
+        .map((span) => ({ span, rect: span.getBoundingClientRect() }))
+        .filter(({ rect }) => {
+          const middle = rect.top + rect.height / 2 - origin;
+          return middle >= bandTop - 2 && middle <= bandBottom + 2;
+        })
+        .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+      // the band's text in reading order, each span's text node and where it starts in it
+      let flat = "";
+      const pieces: { node: Text; start: number; middle: number }[] = [];
+      for (const { span, rect } of inBand) {
+        const node = span.firstChild as Text;
+        pieces.push({ node, start: flat.length, middle: rect.top + rect.height / 2 - origin });
+        flat += (node.textContent ?? "") + " ";
+      }
+      if (!pattern) continue;
+      for (const found of flat.matchAll(pattern)) {
+        const at = found.index ?? 0;
+        const piece = pieces.findLast((p) => p.start <= at);
+        if (!piece || at + found[0].length > piece.start + (piece.node.textContent?.length ?? 0)) continue;
+        const score =
+          wordsOf(flat.slice(Math.max(0, at - 90), at)).slice(-6).filter((w) => before.has(w)).length +
+          wordsOf(flat.slice(at + found[0].length, at + found[0].length + 90)).slice(0, 6).filter((w) => after.has(w)).length;
+        const distance = lineMiddle === null ? 1e6 : Math.abs(piece.middle - lineMiddle);
+        if (!best || score > best.score || (score === best.score && distance < best.distance))
+          best = { score, distance, node: piece.node, at: at - piece.start, length: found[0].length };
       }
     }
+    if (best) {
+      const range = document.createRange();
+      range.setStart(best.node, best.at);
+      range.setEnd(best.node, best.at + best.length);
+      const mark = document.createElement("span");
+      mark.className = "highlight selected synced-word";
+      range.surroundContents(mark);
+      return best.score ? "word marked" : "word marked (its neighbours differ)";
+    }
+    if (waiting) return "marked once the page is drawn";
+    // the word is not in the text (math, a citation): the most likely line
+    const pageView = viewer.getPageView(m.page - 1);
+    const pageDiv = pageView?.div as HTMLElement | undefined;
+    if (!pageView || !pageDiv) return "no such page";
+    const origin = pageDiv.getBoundingClientRect().top + pageDiv.clientTop;
+    const ys = [m.line[1], m.line[3]].map((y) => pageView.viewport.convertToViewportPoint(0, y)[1] as number);
+    const middle = (ys[0] + ys[1]) / 2;
+    const height = Math.abs(ys[1] - ys[0]);
     let lines = 0;
-    for (const span of spans)
-      if (near(span.getBoundingClientRect(), height / 2 + 2)) {
+    for (const span of pageDiv.querySelectorAll<HTMLElement>(".textLayer span:not(.synced-word)")) {
+      const r = span.getBoundingClientRect();
+      if (Math.abs(r.top + r.height / 2 - origin - middle) <= height / 2 + 2) {
         span.classList.add("highlight", "selected", "synced-line");
         lines++;
       }
-    return lines ? "line marked" : "nothing of the page's text there to mark";
+    }
+    return lines ? "line marked (the word is not in the PDF's text there)" : "nothing of the page's text there to mark";
   }
+
 
   /** A page's text layer drawn anew (pdf.js makes it again as it draws the page): the mark drawn on it again. */
   function redrawn({ pageNumber }: { pageNumber: number }) {
-    if (marked?.page === pageNumber) drawMark();
+    if (marked?.regions.some((r) => r.page === pageNumber)) drawMark();
   }
 
-  /** The place marked by Show in PDF: its page, its line (PDF space), the word looked for in it. */
-  let marked: { page: number; line: number[]; word: string } | null = null;
+  /** The place marked by Show in PDF: the page and line (PDF space) most likely, the word, the paragraph's regions,
+   *  the source's words around the word. */
+  let marked: {
+    page: number;
+    line: number[];
+    word: string;
+    regions: { page: number; top: number; bottom: number }[];
+    before: string[];
+    after: string[];
+  } | null = null;
 
 
 

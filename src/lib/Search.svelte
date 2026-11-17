@@ -138,7 +138,7 @@
         bind:value={text}
         class:bad={!!problem}
         oninput={() => later()}
-        onkeydown={(e) => e.key === "Enter" && later(0)}
+        onkeydown={(e) => (e.key === "Enter" ? later(0) : e.key === "Escape" && (e.preventDefault(), onclose()))}
         placeholder="Find in project"
         aria-label="Find in project"
         spellcheck="false"
@@ -156,7 +156,7 @@
     </div>
     {#if replacing}
     <div class="row indent">
-      <input bind:this={replaceField} bind:value={replacement} oninput={() => (confirming = false)} placeholder="Replace" aria-label="Replace" spellcheck="false" autocomplete="off" />
+      <input bind:this={replaceField} bind:value={replacement} oninput={() => (confirming = false)} onkeydown={(e) => e.key === "Escape" && (e.preventDefault(), onclose())} placeholder="Replace" aria-label="Replace" spellcheck="false" autocomplete="off" />
     </div>
     <div class="row indent">
       {#if confirming}

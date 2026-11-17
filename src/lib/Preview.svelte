@@ -4,6 +4,8 @@
   // to the same one (pandoc's Markdown reader has no source positions, so the blocks are matched by their order).
   // `error` is what pandoc said, in a bar at the foot.
 
+  import { showPdfImages } from "$lib/pdfImage";
+
   let { html, error = "", block = 0 }: { html: string; error?: string; block?: number } = $props();
 
   let frame: HTMLIFrameElement;
@@ -49,6 +51,13 @@
   const doc = $derived(`<!doctype html><html${theme ? ` data-theme="${theme}"` : ""}><meta charset="utf-8"><style>${SHEET}</style><body>${html}</body></html>`);
 
   /** The frame scrolled so that the block is a little below its top. */
+  /** The frame loaded: its PDF figures drawn as images (WebKitGTK does not draw them), the block in view. */
+  function loaded() {
+    const body = frame?.contentDocument?.body;
+    if (body) void showPdfImages(body);
+    reveal();
+  }
+
   function reveal() {
     const body = frame?.contentDocument?.body;
     if (!body) return;
@@ -64,7 +73,7 @@
 
 <aside>
   <!-- no allow-scripts: what the text holds as HTML cannot run; allow-same-origin only for the page to scroll it -->
-  <iframe bind:this={frame} title="Preview" sandbox="allow-same-origin" srcdoc={doc} onload={reveal}></iframe>
+  <iframe bind:this={frame} title="Preview" sandbox="allow-same-origin" srcdoc={doc} onload={loaded}></iframe>
   {#if error}<p class="error">{error}</p>{/if}
 </aside>
 

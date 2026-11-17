@@ -132,6 +132,8 @@ pub fn run() {
             preview::preview,
             hover::render_math,
             hover::image_data,
+            hover::figure_image,
+            hover::keep_figure,
             build::build,
             build::marked_up,
             build::revisions,

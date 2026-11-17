@@ -77,6 +77,7 @@
   import GitBar from "$lib/GitBar.svelte";
   import Toolbar from "$lib/Toolbar.svelte";
   import Frame from "$lib/Frame.svelte";
+  import { figureImage } from "$lib/pdfImage";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Appearance, type Settings } from "$lib/settings";
@@ -316,7 +317,8 @@
       const detail = [item.title, item.container ?? item.server].filter(Boolean).join(". ");
       return { label: citation(item), detail };
     },
-    image: (path) => invoke<string | null>("image_data", { path }),
+    // a PDF figure drawn as an image (WebKitGTK does not draw a PDF in an <img>), kept on disk once drawn
+    image: figureImage,
   };
 
   /** The prose checked by the system's spell checker (the app's; the editor draws the misses), when Settings ▸ Editor ▸ Check spelling is on. */

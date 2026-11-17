@@ -28,6 +28,7 @@
     appearance,
     onsize,
     onappearance,
+    where = "",
     onmode,
     onview,
   }: {
@@ -58,6 +59,8 @@
     /** the text a step larger (1) or smaller (-1) */
     onsize: (by: number) => void;
     onappearance: (appearance: Appearance) => void;
+    /** where suggestions are kept, said by the mode control */
+    where?: string;
     onmode: (mode: ReviewMode) => void;
     onview: (view: ReviewView) => void;
   } = $props();
@@ -249,7 +252,7 @@
       {@render icon("panel")}
       {#if open}<span class="count" title="{open} open">{open}</span>{/if}
     </button>
-    <ModeControl {mode} {view} {colour} {reviewing} {onmode} {onview} />
+    <ModeControl {mode} {view} {colour} {reviewing} {where} {onmode} {onview} />
   </div>
 </div>
 

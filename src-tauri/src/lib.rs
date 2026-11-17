@@ -173,6 +173,7 @@ pub fn run() {
             spelling::learn_word,
             spelling::ignore_word,
             review::review_me,
+            review::review_store,
             review::review_items,
             review::review_suggest,
             review::review_withdraw,

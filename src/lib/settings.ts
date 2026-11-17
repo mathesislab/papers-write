@@ -20,6 +20,8 @@ export type Settings = {
   symbols: [string, string][];
   review_name: string;
   review_email: string;
+  /** put after the suggestions made in the text itself ({>>@MP<<}); empty: none */
+  review_initials: string;
   /** 1 to 6, or null: from the name */
   review_colour: number | null;
   preview_follow: boolean;

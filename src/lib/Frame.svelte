@@ -16,7 +16,7 @@
   // all the project's tabs (ProjectSidebar).
 
   import { invoke } from "@tauri-apps/api/core";
-  import { OPEN_FOLDER, keys } from "papers-write/editor";
+  import { OPEN_FOLDER, keys, mac } from "papers-write/editor";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import { onMount, type Snippet } from "svelte";
   import { ProjectBar, ProjectFrame, ProjectSidebar, cssOf, part, popupReleased } from "papers-write/project";
@@ -211,9 +211,10 @@
     // ⌃ let go: Switch to Recent Tab (⌃Tab) over, the tab it came to the most recent
     const ctrlUp = (e: KeyboardEvent) => e.key === "Control" && void invoke("recent_done").catch(() => {});
     window.addEventListener("keyup", ctrlUp);
-    // ⌃Tab and ⌃⇧Tab: GTK takes no Tab as a menu's key (the menu only shows it), so they are said from here
+    // ⌃Tab and ⌃⇧Tab: GTK takes no Tab as a menu's key (the menu only shows it), so outside macOS they are said from
+    // here; on macOS the menu's key does it, the PDF in front (PDFKit's, which has the keys) included, and only once
     const ctrlTab = (e: KeyboardEvent) => {
-      if (e.key === "Tab" && e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (!mac && e.key === "Tab" && e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
         void invoke("recent_tab", { by: e.shiftKey ? -1 : 1 }).catch(() => {});
       }

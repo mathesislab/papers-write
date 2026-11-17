@@ -306,6 +306,15 @@
   /** Show in PDF: the place of the cursor in the PDF beside the text (shown first if it is not): exactly from the
    *  map the build left beside the PDF, else by the words around the cursor, the longest phrase of them first. */
   async function showInPdf() {
+    try {
+      await showInPdfNow();
+    } catch (e) {
+      say(`Show in PDF: ${e}`);
+      sidePdf?.tell(`Show in PDF: ${e}`);
+    }
+  }
+
+  async function showInPdfNow() {
     const view = editor?.view();
     if (!view || !path) return;
     if (!pdfBeside) {
@@ -322,8 +331,12 @@
     const page = await sidePdf?.showSource(path, line.number, word, along);
     if (page) return say(`Shown in the PDF: page ${page}`);
     for (const phrase of phrasesAt(line.text, head - line.from)) {
-      if (await sidePdf?.find(phrase)) return say("Found in the PDF by its words (no map from the build beside it)");
+      if (await sidePdf?.find(phrase)) {
+        sidePdf?.tell(`found by its words: “${phrase}”`);
+        return say("Found in the PDF by its words (no map from the build beside it)");
+      }
     }
+    sidePdf?.tell("not found");
     say(sidePdf?.showing() ? "Not found in the PDF" : "Choose the PDF to show beside the text");
   }
 

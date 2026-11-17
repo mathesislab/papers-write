@@ -81,6 +81,37 @@ fn span_of(text: &str, line: u32, column: usize, word: &str) -> (usize, usize) {
     (offset_of(text, line, start), offset_of(text, line, end))
 }
 
+/// How long a lookup in a build's map may take (`texmark sync`, `synctex`): past it, the words are used.
+const LIMIT: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// A command's output, the command stopped when it takes longer than a limit.
+trait Within {
+    fn output_within(&mut self, limit: std::time::Duration) -> std::io::Result<std::process::Output>;
+}
+
+impl Within for std::process::Command {
+    fn output_within(&mut self, limit: std::time::Duration) -> std::io::Result<std::process::Output> {
+        use std::io::Read;
+        let mut child = self.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn()?;
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(status) = child.try_wait()? {
+                let mut stdout = Vec::new();
+                if let Some(mut out) = child.stdout.take() {
+                    out.read_to_end(&mut stdout)?;
+                }
+                return Ok(std::process::Output { status, stdout, stderr: Vec::new() });
+            }
+            if start.elapsed() > limit {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "took too long"));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+    }
+}
+
 /// A place in a PDF: its page (from 1) and a point of it in PDF points from the page's top left, as SyncTeX takes it.
 #[derive(serde::Deserialize, Clone, Copy)]
 pub struct At {
@@ -105,7 +136,8 @@ fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
             .arg(pdf)
             .args([at.page.to_string(), at.x.to_string(), at.y.to_string()])
             .env("PATH", crate::build::search_path(None))
-            .output()
+            .stdin(std::process::Stdio::null())
+            .output_within(LIMIT)
             .ok()?;
         let found: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
         let file = PathBuf::from(found.get("file")?.as_str()?);
@@ -119,7 +151,8 @@ fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
         .arg("-o")
         .arg(format!("{}:{}:{}:{}", at.page, at.x, at.y, pdf.display()))
         .env("PATH", crate::build::search_path(None))
-        .output()
+        .stdin(std::process::Stdio::null())
+        .output_within(LIMIT)
         .ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let field = |name: &str| text.lines().find_map(|l| l.strip_prefix(name)).map(str::trim);
@@ -159,7 +192,8 @@ pub async fn pdf_boxes(pdf: String, source: String, line: u32) -> Option<Vec<Box
                 .args(["sync", "forward", &format!("{source}:{line}"), "--pdf"])
                 .arg(pdf)
                 .env("PATH", crate::build::search_path(None))
-                .output()
+                .stdin(std::process::Stdio::null())
+            .output_within(LIMIT)
                 .ok()?;
             let found: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
             let boxes = if found.is_array() { found } else { serde_json::Value::Array(vec![found]) };
@@ -171,7 +205,8 @@ pub async fn pdf_boxes(pdf: String, source: String, line: u32) -> Option<Vec<Box
             .args(["view", "-i", &format!("{line}:0:{source}"), "-o"])
             .arg(pdf)
             .env("PATH", crate::build::search_path(None))
-            .output()
+            .stdin(std::process::Stdio::null())
+            .output_within(LIMIT)
             .ok()?;
         // records of `Page:`, `x:`, `y:`, `W:`, `H:` lines (`h:` and `v:` before them are the same, unrounded)
         let text = String::from_utf8_lossy(&out.stdout);

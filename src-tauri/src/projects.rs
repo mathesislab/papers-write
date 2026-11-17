@@ -72,7 +72,7 @@ fn data_dir(app: &AppHandle) -> Option<PathBuf> {
 }
 
 /// What the app keeps, changed by `f` and written back when it changed.
-fn with_saved<T>(app: &AppHandle, f: impl FnOnce(&mut Saved) -> T) -> T {
+pub(crate) fn with_saved<T>(app: &AppHandle, f: impl FnOnce(&mut Saved) -> T) -> T {
     let dir = data_dir(app);
     let state = app.state::<Projects>();
     let mut slot = state.saved.lock().unwrap();

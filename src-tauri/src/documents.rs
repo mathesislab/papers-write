@@ -125,6 +125,7 @@ pub fn show(app: &AppHandle, label: &str, path: &Path) {
 
 /// A page gone: what was kept of it goes.
 pub fn closed(app: &AppHandle, label: &str) {
+    crate::sidepdf::closed(app, label);
     let state = app.state::<Documents>();
     state.paths.lock().unwrap().remove(label);
     state.blank.lock().unwrap().remove(label);

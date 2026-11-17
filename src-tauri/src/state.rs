@@ -25,6 +25,8 @@ pub struct Saved {
     pub layouts: BTreeMap<PathBuf, Layout>,
     /// the windows open as the app quit, to open again at the next start
     pub windows: Vec<SavedWindow>,
+    /// the PDF shown beside each source file (View ▸ Show PDF), as chosen
+    pub pdfs: BTreeMap<PathBuf, PathBuf>,
     /// the sidebar of each project, and the last one changed (`sidebars` and `sidebar` in the file)
     #[serde(flatten)]
     pub sidebars: Sidebars,

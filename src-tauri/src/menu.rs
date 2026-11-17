@@ -164,6 +164,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
+            &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
+            &item("show-in-pdf", "Show in PDF", Some("Alt+CmdOrCtrl+J"))?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
         ],
@@ -314,7 +316,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
-        "preview" | "outline" | "sidebar" => {
+        "preview" | "pdf-beside" | "show-in-pdf" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
             }

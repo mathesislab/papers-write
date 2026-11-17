@@ -15,6 +15,7 @@ mod refs;
 mod review;
 mod settings;
 mod sheet;
+mod sidepdf;
 mod sidebar;
 mod spelling;
 mod state;
@@ -193,6 +194,10 @@ pub fn run() {
             sidebar::replace_in_project,
             sidebar::open_at,
             pdfsync::open_source_at,
+            sidepdf::side_pdf,
+            sidepdf::set_side_pdf,
+            sidepdf::choose_side_pdf,
+            sidepdf::hide_side_pdf,
             sidebar::pending_go_to,
             sidebar::new_markdown_file,
             sidebar::trash_path,

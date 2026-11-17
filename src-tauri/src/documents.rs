@@ -22,7 +22,8 @@ pub struct Documents {
     paths: Mutex<HashMap<String, Option<PathBuf>>>,
     /// the untitled windows with no text in them, which a file opened takes over
     blank: Mutex<HashSet<String>>,
-    /// the pages whose file has changes typed that are not saved yet (its tab and window titled with a star)
+    /// the pages whose file has changes typed that are not saved yet (its tab with a star, its window as the platform
+    /// shows it: `tabs::Write::edited`)
     modified: Mutex<HashSet<String>>,
     /// the number of the next page
     next: AtomicUsize,

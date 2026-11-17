@@ -246,7 +246,10 @@
     if (!pageView) return "no such page";
     if (!spans.length) return "marked once the page is drawn";
     if (pageView.div.querySelector(".synced-word, .synced-line")) return "marked";
-    const [a, b, c, d] = pageView.viewport.convertToViewportRectangle(marked.line);
+    // pdf.js 6 converts points only: the line's two corners
+    const [x1, y1, x2, y2] = marked.line;
+    const [a, b] = pageView.viewport.convertToViewportPoint(x1, y1);
+    const [c, d] = pageView.viewport.convertToViewportPoint(x2, y2);
     const origin = pageView.div.getBoundingClientRect();
     const middle = origin.top + pageView.div.clientTop + (b + d) / 2;
     const height = Math.abs(d - b);

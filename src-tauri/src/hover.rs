@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 
-use tauri::{Manager, Webview};
+use serde::Serialize;
+use tauri::{AppHandle, Manager, Webview};
 
 use crate::{documents, preview};
 
@@ -80,13 +81,73 @@ pub fn image_in(dir: &Path, path: &str) -> Option<String> {
     preview::data_uri(&dir.join(name.split(['?', '#']).next().unwrap_or("")))
 }
 
+/// The folder of the document of this window (the home folder for an untitled one), where its images are found.
+fn image_dir(window: &Webview) -> PathBuf {
+    documents::path_of(window.app_handle(), window.label())
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default())
+}
+
 /// The image at `path` of the document of this window, as a data URI.
 #[tauri::command]
 pub async fn image_data(window: Webview, path: String) -> Option<String> {
-    let dir = documents::path_of(window.app_handle(), window.label())
-        .and_then(|p| p.parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default());
+    let dir = image_dir(&window);
     tauri::async_runtime::spawn_blocking(move || image_in(&dir, &path)).await.ok().flatten()
+}
+
+/// A figure as the page shows it: a data URI, and for a PDF the SHA-1 of its file (`key`), under which the PNG the
+/// page draws of it is kept (`keep_figure`); `drawn`: the URI is that PNG, kept from before, not the PDF.
+#[derive(Serialize)]
+pub struct Figure {
+    uri: String,
+    key: Option<String>,
+    drawn: bool,
+}
+
+/// The folder where the PNGs drawn of PDF figures are kept, by the SHA-1 of the PDF: a figure changed is another file.
+fn drawn_dir(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_cache_dir().ok().map(|d| d.join("figures"))
+}
+
+/// The figure at `path` of the document of this window: a PDF's PNG when it was drawn before, else the file itself.
+#[tauri::command]
+pub async fn figure_image(window: Webview, path: String) -> Option<Figure> {
+    let dir = image_dir(&window);
+    let drawn = drawn_dir(window.app_handle());
+    tauri::async_runtime::spawn_blocking(move || {
+        let uri = image_in(&dir, &path)?;
+        if !uri.starts_with("data:application/pdf") {
+            return Some(Figure { uri, key: None, drawn: false });
+        }
+        let name = preview::percent_decode(path.trim().trim_matches(['<', '>']));
+        let bytes = std::fs::read(dir.join(name.split(['?', '#']).next().unwrap_or(""))).ok()?;
+        let key = sha1_smol::Sha1::from(&bytes).digest().to_string();
+        if let Some(png) = drawn.map(|d| d.join(format!("{key}.png"))).and_then(|p| preview::data_uri(&p)) {
+            return Some(Figure { uri: png, key: Some(key), drawn: true });
+        }
+        Some(Figure { uri, key: Some(key), drawn: false })
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// The PNG the page drew of a PDF figure, kept under the PDF's SHA-1 for the next time (`figure_image`).
+#[tauri::command]
+pub async fn keep_figure(app: AppHandle, key: String, png: Vec<u8>) -> Result<(), String> {
+    if key.len() != 40 || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(format!("{key}: not a SHA-1"));
+    }
+    let dir = drawn_dir(&app).ok_or("no cache folder")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::create_dir_all(&dir)?;
+        let part = dir.join(format!("{key}.part"));
+        std::fs::write(&part, png)?;
+        std::fs::rename(part, dir.join(format!("{key}.png")))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

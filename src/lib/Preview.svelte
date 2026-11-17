@@ -8,6 +8,7 @@
   import { readAloudItems } from "$lib/readAloud";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
+  import { showPdfImages } from "$lib/pdfImage";
   const keysOf = (k: string) => (navigator.userAgent.includes("Mac") ? k : "Ctrl");
 
   let {
@@ -130,9 +131,11 @@
     return { text: (block.textContent ?? "").replace(/\s+/g, " ").trim(), word, around };
   }
 
-  /** The frame loaded: ⌃-click and its menu taken to the source. */
+  /** The frame loaded: its PDF figures drawn as images (WebKitGTK does not draw them), ⌃-click and its menu taken
+   *  to the source, the block in view. */
   function loaded() {
     const doc = frame?.contentDocument;
+    if (doc) void showPdfImages(doc.body);
     if (doc) followButtons(doc);
     if (doc && onsource) {
       doc.addEventListener("click", (e) => {
@@ -176,7 +179,8 @@
 </script>
 
 <aside>
-  <!-- no allow-scripts: what the text holds as HTML cannot run; allow-same-origin only for the page to scroll it -->
+  <!-- allow-scripts only for the page's own listeners on the frame: the document's policy runs none of its scripts;
+       allow-same-origin for the page to scroll it -->
   <iframe bind:this={frame} title="Preview" sandbox="allow-same-origin allow-scripts" srcdoc={doc} onload={loaded}></iframe>
   {#if error}<p class="error">{error}</p>{/if}
 </aside>

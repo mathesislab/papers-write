@@ -2940,6 +2940,7 @@ dependencies = [
  "papers-write-core",
  "serde",
  "serde_json",
+ "sha1_smol",
  "shlex 1.3.0",
  "tauri",
  "tauri-build",

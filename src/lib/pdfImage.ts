@@ -1,7 +1,9 @@
 // A PDF figure as an image the page can show: its first page drawn by pdf.js into a PNG. WebKit draws a PDF given to
 // an <img> on macOS but not elsewhere (WebKitGTK), so the figures of a document (`![…](figure.pdf)`) are drawn here
-// for the tooltips and the preview. Kept by their data, so that a figure drawn once is not drawn again.
+// for the tooltips and the preview. Kept by their data while the page lives, and on disk by the PDF's SHA-1 (the
+// app's `figure_image` and `keep_figure`), so that a figure is drawn once, not at each start.
 
+import { invoke } from "@tauri-apps/api/core";
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
@@ -57,6 +59,20 @@ export function shownImage(uri: string): Promise<string | null> {
     png = draw(uri);
     drawn.set(key, png);
     if (drawn.size > KEEP) drawn.delete(drawn.keys().next().value!);
+  }
+  return png;
+}
+
+/** The figure at `path` of the page's document as an image to show: a PDF's PNG, kept from before or drawn now and
+ *  kept; null when there is no such image. */
+export async function figureImage(path: string): Promise<string | null> {
+  const figure = await invoke<{ uri: string; key: string | null; drawn: boolean } | null>("figure_image", { path });
+  if (!figure) return null;
+  if (figure.drawn || !figure.key) return figure.uri;
+  const png = await shownImage(figure.uri);
+  if (png) {
+    const bytes = Uint8Array.from(atob(png.slice(png.indexOf(",") + 1)), (c) => c.charCodeAt(0));
+    invoke("keep_figure", { key: figure.key, png: Array.from(bytes) }).catch(() => {});
   }
   return png;
 }

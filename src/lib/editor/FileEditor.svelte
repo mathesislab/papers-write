@@ -132,6 +132,34 @@
     }),
   ];
 
+  /** A place shown a moment (`flash`: the paragraph a click in the preview scrolled to), its lines lit; the cursor
+   *  left where it is. */
+  const flashEffect = StateEffect.define<{ from: number; to: number } | null>();
+  const flashLine = Decoration.line({ class: "cm-flash" });
+  const flashing = [
+    StateField.define({
+      create: () => Decoration.none,
+      update(set, tr) {
+        for (const e of tr.effects) {
+          if (!e.is(flashEffect)) continue;
+          if (!e.value) return Decoration.none;
+          const { doc } = tr.state;
+          const [first, last] = [doc.lineAt(Math.min(e.value.from, doc.length)).number, doc.lineAt(Math.min(e.value.to, doc.length)).number];
+          const lines = [];
+          for (let n = first; n <= last; n++) lines.push(flashLine.range(doc.line(n).from));
+          return Decoration.set(lines);
+        }
+        return tr.docChanged ? Decoration.none : set;
+      },
+      provide: (f) => EditorView.decorations.from(f),
+    }),
+    EditorView.baseTheme({
+      ".cm-flash": { background: "rgba(255, 221, 0, 0.22)" },
+      "&dark .cm-flash": { background: "rgba(255, 221, 0, 0.14)" },
+    }),
+  ];
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+
   /** ⌃-click: the place shown elsewhere (`onsync`); a right-click: the app's menu (`oncontext`). */
   const clicks = [
     EditorView.clickAddsSelectionRange.of((e) => e.altKey),
@@ -250,7 +278,7 @@
         diagnostics,
         spelling,
         placeholder,
-        extensions: [...extensions, selection, found, clicks, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
+        extensions: [...extensions, selection, found, flashing, clicks, ...(mono || latex ? [] : [listKey]), reviewSlot.of(review ? reviewOf(review) : [])],
       });
     if (review && reviewed !== review) {
       reviewed = review;
@@ -382,6 +410,14 @@
     const range = { anchor: Math.min(from, end), head: Math.min(to, end) };
     editor.dispatch({ selection: range, effects: EditorView.scrollIntoView(range.anchor, { y: "center" }) });
     editor.focus();
+  }
+
+  /** The lines from `from` to `to` lit a moment (1.5 s), the cursor left where it is. */
+  export function flash(from: number, to: number) {
+    if (!editor) return;
+    editor.dispatch({ effects: flashEffect.of({ from, to }) });
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => editor?.dispatch({ effects: flashEffect.of(null) }), 1500);
   }
 
   /** A place found elsewhere (from a PDF): the cursor at its start, the place marked till the user types or moves. */

@@ -36,6 +36,8 @@ export type Settings = {
   appearance: Appearance;
   /** the windows' zoom (⌘= ⌘− ⌘0 on a text): 1 is as designed */
   zoom: number;
+  /** the interface as large as the text asks (settings.rs `scale`) */
+  interface_follows_text: boolean;
   project_colour_bar: boolean;
   /** look for updates at start and twice a day; they are installed only when asked */
   check_updates: boolean;
@@ -62,6 +64,12 @@ export function watchSettings(apply: (settings: Settings) => void): () => void {
 
 /** The editors of the window set to the font and size of the settings; their prefs. */
 export function applyEditor(settings: Settings): EditorPrefs {
-  setEditorFont(settings.editor_font, settings.editor_size);
+  setEditorFont(settings.editor_font, settings.editor_size / textScale(settings));
   return prefsFrom(settings);
+}
+
+/** How much the window is scaled beyond its zoom for the interface to follow the text (settings.rs `scale`): the
+ *  editors draw their text that much smaller, so that it shows at the size set. */
+export function textScale(s: Settings): number {
+  return s.interface_follows_text ? Math.max(1, (0.85 * s.editor_size) / 13) : 1;
 }

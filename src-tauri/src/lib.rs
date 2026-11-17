@@ -24,6 +24,7 @@ mod state;
 mod tabs;
 mod trash;
 mod update;
+mod watch;
 
 use tauri::{AppHandle, DragDropEvent, Manager, RunEvent, State, WebviewEvent, WindowEvent};
 use update::{Available, Installed, Updates};

@@ -17,7 +17,7 @@ use std::sync::mpsc::{RecvTimeoutError, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{EventKind, RecursiveMode};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use crate::sheet::Level;
@@ -403,14 +403,16 @@ impl Watch {
         let folder = folder_of(doc).canonicalize().map_err(|e| e.to_string())?;
         let dir = store::review_dir(&folder.join(doc.file_name().unwrap_or_default()));
         let (tx, rx) = channel::<notify::Event>();
-        let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |e: notify::Result<notify::Event>| {
-            if let Ok(e) = e {
-                let _ = tx.send(e);
-            }
-        })
-        .map_err(|e| e.to_string())?;
+        // the app's one watcher (watch.rs): the events of the folder watched handed to this watch's thread
+        let subscribe = move |(folder, mode): &(PathBuf, RecursiveMode)| {
+            let tx = tx.clone();
+            crate::watch::subscribe(folder, *mode == RecursiveMode::Recursive, move |e: &notify::Event| {
+                let _ = tx.send(e.clone());
+            })
+        };
         let mut armed = target(&dir);
-        watcher.watch(&armed.0, armed.1).map_err(|e| e.to_string())?;
+        // held till the thread ends (dropped, it lets go of the folder)
+        let mut _subscription = subscribe(&armed)?;
         let stop = Arc::new(AtomicBool::new(false));
         let (flag, handle, label) = (stop.clone(), app.clone(), label.to_string());
         std::thread::spawn(move || {
@@ -423,11 +425,11 @@ impl Watch {
                             pending = Some(Instant::now());
                             // the folder made since: watch it (or the next one down)
                             let next = target(&dir);
-                            if next != armed {
-                                let _ = watcher.unwatch(&armed.0);
-                                if watcher.watch(&next.0, next.1).is_ok() {
-                                    armed = next;
-                                }
+                            if next != armed
+                                && let Ok(now) = subscribe(&next)
+                            {
+                                _subscription = now;
+                                armed = next;
                             }
                         }
                     }

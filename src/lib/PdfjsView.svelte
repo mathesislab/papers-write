@@ -179,8 +179,15 @@
     return text;
   }
 
+  /** ⌃-click, or a double-click (not one that selected several words: a selection made by tap and drag), on the
+   *  text: its place in the source (Go to Source). */
   function sourceClick(e: MouseEvent) {
-    if (!onsource || !(e.ctrlKey || e.metaKey) || e.button !== 0) return;
+    if (!onsource || e.button !== 0) return;
+    if (e.type === "dblclick") {
+      const selected = window.getSelection()?.toString().trim() ?? "";
+      if (/\s/.test(selected)) return;
+      window.getSelection()?.removeAllRanges();
+    } else if (!(e.ctrlKey || e.metaKey)) return;
     const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
     if (!span) return;
     e.preventDefault();
@@ -495,6 +502,7 @@
   onMount(() => {
     let task: PDFDocumentLoadingTask | null = null;
     container.addEventListener("click", sourceClick, true);
+    container.addEventListener("dblclick", sourceClick, true);
     container.addEventListener("contextmenu", sourceMenu);
     const pages = document.createElement("div");
     pages.className = "pdfViewer";
@@ -577,6 +585,7 @@
     })();
     return () => {
       container.removeEventListener("click", sourceClick, true);
+      container.removeEventListener("dblclick", sourceClick, true);
       container.removeEventListener("contextmenu", sourceMenu);
       resize.disconnect();
       task?.destroy();

@@ -165,6 +165,16 @@
         e.preventDefault();
         onsource(at.text, at.word, at.around);
       });
+      // a double-click: Go to Source, as ⌃-click (not one that selected several words: a selection by tap and drag)
+      doc.addEventListener("dblclick", (e) => {
+        if (e.button !== 0) return;
+        const selected = doc.getSelection()?.toString().trim() ?? "";
+        if (/\s/.test(selected)) return;
+        const at = clicked(e);
+        if (!at) return;
+        doc.getSelection()?.removeAllRanges();
+        onsource(at.text, at.word, at.around);
+      });
       doc.addEventListener("contextmenu", async (e) => {
         const at = clicked(e);
         if (!at) return;

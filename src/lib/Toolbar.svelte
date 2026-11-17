@@ -22,7 +22,10 @@
     onpanel,
     onmode,
     onview,
+    review = true,
   }: {
+    /** the review's tools (comment, the panel, the mode); none in a folder of notes */
+    review?: boolean;
     /** what the text is: the formats are Markdown's, LaTeX's, or none */
     kind: "markdown" | "latex" | "text";
     mode: ReviewMode;
@@ -123,6 +126,7 @@
     </div>
     <span class="rule"></span>
   {/if}
+  {#if review}
   <div class="group">
     <button
       onclick={oncomment}
@@ -132,6 +136,7 @@
     >
   </div>
   <span class="rule"></span>
+  {/if}
   <div class="group">
     {#each FIND as [what, name, key] (what)}
       <button
@@ -144,6 +149,7 @@
     {/each}
   </div>
   <!-- at the right, together on a line of their own in a narrow window -->
+  {#if review}
   <div class="end">
     <button
       class="panel"
@@ -159,6 +165,7 @@
     </button>
     <ModeControl {mode} {view} {colour} {reviewing} {onmode} {onview} />
   </div>
+  {/if}
 </div>
 
 <style>

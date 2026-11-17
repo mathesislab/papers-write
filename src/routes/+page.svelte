@@ -170,6 +170,9 @@
 
   async function askNotes() {
     notes = await invoke<{ root: string; name: string } | null>("notes_of").catch(() => null);
+    // a folder of notes has no review: its tools and the Review menu go
+    void invoke("review_off", { off: !!notes }).catch(() => {});
+    if (notes) panel = false;
     // a page of no file in a folder of notes: its search, to open one or make one
     if (notes && !path) notesShown = true;
   }
@@ -403,6 +406,7 @@
 
   /** A choice of the Review menu. */
   function reviewMenu(what: string) {
+    if (notes) return;
     if (what === "suggest") session.toggleMode();
     else if (what.startsWith("view-")) session.setView(what.slice(5) as ReviewView);
     else if (what === "panel") togglePanel();
@@ -580,6 +584,7 @@
     open={session.items.filter((item) => item.state === "open").length}
     colour={userColour}
     {panel}
+    review={!notes}
     reviewing={!!session.me}
     onformat={(what) => editor?.format(what)}
     oncomment={comment}

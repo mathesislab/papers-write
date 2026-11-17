@@ -302,7 +302,7 @@ const colourRules = Object.fromEntries(
   COLOURS.map((c, i) => [`.cm-review-c${i + 1}`, { "--review-color": `var(--review-${i + 1}, ${c})` }]),
 );
 
-const theme = EditorView.baseTheme({
+export const theme = EditorView.baseTheme({
   ...colourRules,
   ".cm-review-del": {
     textDecoration: "line-through",

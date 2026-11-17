@@ -176,6 +176,18 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
             &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
+            // the text and its preview or PDF side by side, or each the whole width, one at a time (a small screen),
+            // or so only while the window is narrow; the one chosen checked by the page (`view_shown`)
+            &Submenu::with_items(
+                app,
+                "Panes",
+                true,
+                &[
+                    &CheckMenuItem::with_id(app, "panes-side", "Side by Side", true, true, None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-one", "One at a Time", true, false, None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-auto", "One at a Time on a Narrow Window", true, false, None::<&str>)?,
+                ],
+            )?,
             &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
             &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
             &separator()?,
@@ -357,6 +369,11 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
+        "panes-side" | "panes-one" | "panes-auto" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "panes", id.trim_start_matches("panes-"));
+            }
+        }
         "text-wider" => crate::settings::step_text_width(app, 1.0),
         "text-narrower" => crate::settings::step_text_width(app, -1.0),
         "text-full" => crate::settings::toggle_full_width(app),
@@ -437,10 +454,15 @@ pub fn sidebar_shown(app: AppHandle, shown: bool, outline: bool) {
 
 /// View ▸ Show Preview and Show PDF saying Hide when the page in front shows them.
 #[tauri::command]
-pub fn view_shown(app: AppHandle, preview: bool, pdf: bool) {
+pub fn view_shown(app: AppHandle, preview: bool, pdf: bool, panes: String) {
     for (id, shown, name) in [("preview", preview, "Preview"), ("pdf-beside", pdf, "PDF")] {
         if let Some(item) = item_of(&app, id) {
             let _ = item.set_text(format!("{} {name}", if shown { "Hide" } else { "Show" }));
+        }
+    }
+    for mode in ["side", "one", "auto"] {
+        if let Some(item) = app.menu().and_then(|m| m.get(&format!("panes-{mode}"))).and_then(|k| k.as_check_menuitem().cloned()) {
+            let _ = item.set_checked(panes == mode);
         }
     }
 }

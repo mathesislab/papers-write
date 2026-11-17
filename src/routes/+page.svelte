@@ -32,6 +32,7 @@
   // it changes.
 
   import { popupReleased } from "$lib/contextMenu";
+  import { readAloudItems, spokenOf } from "$lib/readAloud";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -341,12 +342,27 @@
     queueMicrotask(() => previewPane?.flash());
   }
 
-  /** A right-click in the text: Show in Preview or in PDF, and the edits of the selection. */
+  /** What Read Aloud reads in the text: the selection, else the paragraph of the cursor (between empty lines). */
+  function spokenHere(): string {
+    const view = editor?.view();
+    if (!view) return "";
+    const { doc, selection } = view.state;
+    const { from, to } = selection.main;
+    if (from !== to) return spokenOf(doc.sliceString(from, to));
+    let [first, last] = [doc.lineAt(from).number, doc.lineAt(from).number];
+    while (first > 1 && doc.line(first - 1).text.trim()) first--;
+    while (last < doc.lines && doc.line(last + 1).text.trim()) last++;
+    return spokenOf(doc.sliceString(doc.line(first).from, doc.line(last).to));
+  }
+
+  /** A right-click in the text: Read Aloud (when set), Show in Preview or in PDF, and the edits of the selection. */
   async function editorMenu(e: MouseEvent) {
     const where = previewing && markdown ? "Preview" : "PDF";
     const mac = navigator.userAgent.includes("Mac");
+    const reading = await readAloudItems(spokenHere(), editor?.view()?.state.selection.main.empty ? "Read Aloud Paragraph" : "Read Aloud");
     const click = ` (${mac ? "⌘" : "Ctrl"}-click)`;
     const items = await Promise.all([
+      ...reading,
       // the pane shown says what ⌘-click does
       ...(markdown ? [MenuItem.new({ text: `Show in Preview${where === "Preview" ? click : ""}`, action: () => void showInPreview() })] : []),
       MenuItem.new({ text: `Show in PDF${where === "PDF" ? click : ""}`, enabled: !!path, action: () => void showInPdf() }),
@@ -832,6 +848,7 @@
   <!-- the text's column: its toolbar above it, so that its tools stay with it when a pane is beside it -->
   <div class="text">
   <Toolbar
+    speak={spokenHere}
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
     view={session.view}

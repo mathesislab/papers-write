@@ -13,6 +13,7 @@ mod pdfsync;
 mod preview;
 mod profiles;
 mod projects;
+mod readaloud;
 mod refs;
 mod review;
 mod settings;
@@ -107,6 +108,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             settings::settings,
+            readaloud::read_aloud,
+            readaloud::stop_reading,
+            readaloud::reading,
             settings::set_settings,
             settings::set_text_width,
             settings::zoom_window,

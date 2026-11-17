@@ -11,6 +11,7 @@
   import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import type { Appearance } from "$lib/settings";
+  import ReadAloudButton from "$lib/ReadAloudButton.svelte";
 
   let {
     kind,
@@ -32,7 +33,10 @@
     onappearance,
     onmode,
     onview,
+    speak,
   }: {
+    /** what Read Aloud reads (its button, when a command is set) */
+    speak?: () => string;
     /** what the text is: the formats are Markdown's, LaTeX's, or none */
     kind: "markdown" | "latex" | "text";
     mode: ReviewMode;
@@ -218,6 +222,10 @@
       >
     {/each}
   </div>
+  {#if speak}
+    <span class="rule"></span>
+    <div class="group"><ReadAloudButton text={speak} /></div>
+  {/if}
   <!-- in the middle, how the text is shown -->
   <div class="middle">
     <button class="size" onclick={() => onsize(-1)} title="Zoom Out: the whole window, text and all (⌘−)" aria-label="Zoom Out">A<sup>−</sup></button>

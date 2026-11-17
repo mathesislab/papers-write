@@ -27,6 +27,8 @@ export type Settings = {
   quarto_path: string;
   latexmk_path: string;
   pandoc_path: string;
+  /** Read Aloud: the command given the text ({text}); empty: none */
+  read_aloud: string;
   tabs: boolean;
   /** light or dark, or as the system is */
   appearance: Appearance;

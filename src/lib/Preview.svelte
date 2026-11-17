@@ -53,7 +53,10 @@
     .synced { background: rgba(255, 221, 0, 0.35); border-radius: 3px; transition: background 1.2s ease-out; }
   `;
 
-  const doc = $derived(`<!doctype html><meta charset="utf-8"><style>${SHEET}</style><body>${html}</body>`);
+  // No script of the document runs (its policy); the frame allows scripts only so that the page's own listeners on it
+  // run (⌃-click and the menu to the source): WebKit runs no listener in a frame that has none.
+  const POLICY = `<meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'">`;
+  const doc = $derived(`<!doctype html><meta charset="utf-8">${POLICY}<style>${SHEET}</style><body>${html}</body>`);
 
   /** The frame scrolled so that the block is a little below its top. */
   function reveal() {
@@ -139,7 +142,7 @@
 
 <aside>
   <!-- no allow-scripts: what the text holds as HTML cannot run; allow-same-origin only for the page to scroll it -->
-  <iframe bind:this={frame} title="Preview" sandbox="allow-same-origin" srcdoc={doc} onload={loaded}></iframe>
+  <iframe bind:this={frame} title="Preview" sandbox="allow-same-origin allow-scripts" srcdoc={doc} onload={loaded}></iframe>
   {#if error}<p class="error">{error}</p>{/if}
 </aside>
 

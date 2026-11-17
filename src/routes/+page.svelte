@@ -327,10 +327,20 @@
   /** ⌃-click in the text, or Show in … of its menu: where the cursor is, shown in the pane beside it: the preview's
    *  block when the preview is shown, else in the PDF (shown first when it is not). */
   function syncHere() {
-    if (previewing && markdown) {
-      follow();
-      queueMicrotask(() => previewPane?.flash());
-    } else void showInPdf();
+    if (previewing && markdown) showInPreview();
+    else void showInPdf();
+  }
+
+  /** Show in Preview: the preview shown (in place of the PDF), scrolled to the cursor's block, which flashes. */
+  async function showInPreview() {
+    if (!markdown) return;
+    if (!previewing) {
+      togglePreview();
+      // its HTML made first
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    follow();
+    queueMicrotask(() => previewPane?.flash());
   }
 
   /** What Read Aloud reads in the text: the selection, else the paragraph of the cursor (between empty lines). */
@@ -351,9 +361,12 @@
     const where = previewing && markdown ? "Preview" : "PDF";
     const mac = navigator.userAgent.includes("Mac");
     const reading = await readAloudItems(spokenHere(), editor?.view()?.state.selection.main.empty ? "Read Aloud Paragraph" : "Read Aloud");
+    const click = ` (${mac ? "⌘" : "Ctrl"}-click)`;
     const items = await Promise.all([
       ...reading,
-      MenuItem.new({ text: `Show in ${where} (${mac ? "⌘" : "Ctrl"}-click)`, enabled: !!path, action: syncHere }),
+      // the pane shown says what ⌘-click does
+      ...(markdown ? [MenuItem.new({ text: `Show in Preview${where === "Preview" ? click : ""}`, action: () => void showInPreview() })] : []),
+      MenuItem.new({ text: `Show in PDF${where === "PDF" ? click : ""}`, enabled: !!path, action: () => void showInPdf() }),
       PredefinedMenuItem.new({ item: "Separator" }),
       PredefinedMenuItem.new({ item: "Cut" }),
       PredefinedMenuItem.new({ item: "Copy" }),

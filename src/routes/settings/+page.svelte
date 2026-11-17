@@ -197,6 +197,13 @@
         </label>
         <label class="row">
           <span>
+            <span class="label">Figures in the text</span>
+            <span class="hint">Each figure shown under its line; off: in a tooltip over it. Also View ▸ Show Figures in the Text</span>
+          </span>
+          <input type="checkbox" class="switch" bind:checked={settings.inline_figures} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
             <span class="label">Check spelling</span>
             <span class="hint">As the text is typed</span>
           </span>

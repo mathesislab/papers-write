@@ -177,6 +177,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("appearance-system", "System Appearance", None)?,
             &item("appearance-light", "Light Appearance", None)?,
             &item("appearance-dark", "Dark Appearance", None)?,
+            &item("figures-inline", "Show Figures in the Text", None)?,
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
@@ -340,6 +341,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "appearance-system" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::System),
         "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),
         "appearance-dark" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Dark),
+        "figures-inline" => crate::settings::toggle_inline_figures(app),
         "preview" | "outline" | "sidebar" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());

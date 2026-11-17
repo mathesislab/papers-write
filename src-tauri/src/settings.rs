@@ -61,6 +61,8 @@ pub struct Settings {
     /// light or dark, or as the system is
     pub appearance: Appearance,
     pub line_numbers: bool,
+    /// the figures shown in the text, under their lines, rather than in a tooltip
+    pub inline_figures: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
     /// a file written as it is typed (half a second after the typing stops); off: only when saved (⌘S), the text typed
@@ -106,6 +108,7 @@ impl Default for Settings {
             text_width: 46.0,
             appearance: Appearance::System,
             line_numbers: false,
+            inline_figures: false,
             spelling: true,
             autosave: true,
             symbols: Vec::new(),
@@ -290,6 +293,13 @@ pub fn toggle_full_width(app: &AppHandle) {
     put(app, settings);
 }
 
+/// View ▸ Show Figures in the Text: the figures in the text, or in their tooltips.
+pub fn toggle_inline_figures(app: &AppHandle) {
+    let mut settings = get();
+    settings.inline_figures = !settings.inline_figures;
+    put(app, settings);
+}
+
 /// The settings, for the Settings window and the document pages.
 #[tauri::command]
 pub fn settings() -> Settings {
@@ -415,6 +425,7 @@ mod tests {
             text_width: 60.0,
             appearance: Appearance::Dark,
             line_numbers: true,
+            inline_figures: true,
             spelling: false,
             autosave: false,
             symbols: vec![("(c)".into(), "©".into()), ("->".into(), String::new())],

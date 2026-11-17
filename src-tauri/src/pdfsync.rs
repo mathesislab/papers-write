@@ -1,8 +1,9 @@
-//! From a PDF to its source: the text clicked in a PDF (⌃-click in the pdf.js view) found in the Markdown and LaTeX
-//! files of the PDF's project, and that file opened with the cursor there. The PDF is not asked how it was built: its
-//! words are searched in every source file (`write_core::srcmap::find_text`), so chapters, `\include`, `\includeonly`
-//! and draft passes need nothing of their own. Where several places match as well (an older copy of a paragraph in
-//! notes), the most recently changed file is taken.
+//! From a PDF to its source: the place clicked in a PDF (⌃-click in the pdf.js view), and that file opened with the
+//! cursor there. Exactly where the build left a map beside the PDF: texmark's `<pdf>.srcmap.json` (`texmark sync
+//! backward`, from the PDF to its Markdown), else SyncTeX's `<pdf>.synctex.gz` (`synctex edit`, to its LaTeX).
+//! Otherwise by the words clicked, searched in every source file of the project (`write_core::srcmap::find_text`), so
+//! chapters, `\include`, `\includeonly` and draft passes need nothing of their own; where several places match as
+//! well (an older copy of a paragraph in notes), the most recently changed file is taken.
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -58,11 +59,131 @@ pub fn find(pdf: &Path, text: &str) -> Option<(PathBuf, usize)> {
     Some((files[place.text].clone(), offset_of(&texts[place.text], place.line, place.column)))
 }
 
-/// ⌃-click in a PDF: the source of the text clicked opened at it (as the sidebar's search opens a match); false
-/// when it is found in none of the project's sources.
+/// A place in a PDF: its page (from 1) and a point of it in PDF points from the page's top left, as SyncTeX takes it.
+#[derive(serde::Deserialize, Clone, Copy)]
+pub struct At {
+    page: u32,
+    x: f64,
+    y: f64,
+}
+
+/// The beside-file of `pdf` with `suffix` (`.srcmap.json`, `.synctex.gz`), if the build left one.
+fn beside(pdf: &Path, suffix: &str) -> Option<PathBuf> {
+    let file = pdf.with_file_name(format!("{}{suffix}", pdf.file_stem()?.to_string_lossy()));
+    file.is_file().then_some(file)
+}
+
+/// The source file and line (1-based) of the place `at` of `pdf`, from the map the build left beside it; none
+/// without one, or when it says nothing there.
+fn exact(pdf: &Path, at: At) -> Option<(PathBuf, u32)> {
+    if beside(pdf, ".srcmap.json").is_some() {
+        let texmark = crate::build::find_tool("texmark").ok()?;
+        let out = std::process::Command::new(texmark)
+            .args(["sync", "backward", "--pdf"])
+            .arg(pdf)
+            .args([at.page.to_string(), at.x.to_string(), at.y.to_string()])
+            .env("PATH", crate::build::search_path(None))
+            .output()
+            .ok()?;
+        let found: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+        let file = PathBuf::from(found.get("file")?.as_str()?);
+        let line = found.get("line")?.as_u64()? as u32;
+        return file.is_file().then_some((file, line));
+    }
+    beside(pdf, ".synctex.gz")?;
+    let synctex = crate::build::find_tool("synctex").ok()?;
+    let out = std::process::Command::new(synctex)
+        .arg("edit")
+        .arg("-o")
+        .arg(format!("{}:{}:{}:{}", at.page, at.x, at.y, pdf.display()))
+        .env("PATH", crate::build::search_path(None))
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let field = |name: &str| text.lines().find_map(|l| l.strip_prefix(name)).map(str::trim);
+    let file = PathBuf::from(field("Input:")?);
+    let file = if file.is_absolute() { file } else { pdf.parent()?.join(file) };
+    let line: u32 = field("Line:")?.parse().ok()?;
+    (file.is_file() && line > 0).then_some((file, line))
+}
+
+/// A box of a PDF: its page, its left and baseline in PDF points from the page's top left, its size.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy)]
+pub struct Box {
+    page: u32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+/// Where line `line` (1-based) of `source` is in `pdf`, from the map the build left beside it: texmark's
+/// (`texmark sync forward`) for a Markdown source, SyncTeX's (`synctex view`) for a LaTeX one; none without one.
 #[tauri::command]
-pub async fn open_source_at(app: AppHandle, pdf: String, text: String) -> Result<bool, String> {
-    let found = tauri::async_runtime::spawn_blocking(move || find(Path::new(&pdf), &text)).await.map_err(|e| e.to_string())?;
+pub async fn pdf_boxes(pdf: String, source: String, line: u32) -> Option<Vec<Box>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let pdf = Path::new(&pdf);
+        if beside(pdf, ".srcmap.json").is_some() && !source.ends_with(".tex") {
+            let texmark = crate::build::find_tool("texmark").ok()?;
+            let out = std::process::Command::new(texmark)
+                .args(["sync", "forward", &format!("{source}:{line}"), "--pdf"])
+                .arg(pdf)
+                .env("PATH", crate::build::search_path(None))
+                .output()
+                .ok()?;
+            let found: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+            let boxes = if found.is_array() { found } else { serde_json::Value::Array(vec![found]) };
+            return serde_json::from_value(boxes).ok();
+        }
+        beside(pdf, ".synctex.gz")?;
+        let synctex = crate::build::find_tool("synctex").ok()?;
+        let out = std::process::Command::new(synctex)
+            .args(["view", "-i", &format!("{line}:0:{source}"), "-o"])
+            .arg(pdf)
+            .env("PATH", crate::build::search_path(None))
+            .output()
+            .ok()?;
+        // records of `Page:`, `x:`, `y:`, `W:`, `H:` lines (`h:` and `v:` before them are the same, unrounded)
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut boxes = Vec::new();
+        let mut page = None;
+        let mut fields = std::collections::HashMap::new();
+        for l in text.lines() {
+            let Some((k, v)) = l.split_once(':') else { continue };
+            match k {
+                "Page" => page = v.trim().parse().ok(),
+                "h" | "v" | "W" | "H" => {
+                    fields.insert(k, v.trim().parse::<f64>().unwrap_or(0.0));
+                }
+                _ => {}
+            }
+            if k == "H"
+                && let (Some(page), Some(&x), Some(&y), Some(&w), Some(&h)) = (page, fields.get("h"), fields.get("v"), fields.get("W"), fields.get("H"))
+            {
+                boxes.push(Box { page, x, y, width: w, height: h });
+            }
+        }
+        (!boxes.is_empty()).then_some(boxes)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// ⌃-click in a PDF: the source of the place clicked opened at it (as the sidebar's search opens a match), exactly
+/// from the build's map when there is one, else by the words clicked; false when it is found in none of the sources.
+#[tauri::command]
+pub async fn open_source_at(app: AppHandle, pdf: String, text: String, at: Option<At>) -> Result<bool, String> {
+    let found = tauri::async_runtime::spawn_blocking(move || {
+        let pdf = Path::new(&pdf);
+        if let Some((file, line)) = at.and_then(|at| exact(pdf, at)) {
+            let source = std::fs::read_to_string(&file).unwrap_or_default();
+            return Some((file, offset_of(&source, line, 0)));
+        }
+        find(pdf, &text)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     match found {
         Some((path, at)) => {
             crate::sidebar::open_at(app, path.to_string_lossy().into_owned(), at, at)?;

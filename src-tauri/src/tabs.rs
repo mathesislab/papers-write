@@ -14,7 +14,12 @@ pub struct Write;
 
 impl Host for Write {
     fn background(&self, _app: &AppHandle, dark: bool) -> Option<tauri::window::Color> {
-        // the pages' --bg (theme.css), light or dark as the system is
+        // the pages' --bg (theme.css), light or dark as Settings ▸ Window ▸ Appearance says, else as the system is
+        let dark = match crate::settings::get().appearance {
+            crate::settings::Appearance::Light => false,
+            crate::settings::Appearance::Dark => true,
+            crate::settings::Appearance::System => dark,
+        };
         Some(if dark { tauri::window::Color(0x26, 0x26, 0x28, 0xff) } else { tauri::window::Color(0xf6, 0xf6, 0xf8, 0xff) })
     }
 

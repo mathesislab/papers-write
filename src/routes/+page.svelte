@@ -35,6 +35,7 @@
   import { readAloudItems, spokenOf } from "$lib/readAloud";
   import { toggleComment } from "@codemirror/commands";
   import { gotoLine, selectNextOccurrence } from "@codemirror/search";
+  import GoToFile from "$lib/GoToFile.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -172,6 +173,8 @@
   let frame = $state<Frame>();
   /** the headings of the document and the one the cursor is under, for the outline */
   let headings = $state.raw<Heading[]>([]);
+  /** Go to File (⌘P) shown */
+  let goingToFile = $state(false);
   let here = $state(-1);
   const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), log: (e) => log.push(e), colours: (m) => setColours(withOwn(m)) });
   /** the review panel at the right: shown (the preview is not while it is) */
@@ -876,6 +879,7 @@
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", () => togglePreview()),
       listen("pdf-beside", () => togglePdf()),
+      listen("go-to-file", () => (goingToFile = true)),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number; mark: boolean }>("go-to", (e) => goTo(e.payload)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -1020,6 +1024,14 @@
     </div>
   {/if}
   </div>
+  {#if goingToFile}
+    <GoToFile
+      headings={markdown || latex ? headings : []}
+      onheading={(h) => editor?.goToHeading(h)}
+      online={(n) => editor?.goToLine(n)}
+      onclose={() => ((goingToFile = false), editor?.focus())}
+    />
+  {/if}
   {#if listing}
     {#key version}
       <RefList bind:this={refs} enter="pandoc" {search} {closest} {sources} dropped={leftOut} oninsert={inserted} onopen={openPdf} onclose={closeList} />

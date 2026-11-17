@@ -218,6 +218,7 @@ pub fn run() {
             projects::choose_library,
             projects::choose_project,
             sidebar::project_files,
+            sidebar::project_file_list,
             sidebar::search_project,
             sidebar::replace_in_project,
             sidebar::open_at,

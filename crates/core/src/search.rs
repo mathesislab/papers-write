@@ -134,8 +134,31 @@ pub fn replace(text: &str, q: &Query, with: &str) -> Result<(String, usize), Str
     Ok((out, count))
 }
 
-/// The files searched under `root`, in natural order of their paths.
-fn files(root: &Path) -> impl Iterator<Item = PathBuf> {
+/// A file of a project as Go to File lists it: its path, its path from the project's folder, when it last changed
+/// (seconds since 1970).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Listed {
+    pub path: PathBuf,
+    pub relative: String,
+    pub modified: u64,
+}
+
+/// The files under `root` that can be opened (text, Markdown, LaTeX, BibTeX, PDF; not hidden, not in a build folder,
+/// as the project's search walks it), `most` at most; for Go to File.
+pub fn openable(root: &Path, most: usize) -> Vec<Listed> {
+    walk(root)
+        .filter(|e| e.file_type().is_file() && (searched(e.path()) || crate::files::kind(e.path()) == crate::files::Kind::Pdf))
+        .take(most)
+        .map(|e| {
+            let modified = e.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
+            let relative = e.path().strip_prefix(root).unwrap_or(e.path()).to_string_lossy().into_owned();
+            Listed { path: e.into_path(), relative, modified: modified.map_or(0, |d| d.as_secs()) }
+        })
+        .collect()
+}
+
+/// The entries under `root`, hidden ones and build folders left out, in natural order of their paths.
+fn walk(root: &Path) -> impl Iterator<Item = walkdir::DirEntry> {
     WalkDir::new(root)
         .sort_by(|a, b| natural(&a.file_name().to_string_lossy(), &b.file_name().to_string_lossy()))
         .into_iter()
@@ -144,6 +167,11 @@ fn files(root: &Path) -> impl Iterator<Item = PathBuf> {
             e.depth() == 0 || !(name.starts_with('.') || (e.file_type().is_dir() && SKIPPED.contains(&name.as_ref())))
         })
         .flatten()
+}
+
+/// The files searched under `root`, in natural order of their paths.
+fn files(root: &Path) -> impl Iterator<Item = PathBuf> {
+    walk(root)
         .filter(|e| e.file_type().is_file() && searched(e.path()))
         .filter(|e| e.metadata().is_ok_and(|m| m.len() <= LARGEST))
         .map(walkdir::DirEntry::into_path)
@@ -348,5 +376,18 @@ mod tests {
         let found = search(&root, &q("ice", true, false, false), 4).unwrap();
         assert_eq!(found.iter().map(|f| f.hits.len()).collect::<Vec<_>>(), [3, 1]);
         assert_eq!(search(&root, &q("ice", true, false, false), 9).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn go_to_file_lists_what_can_be_opened() {
+        let root = folder();
+        for (name, text) in [("paper.md", "x"), ("refs.bib", "x"), ("fig.png", "x"), ("out.pdf", "x"), ("build/paper.pdf", "x"), (".hidden/a.md", "x"), ("sec/intro.md", "x")] {
+            let path = root.join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+        let mut listed: Vec<String> = openable(&root, 100).into_iter().map(|l| l.relative.replace('\\', "/")).collect();
+        listed.sort();
+        assert_eq!(listed, ["out.pdf", "paper.md", "refs.bib", "sec/intro.md"]);
     }
 }

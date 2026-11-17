@@ -94,6 +94,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &item("new", "New", Some("CmdOrCtrl+N"))?,
             &item("open", "Open…", Some("CmdOrCtrl+O"))?,
+            // as Sublime's Goto Anything: a file of the project, a heading (@), a line (:)
+            &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
             &recent,
             &item("open-project", "Open Project…", Some("Shift+CmdOrCtrl+O"))?,
             &separator()?,
@@ -356,7 +358,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "appearance-system" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::System),
         "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),
         "appearance-dark" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Dark),
-        "preview" | "pdf-beside" | "outline" | "sidebar" => {
+        "preview" | "pdf-beside" | "outline" | "sidebar" | "go-to-file" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
             }

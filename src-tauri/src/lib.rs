@@ -209,6 +209,7 @@ pub fn run() {
             sidebar::replace_in_project,
             sidebar::open_at,
             pdfsync::open_source_at,
+            pdfsync::pdf_boxes,
             sidepdf::side_pdf,
             profiles::build_profiles,
             profiles::set_build_profile,

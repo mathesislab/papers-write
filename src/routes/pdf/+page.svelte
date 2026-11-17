@@ -60,10 +60,10 @@
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** ⌃-click on the PDF's text: its source opened there, found by its words in the project's Markdown and LaTeX. */
-  async function toSource(text: string) {
+  async function toSource(text: string, at: { page: number; x: number; y: number } | null = null) {
     if (!path) return;
     try {
-      const found = await invoke<boolean>("open_source_at", { pdf: path, text });
+      const found = await invoke<boolean>("open_source_at", { pdf: path, text, at });
       if (!found) say("Not found in the project's sources");
     } catch (e) {
       say(String(e));

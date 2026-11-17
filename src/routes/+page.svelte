@@ -285,6 +285,8 @@
     }
     const head = view.state.selection.main.head;
     const line = view.state.doc.lineAt(head);
+    // exactly, from the map the build left beside the PDF; else by the words around the cursor
+    if (await sidePdf?.showSource(path, line.number)) return;
     for (const phrase of phrasesAt(line.text, head - line.from)) {
       if (await sidePdf?.find(phrase)) return;
     }
@@ -292,8 +294,8 @@
   }
 
   /** ⌃-click in the PDF beside the text: its source there (this text, or another file in its tab). */
-  async function toSource(pdf: string, text: string) {
-    const found = await invoke<boolean>("open_source_at", { pdf, text }).catch(() => false);
+  async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null) {
+    const found = await invoke<boolean>("open_source_at", { pdf, text, at }).catch(() => false);
     if (!found) say("Not found in the project's sources");
   }
 

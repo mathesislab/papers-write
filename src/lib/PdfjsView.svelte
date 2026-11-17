@@ -34,8 +34,9 @@
     onhistory?: (history: History) => void;
     /** the PDF open: its page count */
     onopen: (count: number) => void;
-    /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked, and the next when it is short */
-    onsource?: (text: string) => void;
+    /** a ⌃-click (⌘ on macOS) on the text: the line of text clicked (and the next when it is short), and the place
+     *  clicked: its page and its point in PDF points from the page's top left, as SyncTeX takes it */
+    onsource?: (text: string, at: { page: number; x: number; y: number } | null) => void;
     /** the PDF's outline (its bookmarks), in order, each with its depth and the page it goes to (none: unknown) */
     onoutline?: (items: { level: number; title: string; page: number | null }[]) => void;
   } = $props();
@@ -178,7 +179,41 @@
     e.preventDefault();
     e.stopPropagation();
     const text = lineOf(span);
-    if (text) onsource(text);
+    if (text) onsource(text, pointOf(e));
+  }
+
+  /** A box of the PDF (SyncTeX's: its page, its left and baseline in PDF points from the page's top left, its width
+   *  and height above the baseline) brought into view, and marked a moment. */
+  export function showBox(box: { page: number; x: number; y: number; width: number; height: number }) {
+    const pageView = viewer?.getPageView(box.page - 1);
+    if (!viewer || !pageView) return;
+    const [, , , top] = pageView.viewport.viewBox;
+    // PDF space: from the bottom left
+    const [x1, y1, x2, y2] = [box.x, top - box.y - 3, box.x + box.width, top - box.y + box.height];
+    behind.push(here());
+    ahead = [];
+    told();
+    viewer.scrollPageIntoView({ pageNumber: box.page, destArray: [null, { name: "XYZ" }, x1, y2 + 40, null] });
+    const [a, b, c, d] = pageView.viewport.convertToViewportRectangle([x1, y1, x2, y2]);
+    const mark = document.createElement("div");
+    mark.className = "synced";
+    Object.assign(mark.style, { left: `${Math.min(a, c)}px`, top: `${Math.min(b, d)}px`, width: `${Math.abs(c - a)}px`, height: `${Math.abs(d - b)}px` });
+    pageView.div.append(mark);
+    setTimeout(() => mark.remove(), 1600);
+  }
+
+  /** The place of a click in the PDF: its page, and its point in PDF points from the page's top left. */
+  function pointOf(e: MouseEvent): { page: number; x: number; y: number } | null {
+    const pageDiv = (e.target as HTMLElement).closest<HTMLElement>(".page[data-page-number]");
+    const page = Number(pageDiv?.dataset.pageNumber);
+    const pageView = page && viewer?.getPageView(page - 1);
+    if (!pageDiv || !pageView) return null;
+    const box = pageDiv.getBoundingClientRect();
+    const viewport = pageView.viewport;
+    const [x, y] = viewport.convertToPdfPoint(e.clientX - box.left - pageDiv.clientLeft, e.clientY - box.top - pageDiv.clientTop);
+    // PDF space is from the bottom left; SyncTeX's from the top left of the page's box
+    const [, , , top] = viewport.viewBox;
+    return { page, x, y: top - y };
   }
 
   onMount(() => {
@@ -283,6 +318,19 @@
     overflow: auto;
     outline: none;
     background: var(--sidebar, #eeeef1);
+  }
+  /* the place Show in PDF found, marked a moment */
+  .pdf :global(.synced) {
+    position: absolute;
+    z-index: 5;
+    background: color-mix(in srgb, var(--accent, #2f6fde) 22%, transparent);
+    border-radius: 2px;
+    pointer-events: none;
+    animation: synced 1.6s ease-out forwards;
+  }
+  @keyframes synced {
+    0%, 60% { opacity: 1; }
+    100% { opacity: 0; }
   }
   .error {
     position: absolute;

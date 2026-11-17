@@ -13,7 +13,8 @@
   import PdfjsView from "$lib/PdfjsView.svelte";
   import { listen } from "$lib/events";
 
-  let { onsource, onsay }: { onsource: (pdf: string, text: string) => void; onsay: (what: string) => void } = $props();
+  type At = { page: number; x: number; y: number };
+  let { onsource, onsay }: { onsource: (pdf: string, text: string, at: At | null) => void; onsay: (what: string) => void } = $props();
 
   type Offered = { path: string; name: string; modified: number };
   type Side = { pdf: string | null; offered: Offered[] };
@@ -65,6 +66,17 @@
     return (await view?.find(text)) ?? false;
   }
 
+  /** The place `line` (1-based) of the source `source` is at in the PDF, from the map its build left beside it
+   *  (texmark's, or SyncTeX's for LaTeX), shown and marked; false without a map, or when it says nothing there. */
+  export async function showSource(source: string, line: number): Promise<boolean> {
+    if (!side?.pdf || !view || !("showBox" in view)) return false;
+    const boxes = await invoke<Box[] | null>("pdf_boxes", { pdf: side.pdf, source, line }).catch(() => null);
+    if (!boxes?.length) return false;
+    (view as PdfjsView).showBox(boxes[0]);
+    return true;
+  }
+  type Box = { page: number; x: number; y: number; width: number; height: number };
+
   /** Whether a PDF is shown. */
   export const showing = () => !!side?.pdf;
 
@@ -99,7 +111,7 @@
           {page}
           onpage={(p) => (page = p)}
           onopen={(count) => (page = Math.min(page, count))}
-          onsource={(text: string) => side?.pdf && onsource(side.pdf, text)}
+          onsource={(text: string, at: At | null) => side?.pdf && onsource(side.pdf, text, at)}
         />
       {/key}
     {:else if side}

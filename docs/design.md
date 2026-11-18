@@ -148,7 +148,8 @@ One app later is then a matter of windows, not code.
   to another place (or Window ▸ Move Tab Left, Right), and gone through as
   Sublime and VS Code have it: ⌃Tab the tab in front before (again while ⌃ is
   held, the one before that), Back and Forward among the tabs visited, ⌘1…⌘9
-  (Alt elsewhere) a tab by its place. At the start the tab in
+  (Alt elsewhere) a tab by its place; papers-review the same (papers-tabs'
+  `menu`, and ProjectFrame for ⌃ let go). At the start the tab in
   front of each window loads first and the others one at a time after it
   (twenty loading at once kept every one from showing for seconds).
 - Saving: a file is written half a second after the typing stops, unless
@@ -693,7 +694,8 @@ shown as tracked changes between two commits. Nothing is rewritten.
   latexdiff), git (the `git` command), import and export. A small CLI on the
   review crate (`pw review list|accept|export`).
 - The windows and tabs: papers-tabs, told by the app what its pages are
-  (`Host`: their titles, whether edited, the windows' background).
+  (`Host`: their titles, whether edited, the windows' background); the Window
+  menu's items for the tabs are its own (`menu`), the same in each app.
 - One file system watcher for the app (`watch.rs`): each folder watched once
   for all who ask, as Linux allows few watchers per user.
 - Where the platforms differ, one interface and an implementation each: the

@@ -28,6 +28,20 @@
     if (path) void invoke<typeof chapters>("chapter_neighbours", { path }).then((c) => (chapters = c)).catch(() => {});
   });
 
+  /** the text's outline (its page sends it), the heading of what shows marked; the sidebar the text's own */
+  type Heading = { level: number; title: string; from: number; number?: string };
+  let headings = $state.raw<Heading[]>([]);
+  let here = $state(-1);
+  /** View ▸ Panes as the pages keep it */
+  const panesMode = (): "side" | "tabs" | "auto" => {
+    try {
+      const kept = localStorage.getItem("panes");
+      return kept === "tabs" || kept === "one" ? "tabs" : kept === "auto" ? "auto" : "side";
+    } catch {
+      return "side";
+    }
+  };
+
   /** Something told to the text's page; false when it is gone (its tab closed). */
   const tell = (what: Record<string, unknown>) => invoke<boolean>("relay", { to: of, event: "preview-tab", payload: what }).catch(() => false);
 
@@ -39,6 +53,7 @@
           done();
         }),
         listen<number>("preview-block", (e) => (block = e.payload)),
+        listen<{ headings: Heading[]; here: number }>("preview-outline", (e) => ({ headings, here } = e.payload)),
         listen("preview-flash", () => queueMicrotask(() => preview?.flash())),
         // View ▸ Show Preview (⇧⌘P) with the preview in front: back to its text, as a toggle
         listen("preview", () => void invoke("bring_tab", { page: of })),
@@ -60,7 +75,15 @@
   let onDestroy = () => {};
 </script>
 
-<Frame bind:this={frame} {path} onsay={(what) => (error = what)}>
+<Frame
+  bind:this={frame}
+  {path}
+  {headings}
+  {here}
+  outlined={headings.length > 0}
+  onheading={(h) => void tell({ kind: "heading", index: h.from })}
+  onsay={(what) => (error = what)}
+>
   <div class="preview">
     <Preview
       bind:this={preview}
@@ -73,6 +96,8 @@
       previous={chapters.previous}
       next={chapters.next}
       onchapter={(file) => void tell({ kind: "chapter", text: file })}
+      onscrolled={(index) => void tell({ kind: "scrolled", index })}
+      panes={{ mode: panesMode(), onpanes: (mode) => void tell({ kind: "panes", text: mode }) }}
     />
   </div>
 </Frame>

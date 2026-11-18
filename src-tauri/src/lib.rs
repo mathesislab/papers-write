@@ -25,6 +25,7 @@ mod sidebar;
 mod spelling;
 mod state;
 mod tabs;
+mod undo;
 mod trash;
 mod update;
 mod watch;
@@ -112,6 +113,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            undo::history_read,
+            undo::history_write,
             panetabs::pdf_tab_show,
             panetabs::take_show_source,
             panetabs::preview_tab,

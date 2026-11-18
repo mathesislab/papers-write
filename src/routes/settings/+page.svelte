@@ -399,6 +399,20 @@
         </label>
         <label class="row">
           <span>
+            <span class="label">Unload tabs not shown for</span>
+            <span class="hint">Minutes (0: never). Their page is freed, and loaded again as it was when the tab is shown: its place, its undo history, its panes</span>
+          </span>
+          <input class="text number" type="number" min="0" max="1440" bind:value={settings.unload_after} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
+            <span class="label">Tabs kept loaded</span>
+            <span class="hint">At most, the most recently shown; the others are unloaded the same way</span>
+          </span>
+          <input class="text number" type="number" min="1" max="100" bind:value={settings.loaded_tabs} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
             <span class="label">Interface follows the text size</span>
             <span class="hint">With the text set larger than the default, menus, fields and icons grow with it (their text about 85% of the editor's)</span>
           </span>
@@ -466,6 +480,9 @@
 {/if}
 
 <style>
+  .number {
+    width: 5em;
+  }
   :global(html, body) {
     margin: 0;
     background: var(--bg);

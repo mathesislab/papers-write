@@ -182,6 +182,12 @@ pub trait Host: Send + Sync + 'static {
     }
 
     /// The tab of kind `kind` made beside the page `beside` (as the project's tabs are restored); its label.
+    /** How long a tab may go unseen before its page is unloaded, and how many tabs keep their page at most; none:
+     *  never unloaded. */
+    fn unload_policy(&self, _app: &AppHandle) -> Option<(std::time::Duration, usize)> {
+        None
+    }
+
     fn open_companion(&self, _app: &AppHandle, _beside: &str, _kind: &str) -> Result<String, String> {
         Err("no such tab".into())
     }
@@ -229,6 +235,12 @@ pub struct Tabs {
     later: Mutex<Vec<(String, String)>>,
     /// the page each tab made with `add_beside` goes with (a preview: its text's)
     beside: Mutex<HashMap<String, String>>,
+    /// when each page was last in front (the tabs unseen for a while have their page unloaded: `unload_idle`)
+    last_shown: Mutex<HashMap<String, std::time::Instant>>,
+    /// the pages unloaded, each with the address it loads again when its tab comes to the front
+    unloaded: Mutex<HashMap<String, String>>,
+    /// the unloading's watch started
+    unloading: AtomicBool,
     /// the address of the app's pages, from the first page made (what `WebviewUrl::App` joins to)
     base: Mutex<Option<tauri::Url>>,
     /// each window's tabs in the order they were last in front, and its tabs visited, to go back and forward to
@@ -266,6 +278,9 @@ impl Tabs {
             deferring: AtomicBool::new(false),
             later: Mutex::default(),
             beside: Mutex::default(),
+            last_shown: Mutex::default(),
+            unloaded: Mutex::default(),
+            unloading: AtomicBool::new(false),
             base: Mutex::default(),
             visits: Mutex::default(),
             cycling: Mutex::default(),
@@ -564,6 +579,63 @@ fn load_later(app: &AppHandle) {
     });
 }
 
+/// The pages of tabs unseen for a while unloaded, and beyond the most recently seen that may keep their page, the
+/// least recent first (`Host::unload_policy`): each made empty, its tab staying in the strip, loaded again as it comes
+/// to the front (`select`), the page then putting itself back as it was (its place, its undo history: the host's).
+/// Never the tab in front of a window, nor the one it goes with (a preview's text). Watched once a minute.
+fn unload_idle(app: &AppHandle) {
+    let state = app.state::<Tabs>();
+    if state.unloading.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        let app = &handle;
+        let state = app.state::<Tabs>();
+        let Some((idle, most)) = state.host.unload_policy(app) else { continue };
+        let started = std::time::Instant::now() - idle * 2;
+        let (pages, kept): (Vec<String>, Vec<String>) = with_tabs(app, |w| {
+            let pages = w.values().flat_map(Win::pages).cloned().collect();
+            let fronts = w.values().filter_map(|win| win.sets.first()?.front.clone()).collect();
+            (pages, fronts)
+        });
+        let beside = state.beside.lock().unwrap().clone();
+        let mut keep: std::collections::HashSet<String> = kept.iter().cloned().collect();
+        keep.extend(kept.iter().filter_map(|f| beside.get(f).cloned()));
+        let unloaded: std::collections::HashSet<String> = state.unloaded.lock().unwrap().keys().cloned().collect();
+        let waiting: std::collections::HashSet<String> = state.later.lock().unwrap().iter().map(|(l, _)| l.clone()).collect();
+        let shown = state.last_shown.lock().unwrap().clone();
+        // the pages loaded, the least recently seen first
+        let mut loaded: Vec<(String, std::time::Instant)> = pages
+            .into_iter()
+            .filter(|p| !unloaded.contains(p) && !waiting.contains(p))
+            .map(|p| {
+                let at = shown.get(&p).copied().unwrap_or(started);
+                (p, at)
+            })
+            .collect();
+        loaded.sort_by_key(|(_, at)| *at);
+        let mut count = loaded.len();
+        for (page, at) in loaded {
+            if keep.contains(&page) {
+                continue;
+            }
+            if at.elapsed() < idle && count <= most {
+                continue;
+            }
+            let Some(webview) = app.get_webview(&page) else { continue };
+            let Ok(url) = webview.url() else { continue };
+            if url.as_str() == "about:blank" || webview.navigate("about:blank".parse().expect("a URL")).is_err() {
+                continue;
+            }
+            state.unloaded.lock().unwrap().insert(page.clone(), url.to_string());
+            state.ready.lock().unwrap().remove(&page);
+            count -= 1;
+        }
+    });
+}
+
 /// A page drawn (`page_ready`, or the wait for it over): shown when its tab is in front.
 pub fn ready(app: &AppHandle, page: &str) {
     let Some(window) = window_of(app, page) else {
@@ -639,6 +711,18 @@ pub fn select(app: &AppHandle, page: &str) {
     let Some(window_label) = window_of(app, page) else {
         return;
     };
+    {
+        let state = app.state::<Tabs>();
+        state.last_shown.lock().unwrap().insert(page.to_string(), std::time::Instant::now());
+        // a page unloaded: loaded again, shown once drawn (the one before in view meanwhile)
+        let again = state.unloaded.lock().unwrap().remove(page);
+        if let (Some(url), Some(webview)) = (again, app.get_webview(page))
+            && let Ok(url) = url.parse()
+            && webview.navigate(url).is_ok()
+        {
+            show_after_a_while(app, page);
+        }
+    }
     visited(app, &window_label, front_of(app, &window_label), page);
     let newly_shown = with_tabs(app, |w| {
         let win = w.get_mut(&window_label)?;
@@ -849,6 +933,8 @@ pub fn close(app: &AppHandle, page: &str) {
 /// emptied goes, the window showing the project shown before; the window closes with its last tab.
 pub fn remove(app: &AppHandle, page: &str) {
     app.state::<Tabs>().beside.lock().unwrap().remove(page);
+    app.state::<Tabs>().unloaded.lock().unwrap().remove(page);
+    app.state::<Tabs>().last_shown.lock().unwrap().remove(page);
     let Some(window_label) = window_of(app, page) else {
         return;
     };
@@ -911,6 +997,11 @@ pub fn window_closed(app: &AppHandle, window: &str) {
 }
 
 /// The app quits: its windows close, but stay saved as open.
+/// Whether the app is quitting (its windows close, but stay saved as open).
+pub fn is_quitting(app: &AppHandle) -> bool {
+    app.state::<Tabs>().quitting.load(Ordering::SeqCst)
+}
+
 pub fn quitting(app: &AppHandle) {
     app.state::<Tabs>().quitting.store(true, Ordering::SeqCst);
 }
@@ -1164,6 +1255,7 @@ pub fn restore(app: &AppHandle) -> bool {
     save(app);
     // the pages made empty loaded now, one at a time
     load_later(app);
+    unload_idle(app);
     any_made
 }
 

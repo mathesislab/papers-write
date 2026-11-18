@@ -1078,12 +1078,18 @@
 
   /** The file read, with the draft of it typed and not saved, if any. */
   async function readFile(file: string): Promise<FileRead> {
-    const [text, draft] = await Promise.all([
+    const [text, draft, history] = await Promise.all([
       invoke<string>("read_text", { path: file }),
       invoke<FileRead["draft"]>("draft_read", { path: file }).catch(() => null),
+      invoke<FileRead["history"]>("history_read", { path: file }).catch(() => null),
     ]);
-    return { path: file, text, draft };
+    return { path: file, text, draft, history };
   }
+
+  /** The undo history kept as it changes (undo.rs), for the file to undo what was done after a reload. */
+  const undoKept = {
+    write: (p: string, text: string, history: unknown) => invoke<void>("history_write", { path: p, text, history }),
+  };
 
   const drafts = {
     write: (p: string, text: string, base: string) => invoke<void>("draft_write", { path: p, text, base }),
@@ -1228,6 +1234,7 @@
         save={file ? (p, text) => invoke("write_text", { path: p, text }) : async () => {}}
         autosave={autosave || !file}
         drafts={file ? drafts : undefined}
+        historyStore={file ? undoKept : undefined}
         mono={!markdown && !latex}
         {latex}
         {prefs}

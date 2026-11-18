@@ -117,6 +117,10 @@ pub struct Settings {
     pub project_bar: ProjectBar,
     /// look for updates at start and twice a day; they are installed only when asked
     pub check_updates: bool,
+    /// the tabs not shown for this long have their page unloaded (minutes; 0: never), and at most this many keep
+    /// theirs, the most recently shown (Preferences ▸ Window): a tab comes back as it was when shown again
+    pub unload_after: u32,
+    pub loaded_tabs: u32,
 }
 
 impl Default for Settings {
@@ -149,6 +153,8 @@ impl Default for Settings {
             project_colour_bar: false,
             project_bar: ProjectBar::Shown,
             check_updates: true,
+            unload_after: 15,
+            loaded_tabs: 10,
         }
     }
 }
@@ -510,6 +516,8 @@ mod tests {
             project_colour_bar: true,
             project_bar: ProjectBar::Hover,
             check_updates: false,
+            unload_after: 30,
+            loaded_tabs: 6,
         };
         settings.save(&dir);
         assert_eq!(Settings::load(&dir), settings);

@@ -181,6 +181,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("format-quote", "Quote", Some("Shift+CmdOrCtrl+9"))?,
         ],
     )?;
+    // View ▸ Panes as last chosen (the pages correct it as they load)
+    let panes_now = match crate::projects::with_saved(app, |saved| saved.panes.clone()).as_str() {
+        "" => "side".to_string(),
+        other => other.to_string(),
+    };
     let view = Submenu::with_items(
         app,
         "View",
@@ -195,9 +200,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                 "Panes",
                 true,
                 &[
-                    &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, true, None::<&str>)?,
-                    &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, false, None::<&str>)?,
-                    &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, false, None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, panes_now == "side", None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, panes_now == "tabs", None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, panes_now == "auto", None::<&str>)?,
                 ],
             )?,
             // the sidebar on a tab (pressed again: hidden); outside macOS O for the files (open), H for the outline (the
@@ -422,9 +427,16 @@ fn command(app: &AppHandle, id: &str) {
         "text-full" => crate::settings::toggle_full_width(app),
         // the whole window, text and all (the text's own size is Settings ▸ Editor ▸ Size)
         "panes-side" | "panes-tabs" | "panes-auto" => {
-            if let Some(window) = documents::front(app) {
-                let _ = app.emit_to(EventTarget::webview(window.label()), "panes", id.trim_start_matches("panes-"));
+            // one of the three, whatever tab is in front (a PDF's too): the marks at once (GTK ticks the one clicked by
+            // itself), kept, and every page told (the texts change their panes' form)
+            let mode = id.trim_start_matches("panes-").to_string();
+            for other in ["side", "tabs", "auto"] {
+                if let Some(item) = app.menu().and_then(|m| m.get(&format!("panes-{other}"))).and_then(|k| k.as_check_menuitem().cloned()) {
+                    let _ = item.set_checked(other == mode);
+                }
             }
+            crate::projects::with_saved(app, |saved| saved.panes = mode.clone());
+            let _ = app.emit("panes", mode);
         }
         "zoom-window-in" => crate::settings::step_zoom(app, 1.0),
         "zoom-window-out" => crate::settings::step_zoom(app, -1.0),

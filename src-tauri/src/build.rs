@@ -837,8 +837,8 @@ fn document_of(window: &Webview) -> Result<PathBuf, String> {
 }
 
 /// Build (⇧⌘B), or with `show` Build and Show PDF (⌥⇧⌘B). The page has written the document. With a build profile
-/// active (`profiles.rs`), what it says: its command run (one at a time per project), or started and left running,
-/// or nothing but its PDF shown; without, the document in front built by texmark, Quarto or latexmk.
+/// active (`profiles.rs`: Build with), what it says: its command run (one at a time per project), or nothing but its
+/// PDF shown; without, the document in front built by texmark, Quarto or latexmk.
 #[tauri::command]
 pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> {
     let file = document_of(&window)?;
@@ -846,28 +846,30 @@ pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> 
         request(&app, &window, file, Job::Build { show });
         return Ok(());
     };
+    let profile = profile.for_document(&root, &file)?;
     let pdf = profile.pdf.as_ref().map(|p| root.join(p));
     let show_pdf = |pdf: &Option<PathBuf>| {
         if show && let Some(pdf) = pdf.as_ref().filter(|p| p.is_file()) {
             let _ = documents::open_file(&app, pdf);
         }
     };
+    // the same PDF kept up to date by the watch running in the background: not built again (its command would clash
+    // with the watch's, texmark refusing a build folder a watch uses), the PDF shown
+    if profile.run == Run::Build && profile.pdf.is_some() && crate::profiles::kept_pdf(&app, &root) == profile.pdf {
+        show_pdf(&pdf);
+        tell(&app, window.label(), Status {
+            what: "build",
+            state: "kept",
+            pdf: pdf.map(|p| s(&p)),
+            message: Some(format!("{}: kept up to date by the watch in the background", profile.name)),
+            ..Default::default()
+        });
+        return Ok(());
+    }
     match profile.run {
         Run::Build => request(&app, &window, root.clone(), Job::Profile { profile, root, show }),
-        Run::Watch => {
-            let started = crate::profiles::start(&app, &root, &profile)?;
-            let log = crate::profiles::log_of(&root, &profile);
-            let message = if started { "started" } else { "running" };
-            show_pdf(&pdf);
-            tell(&app, window.label(), Status {
-                what: "build",
-                state: "watching",
-                pdf: pdf.map(|p| s(&p)),
-                log: Some(s(&log)),
-                message: Some(format!("{}: {message} ({})", profile.name, profile.command)),
-                ..Default::default()
-            });
-        }
+        // a background profile (`profiles::active` gives none)
+        Run::Watch => return Err(format!("{}: chosen under In the background, not built", profile.name)),
         Run::External => {
             show_pdf(&pdf);
             tell(&app, window.label(), Status {

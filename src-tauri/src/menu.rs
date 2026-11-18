@@ -237,6 +237,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("marked-up", "Marked-up PDF…", None)?,
         ],
     )?;
+    // outside macOS, the choices of the Build button's ▾ here too, for the tab in front (`profiles::menu_lists`),
+    // and where the profiles and the tools are set
+    if !MAC {
+        let with = Submenu::with_id(app, "build-with", "Build With", true)?;
+        let behind = Submenu::with_id(app, "background", "In the Background", true)?;
+        let on_save = CheckMenuItem::with_id(app, "build-on-save", "Build After Saves", true, false, None::<&str>)?;
+        build.append_items(&[&separator()?, &separator()?, &on_save, &item("build-profiles", "Build Profiles…", None)?, &item("build-tools", "Build Tools…", None)?])?;
+        // the two lists put in (after the first separator) by `profiles::menu_lists` when they have something to list
+        crate::profiles::keep_menu_lists(app, build.clone(), with, behind, on_save);
+    }
     // the PDF of the window in front (a window of a PDF; the other pages ignore these)
     let pdf = Submenu::with_items(
         app,
@@ -355,6 +365,42 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "check-updates" => crate::settings::show(app, Some("updates")),
         "quit" => documents::quit(app),
         "close" => crate::tabs::close_front(app),
+        "build-tools" => crate::settings::show(app, Some("build")),
+        "build-on-save" => {
+            if let Some(page) = documents::front(app) {
+                let label = page.label().to_string();
+                let on = documents::path_of(app, &label)
+                    .and_then(|p| write_core::project::find(&p))
+                    .is_some_and(|root| crate::projects::with_saved(app, |saved| saved.build_on_save.contains(&root)));
+                if let Err(e) = crate::profiles::set_build_on_save(page, !on) {
+                    crate::sheet::tell(app, None, "Build After Saves", e, crate::sheet::Level::Error);
+                }
+                let _ = app.emit_to(EventTarget::webview(&label), "profiles-changed", ());
+            }
+        }
+        "build-profiles" => {
+            if let Some(page) = documents::front(app)
+                && let Err(e) = crate::profiles::reveal_profiles(page)
+            {
+                crate::sheet::tell(app, None, "Build Profiles", e, crate::sheet::Level::Error);
+            }
+        }
+        _ if id.starts_with("build-with:") || id.starts_with("background:") => {
+            let (list, name) = id.split_once(':').unwrap_or_default();
+            let name = (!name.is_empty()).then(|| name.to_string());
+            if let Some(page) = documents::front(app) {
+                let label = page.label().to_string();
+                let done = if list == "build-with" {
+                    crate::profiles::set_build_profile(page, name).map(|_| ())
+                } else {
+                    crate::profiles::set_background(page, name).map(|_| ())
+                };
+                if let Err(e) = done {
+                    crate::sheet::tell(app, None, "Build", e, crate::sheet::Level::Error);
+                }
+                let _ = app.emit_to(EventTarget::webview(&label), "profiles-changed", ());
+            }
+        }
         // the page writes the document, then asks for the build
         "save" | "build" | "build-show" | "marked-up" => {
             if let Some(window) = documents::front(app) {

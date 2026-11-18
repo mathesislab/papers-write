@@ -238,7 +238,48 @@
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
     const going = await invoke<{ at: number; end: number; mark: boolean } | null>("pending_go_to").catch(() => null);
-    if (going) queueMicrotask(() => goTo(going));
+    if (going) {
+      placed = true;
+      queueMicrotask(() => goTo(going));
+    }
+    // else where it was read last, once it is read
+    else void textIn.promise.then(() => setTimeout(restorePlace, 30));
+  }
+
+  /** Where the text was read last, per file (the pages' storage): the selection, and the place at the top of the
+   *  view. Kept as the cursor or the view moves; the file opens there again (not when it is opened at a place: a
+   *  match, Go to Source). */
+  type Place = { anchor: number; head: number; top: number };
+  const placeKey = (file: string) => `text-place:${file}`;
+  let placeTimer: ReturnType<typeof setTimeout> | undefined;
+  let placed = false;
+  function keepPlace() {
+    clearTimeout(placeTimer);
+    placeTimer = setTimeout(() => {
+      const view = editor?.view();
+      if (!view || !path || !placed) return;
+      const { anchor, head } = view.state.selection.main;
+      const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from;
+      try {
+        localStorage.setItem(placeKey(path), JSON.stringify({ anchor, head, top } satisfies Place));
+      } catch {}
+    }, 400);
+  }
+  function restorePlace() {
+    placed = true;
+    const view = editor?.view();
+    if (!view || !path) return;
+    let place: Place | null = null;
+    try {
+      place = JSON.parse(localStorage.getItem(placeKey(path)) ?? "null");
+    } catch {}
+    if (!place) return;
+    const end = view.state.doc.length;
+    const at = (n: number) => Math.max(0, Math.min(n, end));
+    view.dispatch({
+      selection: { anchor: at(place.anchor), head: at(place.head) },
+      effects: EditorView.scrollIntoView(at(place.top), { y: "start" }),
+    });
   }
 
   /** A place to go to: a match selected, or a place found from a PDF marked (the cursor at its start). */
@@ -322,6 +363,8 @@
 
   /** The cursor's moves, told a moment later. */
   const cursor = EditorView.updateListener.of((u) => {
+    // where the text is read, kept (the view moved, or the cursor)
+    if (u.selectionSet || u.viewportChanged || u.geometryChanged) keepPlace();
     if (!u.selectionSet && !u.docChanged) return;
     clearTimeout(following);
     following = setTimeout(follow, 150);

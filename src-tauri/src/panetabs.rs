@@ -70,8 +70,20 @@ pub fn take_show_source(window: Webview) -> Option<ShowSource> {
 /// label.
 #[tauri::command]
 pub fn preview_tab(window: Webview) -> Result<String, String> {
+    open_preview(window.app_handle(), window.label())
+}
+
+/// The asking text's preview tab, when it has one (a text's tab loaded after its preview's: at the start).
+#[tauri::command]
+pub fn preview_tab_of(window: Webview) -> Option<String> {
     let app = window.app_handle();
-    let text = window.label().to_string();
+    app.state::<PaneTabs>().previews.lock().unwrap().get(window.label()).cloned().filter(|l| app.get_webview(l).is_some())
+}
+
+/// The preview of the text of page `text` in a tab of its own, beside it: brought forward when it is open, else
+/// made. Its label.
+pub fn open_preview(app: &AppHandle, text: &str) -> Result<String, String> {
+    let text = text.to_string();
     let state = app.state::<PaneTabs>();
     let open = state.previews.lock().unwrap().get(&text).cloned().filter(|l| app.get_webview(l).is_some());
     if let Some(label) = open {
@@ -93,6 +105,12 @@ pub fn relay(app: AppHandle, to: String, event: String, payload: serde_json::Val
         return false;
     }
     app.emit_to(EventTarget::webview(&to), &event, payload).is_ok()
+}
+
+/// Whether the tab of `page` is the one in front of its window.
+#[tauri::command]
+pub fn tab_in_front(app: AppHandle, page: String) -> bool {
+    crate::tabs::window_of(&app, &page).and_then(|w| crate::tabs::front_of(&app, &w)).as_deref() == Some(page.as_str())
 }
 
 /// The tab of `page` brought forward (the text, from its preview's Go to Source).

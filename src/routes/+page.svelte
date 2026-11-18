@@ -215,6 +215,25 @@
     path = (await invoke<{ path: string | null }>("document")).path;
     askStore();
     void askNotes();
+    // a preview's tab made for this text before it was loaded (the start): fed from now on
+    previewTab = await invoke<string | null>("preview_tab_of").catch(() => null);
+    if (previewTab && !inTabs) {
+      // made in a tab at the start, but the panes are beside the text now (a wider screen): beside it, in front if
+      // the preview's tab was
+      const front = await invoke<boolean>("tab_in_front", { page: previewTab }).catch(() => false);
+      const tab = previewTab;
+      previewTab = null;
+      if (front) {
+        paneActive = true;
+        bringText();
+      }
+      void invoke("close_tab", { label: tab });
+      if (markdown) togglePreview(false);
+      if (front) setTimeout(focusPane, 600);
+    } else if (previewTab) {
+      follow();
+      void refresh();
+    }
     void restorePane();
     takeReceived();
     // a match of the project's search opened this document: selected once it is read
@@ -311,13 +330,29 @@
   /** The pane beside a file (the preview, the PDF, or none), kept per file for when it opens again (localStorage: the
    *  pages share it). */
   const paneKey = (file: string) => `pane:${file}`;
+  /** whether the pane's side (the preview or the PDF, beside the text or in its tab) was the one worked in last,
+   *  kept with the pane: it gets the keys again when the file opens, or the panes change form */
+  let paneActive = $state(false);
+  const activeKey = (file: string) => `pane-active:${file}`;
   function keepPane() {
     if (!path) return;
     try {
-      const pane = previewing ? "preview" : pdfBeside ? "pdf" : "";
+      const pane = previewing || previewTab ? "preview" : pdfBeside ? "pdf" : "";
       if (pane) localStorage.setItem(paneKey(path), pane);
       else localStorage.removeItem(paneKey(path));
+      if (pane && paneActive) localStorage.setItem(activeKey(path), "1");
+      else localStorage.removeItem(activeKey(path));
     } catch {}
+  }
+  /** The side worked in: the pane's or the text's, kept. */
+  function setActive(pane: boolean) {
+    if (paneActive === pane) return;
+    paneActive = pane;
+    keepPane();
+  }
+  /** The keys to the pane's side (the preview, or the PDF beside the text). */
+  function focusPane() {
+    queueMicrotask(() => (previewing ? previewPane?.focus() : sidePdf?.focus()));
   }
   async function restorePane() {
     if (!path) return;
@@ -334,13 +369,31 @@
     restoreNow();
   }
   function restoreNow() {
-    if (!path || inTabs) return;
+    if (!path) return;
     let pane: string | null = null;
+    let active = false;
     try {
       pane = localStorage.getItem(paneKey(path));
+      active = localStorage.getItem(activeKey(path)) === "1";
     } catch {}
+    paneActive = active && !!pane;
+    if (inTabs) {
+      // in tabs: the pane's tab (made again by the app at the start when it was one: then nothing to do), in front if
+      // its side was the one worked in
+      if (pane === "preview" && markdown && !previewTab) void openPreviewTab().then(() => !active && bringText());
+      else if (pane === "pdf") {
+        pdfTab();
+        if (!active) setTimeout(bringText, 300);
+      }
+      return;
+    }
     if (pane === "pdf" && !pdfBeside) togglePdf(false);
     else if (pane === "preview" && !previewing && markdown) togglePreview(false);
+    if (active) setTimeout(focusPane, 400);
+  }
+  /** This text's tab brought to the front. */
+  function bringText() {
+    void invoke("bring_tab", { page: getCurrentWebview().label });
   }
 
   function togglePreview(keep = true) {
@@ -390,6 +443,7 @@
     if (!markdown) return;
     try {
       previewTab = await invoke<string>("preview_tab");
+      keepPane();
       follow();
       await refresh();
     } catch (e) {
@@ -400,7 +454,11 @@
   async function sendPreview() {
     if (!previewTab) return;
     const there = await invoke<boolean>("relay", { to: previewTab, event: "preview-html", payload: { html, error: said, block } }).catch(() => false);
-    if (!there) previewTab = null;
+    // its tab closed: not shown, nor kept as shown
+    if (!there) {
+      previewTab = null;
+      keepPane();
+    }
   }
   $effect(() => {
     const now = block;
@@ -414,6 +472,7 @@
   function fromPreviewTab(e: { payload: { kind: string; index?: number; text?: string; word?: string; around?: { before: string[]; after: string[] } } }) {
     const what = e.payload;
     if (what.kind === "want") void sendPreview();
+    else if (what.kind === "shown") setActive(true);
     else if (what.kind === "block") scrollToBlock(what.index ?? 0, true);
     else if (what.kind === "pdf") void previewToPdf(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
     else if (what.kind === "source") {
@@ -421,10 +480,36 @@
       void previewToSource(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
     }
   }
-  // in tabs: the panes beside the text closed (their tabs take their place)
+  // the panes' form changed (View ▸ Panes, the window narrower or wider): what was shown, shown in the other form;
+  // the tab in front now, the others when they come to the front
+  let inFront = $state(true);
+  let toConvert = false;
   $effect(() => {
-    if (inTabs && (previewing || pdfBeside)) [previewing, pdfBeside] = [false, false];
+    void inTabs;
+    if (inFront) convertPanes();
+    else toConvert = true;
   });
+  function convertPanes() {
+    toConvert = false;
+    if (inTabs) {
+      if (previewing) {
+        previewing = false;
+        void openPreviewTab().then(() => !paneActive && bringText());
+      } else if (pdfBeside) {
+        pdfBeside = false;
+        pdfTab();
+        if (!paneActive) setTimeout(bringText, 300);
+      }
+    } else if (previewTab) {
+      // the preview's tab closed, the preview beside the text instead; the keys where they were
+      const tab = previewTab;
+      previewTab = null;
+      bringText();
+      void invoke("close_tab", { label: tab });
+      if (!previewing && markdown) togglePreview(false);
+      if (paneActive) setTimeout(focusPane, 400);
+    }
+  }
   $effect(() => {
     const changed = (e: StorageEvent) => e.key === PANES && (panesMode = readPanes());
     const resized = () => (narrow = window.innerWidth < NARROW);
@@ -996,6 +1081,9 @@
       listen<string>("panes", (e) => setPanes(e.payload as Panes)),
       listen("preview-tab", fromPreviewTab),
       listen<boolean>("tab-shown", (e) => {
+        inFront = e.payload;
+        if (e.payload && toConvert) convertPanes();
+        if (e.payload && inTabs) setActive(false);
         if (!e.payload || !toFlash) return;
         const { from, to } = toFlash;
         toFlash = null;
@@ -1042,7 +1130,8 @@
     return () => el.removeEventListener(COLUMN_WIDTH_EVENT, kept);
   }}>
   <!-- the text's column: its toolbar above it, so that its tools stay with it when a pane is beside it -->
-  <div class="text">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="text" onfocusin={() => setActive(false)}>
   <Toolbar
     speak={spokenHere}
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
@@ -1117,14 +1206,14 @@
   {#if previewing && markdown}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
-    <div class="pane" style:width={width ? `${width * 100}%` : "45%"}>
+    <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
       <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
-    <div class="pane" style:width={width ? `${width * 100}%` : "45%"}>
+    <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
       <SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} onpreview={markdown ? () => togglePreview() : undefined} />
       <button class="close-pane" onclick={() => togglePdf()} title="Hide PDF" aria-label="Hide PDF">×</button>
     </div>

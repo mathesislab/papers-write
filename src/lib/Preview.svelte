@@ -92,6 +92,11 @@
   });
 
   /** The block the cursor is in brought into view and marked a moment (Show in Preview). */
+  /** The keys to the preview (its side was the one worked in). */
+  export function focus() {
+    frame?.contentWindow?.focus();
+  }
+
   export function flash() {
     reveal();
     const body = frame?.contentDocument?.body;

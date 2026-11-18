@@ -115,6 +115,8 @@ pub fn run() {
             panetabs::pdf_tab_show,
             panetabs::take_show_source,
             panetabs::preview_tab,
+            panetabs::preview_tab_of,
+            panetabs::tab_in_front,
             panetabs::relay,
             panetabs::bring_tab,
             panetabs::page_path,

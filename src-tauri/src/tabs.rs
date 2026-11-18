@@ -70,6 +70,17 @@ impl Host for Write {
         crate::documents::focused(app, page);
     }
 
+    fn companion_kind(&self, _app: &AppHandle, page: &str) -> Option<String> {
+        page.starts_with("preview-").then(|| "preview".to_string())
+    }
+
+    fn open_companion(&self, app: &AppHandle, beside: &str, kind: &str) -> Result<String, String> {
+        match kind {
+            "preview" => crate::panetabs::open_preview(app, beside),
+            _ => Err(format!("no tab of kind {kind}")),
+        }
+    }
+
     fn closed(&self, app: &AppHandle, page: &str) {
         crate::documents::closed(app, page);
         crate::git::closed(app, page);

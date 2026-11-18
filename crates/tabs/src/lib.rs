@@ -42,6 +42,18 @@ use model::{Set, Win};
 pub struct Layout {
     pub files: Vec<PathBuf>,
     pub front: Option<PathBuf>,
+    /// the tabs that go with a file of the project (a text's preview), made again beside it
+    pub companions: Vec<Companion>,
+    /// the tab in front, when it is one of those (`front` its file then)
+    pub front_companion: Option<Companion>,
+}
+
+/// A tab that goes with a file (made with `add_beside`; the host says its kind: `Host::companion_kind`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Companion {
+    pub file: PathBuf,
+    pub kind: String,
 }
 
 /// A window as saved: its projects, the one shown first.
@@ -163,6 +175,17 @@ pub trait Host: Send + Sync + 'static {
     /// The last window of tabs gone.
     fn none_left(&self, _app: &AppHandle) {}
 
+    /// What kind of tab `page` is when it goes with another's file (made with `add_beside`: a preview), to be saved
+    /// and made again (`open_companion`); none: it is not kept.
+    fn companion_kind(&self, _app: &AppHandle, _page: &str) -> Option<String> {
+        None
+    }
+
+    /// The tab of kind `kind` made beside the page `beside` (as the project's tabs are restored); its label.
+    fn open_companion(&self, _app: &AppHandle, _beside: &str, _kind: &str) -> Result<String, String> {
+        Err("no such tab".into())
+    }
+
     /** The colour of a window and of its pages before they are drawn (`dark`: the system's theme is), so that a
      *  window opening shows it rather than an empty or half-drawn area; none: the platform's. */
     fn background(&self, _app: &AppHandle, _dark: bool) -> Option<tauri::window::Color> {
@@ -204,6 +227,8 @@ pub struct Tabs {
     deferring: AtomicBool,
     /// the pages made empty at the start, each with the address it loads (`load_later`)
     later: Mutex<Vec<(String, String)>>,
+    /// the page each tab made with `add_beside` goes with (a preview: its text's)
+    beside: Mutex<HashMap<String, String>>,
     /// the address of the app's pages, from the first page made (what `WebviewUrl::App` joins to)
     base: Mutex<Option<tauri::Url>>,
     /// each window's tabs in the order they were last in front, and its tabs visited, to go back and forward to
@@ -240,6 +265,7 @@ impl Tabs {
             restoring: AtomicBool::new(false),
             deferring: AtomicBool::new(false),
             later: Mutex::default(),
+            beside: Mutex::default(),
             base: Mutex::default(),
             visits: Mutex::default(),
             cycling: Mutex::default(),
@@ -408,6 +434,7 @@ pub fn add(app: &AppHandle, label: &str, url: &str, project: Option<&Path>) -> t
 
 /// A page that is not a file (a history), named `title`, as a tab beside the page `beside`.
 pub fn add_beside(app: &AppHandle, label: &str, url: &str, beside: &str, title: String) -> tauri::Result<Webview> {
+    app.state::<Tabs>().beside.lock().unwrap().insert(label.to_string(), beside.to_string());
     let window = match window_of(app, beside).and_then(|w| app.get_window(&w)) {
         Some(window) => {
             with_tabs(app, |w| {
@@ -502,9 +529,12 @@ fn load_later(app: &AppHandle) {
         loop {
             let next = {
                 let mut later = state.later.lock().unwrap();
+                let beside = state.beside.lock().unwrap().clone();
                 let rank = |label: &str| {
                     let window = window_of(app, label);
-                    if window.as_deref().and_then(|w| front_of(app, w)).as_deref() == Some(label) {
+                    let front = window.as_deref().and_then(|w| front_of(app, w));
+                    // the tab in front, and the one it goes with (a preview's text, which draws it)
+                    if front.as_deref() == Some(label) || front.and_then(|f| beside.get(&f).cloned()).as_deref() == Some(label) {
                         0
                     } else if with_tabs(app, |w| w.values().any(|win| win.sets.iter().any(|s| s.front.as_deref() == Some(label)))) {
                         1
@@ -820,6 +850,7 @@ pub fn close(app: &AppHandle, page: &str) {
 /// A page and its tab gone (asked already): what was kept of it goes; the neighbour comes to the front; a set
 /// emptied goes, the window showing the project shown before; the window closes with its last tab.
 pub fn remove(app: &AppHandle, page: &str) {
+    app.state::<Tabs>().beside.lock().unwrap().remove(page);
     let Some(window_label) = window_of(app, page) else {
         return;
     };
@@ -1083,7 +1114,17 @@ fn restore_project(app: &AppHandle, root: &Path) -> Result<(), String> {
         }
     }
     let front = layout.front.filter(|f| files.contains(f)).unwrap_or_else(|| files[0].clone());
-    if let Some(label) = page_of(app, &front) {
+    // the tabs that went with files (a preview), made again beside them; the one in front again, if it was
+    let mut target = page_of(app, &front);
+    for c in &layout.companions {
+        let Some(beside) = page_of(app, &c.file) else { continue };
+        match host.open_companion(app, &beside, &c.kind) {
+            Ok(label) if layout.front_companion.as_ref() == Some(c) => target = Some(label),
+            Ok(_) => {}
+            Err(e) => eprintln!("{}: {e}", c.file.display()),
+        }
+    }
+    if let Some(label) = target {
         select(app, &label);
     }
     Ok(())
@@ -1138,15 +1179,24 @@ fn save(app: &AppHandle) {
     });
     let path = |page: &String| state.host.path(app, page);
     let recent: HashMap<String, Vec<String>> = state.visits.lock().unwrap().iter().map(|(w, v)| (w.clone(), v.recent.clone())).collect();
+    let beside = state.beside.lock().unwrap().clone();
     let layouts = sets
         .into_iter()
         .map(|(window, root, pages, front)| {
             // a tab in front with no file of its own (a preview, a history): the tab of a file in front last, for
             // the project to open on it again
-            let front = front.as_ref().and_then(path).or_else(|| {
+            let front_file = front.as_ref().and_then(path).or_else(|| {
                 recent.get(&window)?.iter().filter(|p| pages.contains(p)).find_map(path)
             });
-            (root, Layout { files: pages.iter().filter_map(path).collect(), front })
+            // the tabs that go with a file (a preview), by their file and kind
+            let companion = |page: &String| {
+                let kind = state.host.companion_kind(app, page)?;
+                let file = beside.get(page).and_then(path)?;
+                Some(Companion { file, kind })
+            };
+            let companions = pages.iter().filter_map(companion).collect();
+            let front_companion = front.as_ref().and_then(companion);
+            (root, Layout { files: pages.iter().filter_map(path).collect(), front: front_file, companions, front_companion })
         })
         .collect();
     state.host.save_layouts(app, layouts);

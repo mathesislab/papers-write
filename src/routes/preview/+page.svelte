@@ -34,6 +34,8 @@
         }),
         listen<number>("preview-block", (e) => (block = e.payload)),
         listen("preview-flash", () => queueMicrotask(() => preview?.flash())),
+        // in front: the preview's side is the one worked in (kept by the text's page)
+        listen<boolean>("tab-shown", (e) => e.payload && void tell({ kind: "shown" })),
       ];
       onDestroy = () => unlisten.forEach((u) => u.then((f) => f()));
     });

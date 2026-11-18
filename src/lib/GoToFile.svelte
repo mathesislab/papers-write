@@ -6,7 +6,8 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  import { rank, matchIn } from "$lib/fuzzy";
+  import { overPage } from "$lib/overlay.svelte";
+  import { matchIn, pieces, rank } from "$lib/fuzzy";
   import type { Heading } from "papers-write/editor";
 
   type Listed = { path: string; relative: string; modified: number; open: boolean };
@@ -78,16 +79,6 @@
   }
 
   /** `text` in pieces, those at `at` (from `from` on in the whole path) marked. */
-  function pieces(text: string, marked: number[], from = 0): { text: string; on: boolean }[] {
-    const out: { text: string; on: boolean }[] = [];
-    [...text].forEach((c, i) => {
-      const on = marked.includes(i + from);
-      if (out.length && out[out.length - 1].on === on) out[out.length - 1].text += c;
-      else out.push({ text: c, on });
-    });
-    return out;
-  }
-
   const split = (relative: string) => {
     const cut = Math.max(relative.lastIndexOf("/"), relative.lastIndexOf("\\")) + 1;
     return { folder: relative.slice(0, cut), name: relative.slice(cut), cut };
@@ -103,7 +94,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="veil" onclick={onclose}>
+<div class="veil" onclick={onclose} {@attach overPage}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="sheet" role="dialog" aria-label="Go to File" tabindex="-1" onclick={(e) => e.stopPropagation()}>
     <input

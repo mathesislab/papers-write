@@ -6,6 +6,8 @@
 
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { overPage } from "$lib/overlay.svelte";
+  import { keys as keyNames } from "papers-write/editor";
 
   let { name, onclose }: { name: string; onclose: () => void } = $props();
 
@@ -82,12 +84,12 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="veil" onclick={onclose}>
+<div class="veil" onclick={onclose} {@attach overPage}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="sheet" role="dialog" aria-label="Notes" tabindex="-1" onclick={(e) => e.stopPropagation()}>
     <header>
       <input bind:this={field} bind:value={query} oninput={later} onkeydown={keys} placeholder="Find a note in {name}, or name a new one" spellcheck="false" autocomplete="off" />
-      <button onclick={make} title="A new note, the text typed as its title ({navigator.userAgent.includes('Mac') ? '⌘' : 'Ctrl+'}Enter)">New Note</button>
+      <button onclick={make} title={keyNames("A new note, the text typed as its title (⌘↵)")}>New Note</button>
       <button class="order" onclick={() => (alphabetical = !alphabetical)} disabled={!!query.trim()} title="Without a query: the most recent first, or by title">
         {alphabetical ? "A–Z" : "Recent"}
       </button>
@@ -103,7 +105,7 @@
           </button>
         </li>
       {:else}
-        <li class="none">{query.trim() ? "No note matches: ⌘Enter makes one of that title" : "No notes yet: type a title and press ⌘Enter"}</li>
+        <li class="none">{keyNames(query.trim() ? "No note matches: ⌘↵ makes one of that title" : "No notes yet: type a title and press ⌘↵")}</li>
       {/each}
     </ul>
   </div>

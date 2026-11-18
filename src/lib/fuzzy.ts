@@ -27,6 +27,18 @@ export function matchIn(query: string, text: string): { score: number; at: numbe
   return best;
 }
 
+/** `text` in pieces, those at the places `marked` (counted from `from` of a longer text) marked, for showing what
+ *  matched in bold. */
+export function pieces(text: string, marked: number[], from = 0): { text: string; on: boolean }[] {
+  const out: { text: string; on: boolean }[] = [];
+  [...text].forEach((c, i) => {
+    const on = marked.includes(i + from);
+    if (out.length && out[out.length - 1].on === on) out[out.length - 1].text += c;
+    else out.push({ text: c, on });
+  });
+  return out;
+}
+
 /** How well `query` matches the path `relative` (from the project's folder): 0 when it does not; the places matched in
  *  the path, for showing them. */
 export function scorePath(query: string, relative: string): { score: number; at: number[] } {

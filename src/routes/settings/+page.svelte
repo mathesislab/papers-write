@@ -169,7 +169,7 @@
         <label class="row">
           <span>
             <span class="label">Size</span>
-            <span class="hint">The text's own size. A− A+ in the toolbar, {keyNames("⌘= ⌘− ⌘0")} and View ▸ Zoom zoom the whole window, text and all</span>
+            <span class="hint">{keyNames("The text's own size. A− A+ in the toolbar, ⌘= ⌘− ⌘0 and View ▸ Zoom zoom the whole window, text and all")}</span>
           </span>
           <span class="size">
             <input type="range" min="9" max="32" step="0.5" bind:value={settings.editor_size} onchange={save} />
@@ -213,7 +213,7 @@
         <label class="row">
           <span>
             <span class="label">Save automatically</span>
-            <span class="hint">Half a second after the typing stops; off: only with File ▸ Save ({keyNames("⌘S")}), a star in the tab until then</span>
+            <span class="hint">{keyNames("Half a second after the typing stops; off: only with File ▸ Save (⌘S), a star in the tab until then")}</span>
           </span>
           <input type="checkbox" class="switch" bind:checked={settings.autosave} onchange={save} />
         </label>

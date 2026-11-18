@@ -6,8 +6,8 @@
   // review panel, shown or hidden, with the number of open suggestions and comments, and the
   // mode, Editing or Suggesting (ModeControl). Each button says its key, where it has one (the menus give them).
 
-  import { popupReleased } from "$lib/contextMenu";
-  import { TEXT_WIDTH, keys, type FindBar, type Format, type ReviewMode, type ReviewView } from "papers-write/editor";
+  import { keys, TEXT_WIDTH, type FindBar, type Format, type ReviewMode, type ReviewView } from "papers-write/editor";
+  import { popupReleased } from "papers-write/project";
   import ModeControl from "$lib/ModeControl.svelte";
   import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";

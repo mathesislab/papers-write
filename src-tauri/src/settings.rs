@@ -255,15 +255,20 @@ pub fn get() -> Settings {
 /// `settings` the current ones: kept in the data folder, and every window told.
 fn put(app: &AppHandle, settings: Settings) {
     let settings = settings.normalised();
-    let who_changed = {
+    let (who_changed, appearance_changed) = {
         let mut current = CURRENT.write().unwrap();
         let changed = (&current.review_name, &current.review_email, current.review_colour)
             != (&settings.review_name, &settings.review_email, settings.review_colour);
+        let appearance = current.appearance != settings.appearance;
         *current = settings.clone();
-        changed
+        (changed, appearance)
     };
     chosen_tools(&settings);
     themed(app, settings.appearance);
+    // the windows' own background, which shows before a page is drawn
+    if appearance_changed {
+        crate::tabs::repaint(app);
+    }
     for webview in app.webviews().values() {
         let _ = webview.set_zoom(settings.scale());
     }
@@ -281,13 +286,6 @@ fn put(app: &AppHandle, settings: Settings) {
     }
 }
 
-/// The narrowest and widest column of text (em).
-pub const TEXT_WIDTH: (f64, f64) = (24.0, 120.0);
-/// How much View ▸ Wider Text and Narrower Text change it (em).
-const TEXT_STEP: f64 = 4.0;
-
-/// The column of text set to `width` (em), or none: as wide as the window (dragged at its edges, the toolbar's
-/// control).
 /// View ▸ Show Project Bar on Hover: the bar on hover, or always shown again.
 pub fn toggle_project_bar(app: &AppHandle) {
     let mut settings = get();
@@ -302,7 +300,13 @@ fn sync_menu(app: &AppHandle, settings: &Settings) {
     }
 }
 
-/// The settings, for the Settings window and the document pages.
+/// The narrowest and widest column of text (em).
+pub const TEXT_WIDTH: (f64, f64) = (24.0, 120.0);
+/// How much View ▸ Wider Text and Narrower Text change it (em).
+const TEXT_STEP: f64 = 4.0;
+
+/// The column of text set to `width` (em), or none: as wide as the window (dragged at its edges, the toolbar's
+/// control).
 #[tauri::command]
 pub fn set_text_width(app: AppHandle, width: Option<f64>) {
     let mut settings = get();

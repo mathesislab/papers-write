@@ -19,8 +19,10 @@
 //! says it is drawn (`page_ready`, `ready()` of `papers-write/project`), the page before staying in view till then.
 //!
 //! What the pages are is the app's: it gives a `Host` (`Tabs::new`), which makes them, names them, says what file
-//! each shows and keeps what is saved; and it registers the commands of `commands`.
+//! each shows and keeps what is saved; it registers the commands of `commands`, and puts the items of `menu` in its
+//! Window menu.
 
+pub mod menu;
 mod model;
 
 use std::collections::{HashMap, HashSet};
@@ -139,6 +141,12 @@ pub trait Host: Send + Sync + 'static {
         tab.to_string()
     }
 
+    /// Whether a page has changes not saved: its tab says so, and its window while it is in front, as the platform
+    /// does (macOS: the dot in the window's close button; elsewhere a star after the title).
+    fn edited(&self, _app: &AppHandle, _page: &str) -> bool {
+        false
+    }
+
     /// The project a file is of.
     fn project_of(&self, app: &AppHandle, file: &Path) -> Option<PathBuf>;
 
@@ -182,18 +190,19 @@ pub trait Host: Send + Sync + 'static {
     }
 
     /// The tab of kind `kind` made beside the page `beside` (as the project's tabs are restored); its label.
+    fn open_companion(&self, _app: &AppHandle, _beside: &str, _kind: &str) -> Result<String, String> {
+        Err("no such tab".into())
+    }
+
     /** How long a tab may go unseen before its page is unloaded, and how many tabs keep their page at most; none:
      *  never unloaded. */
     fn unload_policy(&self, _app: &AppHandle) -> Option<(std::time::Duration, usize)> {
         None
     }
 
-    fn open_companion(&self, _app: &AppHandle, _beside: &str, _kind: &str) -> Result<String, String> {
-        Err("no such tab".into())
-    }
-
-    /** The colour of a window and of its pages before they are drawn (`dark`: the system's theme is), so that a
-     *  window opening shows it rather than an empty or half-drawn area; none: the platform's. */
+    /** The colour of a window and of its pages before they are drawn (`dark`: the window's theme is, the system's
+     *  unless the app chose one), so that a window opening shows it rather than an empty or half-drawn area; none: the
+     *  platform's. The app calls `repaint` when what it gives changes. */
     fn background(&self, _app: &AppHandle, _dark: bool) -> Option<tauri::window::Color> {
         None
     }
@@ -310,6 +319,8 @@ pub struct Tab {
     title: String,
     /// the file's path, for the tooltip
     path: Option<String>,
+    /// changes not saved
+    edited: bool,
 }
 
 fn host(app: &AppHandle) -> &dyn Host {
@@ -386,6 +397,28 @@ fn title_of(app: &AppHandle, page: &str) -> String {
 /// The title of the window of `page`, in front.
 fn window_title(app: &AppHandle, page: &str) -> String {
     host(app).window_title(app, page, &title_of(app, page))
+}
+
+/// A window titled after its tab in front, `page`, and showing whether it has changes not saved as the platform does
+/// (`Host::edited`).
+fn titled(app: &AppHandle, window: &Window, page: &str) {
+    let title = window_title(app, page);
+    let edited = host(app).edited(app, page);
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window.set_title(&title);
+        let shown = window.clone();
+        let _ = window.run_on_main_thread(move || {
+            // the window asked for again on the main thread: gone meanwhile, it has none
+            if let Ok(ns) = shown.ns_window() {
+                // SAFETY: the NSWindow of a window that is there, on the main thread
+                let ns = unsafe { &*(ns as *const objc2_app_kit::NSWindow) };
+                ns.setDocumentEdited(edited);
+            }
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = window.set_title(&if edited { format!("{title} *") } else { title });
 }
 
 /// A new window, empty.
@@ -472,6 +505,20 @@ fn background_of(app: &AppHandle, window: &Window) -> Option<tauri::window::Colo
     host(app).background(app, dark)
 }
 
+/// The windows and their pages given their background again (`Host::background`), when it changes: the app's
+/// appearance or the system's.
+pub fn repaint(app: &AppHandle) {
+    let windows: Vec<String> = with_tabs(app, |w| w.keys().cloned().collect());
+    for label in windows {
+        let Some(window) = app.get_window(&label) else { continue };
+        let Some(colour) = background_of(app, &window) else { continue };
+        let _ = window.set_background_color(Some(colour));
+        for page in pages_of(app, &label).iter().filter_map(|p| app.get_webview(p)) {
+            let _ = page.set_background_color(Some(colour));
+        }
+    }
+}
+
 /// The page made as a tab of the set `window` shows first.
 fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Option<String>) -> tauri::Result<Webview> {
     let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
@@ -494,14 +541,12 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
     // behind the page in view till it says it is drawn (`page_ready`); one that never says so comes to the front
     // after a while all the same
     let on_top = app.state::<Tabs>().on_top.lock().unwrap().get(window.label()).cloned();
-    match on_top.and_then(|f| app.get_webview(&f)) {
-        Some(shown) => behind(&page, &shown),
+    if let Some(shown) = on_top.and_then(|f| app.get_webview(&f)) {
+        behind(&page, &shown);
+    } else if cfg!(not(target_os = "macos")) {
         // the first page of a window: outside macOS, hidden till it is drawn, the window's background shown
         // meanwhile rather than the page being drawn (`reveal` shows it)
-        None => {
-            #[cfg(not(target_os = "macos"))]
-            let _ = page.hide();
-        }
+        let _ = page.hide();
     }
     eprintln!("[papers-write {}] page {label} added{}", stamp(), if later { " (loaded later)" } else { "" });
     if !later {
@@ -730,7 +775,7 @@ pub fn select(app: &AppHandle, page: &str) {
         win.newly_shown()
     });
     if let Some(window) = app.get_window(&window_label) {
-        let _ = window.set_title(&window_title(app, page));
+        titled(app, &window, page);
         let _ = window.unminimize();
         // GTK shows a window with `show_all`, which shows again the pages hidden behind the one in front (`behind`):
         // a window shown already is not shown again
@@ -887,7 +932,7 @@ pub fn retitle(app: &AppHandle, window: &str) {
     if let Some(page) = front_of(app, window)
         && let Some(window) = app.get_window(window)
     {
-        let _ = window.set_title(&window_title(app, &page));
+        titled(app, &window, &page);
     }
 }
 
@@ -909,7 +954,7 @@ pub fn renamed(app: &AppHandle, page: &str) {
     if front_of(app, &window_label).as_deref() == Some(page)
         && let Some(window) = app.get_window(&window_label)
     {
-        let _ = window.set_title(&window_title(app, page));
+        titled(app, &window, page);
     }
     changed(app, &window_label);
 }
@@ -1334,6 +1379,7 @@ pub mod commands {
             .map(|label| Tab {
                 title: title_of(app, &label),
                 path: host(app).path(app, &label).map(|p| p.display().to_string()),
+                edited: host(app).edited(app, &label),
                 label,
             })
             .collect()

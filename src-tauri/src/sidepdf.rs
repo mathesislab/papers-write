@@ -73,7 +73,7 @@ fn pdfs_in(root: &Path) -> Vec<Offered> {
     }
     let mut found = Vec::new();
     walk(root, 0, &mut found);
-    found.sort_by(|a, b| b.1.cmp(&a.1));
+    found.sort_by_key(|f| std::cmp::Reverse(f.1));
     found
         .into_iter()
         .take(OFFERED)

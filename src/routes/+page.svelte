@@ -35,7 +35,6 @@
   import { toggleComment } from "@codemirror/commands";
   import { gotoLine, selectNextOccurrence } from "@codemirror/search";
   import GoToFile from "$lib/GoToFile.svelte";
-  import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -43,13 +42,14 @@
   import { EditorView } from "@codemirror/view";
   import { ensureSyntaxTree } from "@codemirror/language";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { part, ready } from "papers-write/project";
+  import { part, popupReleased, ready } from "papers-write/project";
   import Preview from "$lib/Preview.svelte";
   import CommentBox from "$lib/CommentBox.svelte";
   import ReviewPanel from "$lib/ReviewPanel.svelte";
   import CriticPanel from "$lib/CriticPanel.svelte";
   import NotesSearch from "$lib/NotesSearch.svelte";
   import { ReviewSession } from "$lib/review.svelte";
+  import { notesReview, textReview } from "$lib/reviewer";
   import { colorOf } from "$lib/reviewFormat";
   import { message, type Entry } from "$lib/commitLog";
   import { openPath } from "@tauri-apps/plugin-opener";
@@ -77,6 +77,8 @@
     type FileRead,
     type Status,
     COLUMN_WIDTH_EVENT,
+    keys,
+    mac,
     type Mark,
   } from "papers-write/editor";
   import Build from "$lib/Build.svelte";
@@ -85,13 +87,15 @@
   import GitBar from "$lib/GitBar.svelte";
   import Toolbar from "$lib/Toolbar.svelte";
   import Frame from "$lib/Frame.svelte";
-  import { figureImage } from "$lib/pdfImage";
   import SidePdf from "$lib/SidePdf.svelte";
   import { phrasesAt, plainOf } from "$lib/pdfSearch";
+  import type { Spot } from "$lib/pdf";
+  import { figureImage } from "$lib/pdfImage";
   import type { GitState } from "$lib/git";
   import { listen } from "$lib/events";
   import { applyEditor, watchSettings, type Appearance, type Settings } from "$lib/settings";
   import "$lib/theme.css";
+  import { overPage } from "$lib/overlay.svelte";
 
   // The toolbar above the text (Toolbar): the formats (also the Format menu, `format`: ⌘B, ⌘I, ⌘K), Add Comment…, Find and Find and
   // Replace, the review panel and the mode.
@@ -184,6 +188,11 @@
   const inText = $derived(store === "in-file");
   /** the CriticMarkup marks of the text (in-file) */
   let marks = $state.raw<Mark[]>([]);
+  /** what the Review menu acts on: the notes' suggestions, or the marks in the text */
+  const deps = { editor: () => editor, say: (what: string) => say(what) };
+  const byNotes = notesReview(session, deps);
+  const byMarks = textReview(() => marks, deps);
+  const reviewer = $derived(inText ? byMarks : byNotes);
   /** the user's initials, after the marks they write (Settings ▸ Review) */
   let initials = $state("");
 
@@ -621,9 +630,8 @@
   async function editorMenu(e: MouseEvent) {
     // where ⌘-click shows the place: the preview when it is beside the text or in its tab, else the PDF (as syncHere)
     const where = (previewing || previewTab) && markdown ? "Preview" : "PDF";
-    const mac = navigator.userAgent.includes("Mac");
     const reading = await readAloudItems(spokenHere(), editor?.view()?.state.selection.main.empty ? "Read Aloud Paragraph" : "Read Aloud");
-    const click = ` (${mac ? "⌘" : "Ctrl"}-click)`;
+    const click = keys(" (⌘-click)");
     const items = await Promise.all([
       // the pane shown says what ⌘-click does
       ...(markdown ? [MenuItem.new({ text: `Show in Preview${where === "Preview" ? click : ""}`, action: () => void showInPreview() })] : []),
@@ -704,9 +712,9 @@
     say(sidePdf?.showing() ? "Not found in the PDF" : "Choose the PDF to show beside the text");
   }
 
-  /** ⌃-click in the PDF beside the text: its source there (this text, or another file in its tab). */
-  async function toSource(pdf: string, text: string, at: { page: number; x: number; y: number } | null, word = "", around = { before: [] as string[], after: [] as string[] }) {
-    const found = await invoke<boolean>("open_source_at", { pdf, text, at, word, around }).catch(() => false);
+  /** ⌘-click in the PDF beside the text: its source there (this text, or another file in its tab). */
+  async function toSource(pdf: string, { line, at, word, before, after }: Spot) {
+    const found = await invoke<boolean>("open_source_at", { pdf, text: line, at, word, around: { before, after } }).catch(() => false);
     if (!found) say("Not found in the project's sources");
   }
 
@@ -874,53 +882,26 @@
   function reviewMenu(what: string) {
     if (notes) return;
     if (what === "suggest") session.toggleMode();
-    else if (what.startsWith("view-")) session.setView(what.slice(5) as ReviewView);
     else if (what === "panel") togglePanel();
     else if (what === "comment") comment();
-    else if (what === "accept-here" || what === "reject-here") changeHere(what === "accept-here" ? "accept" : "reject");
-    else if (inText && (what === "accept-all" || what === "reject-all")) void allMarks(what === "accept-all");
-    else if (inText && (what === "next" || what === "previous")) stepMarks(what === "next");
-    else if (inText && what.startsWith("view-")) say("Accepted and Original show the review's notes; the marks in the text are shown as they are");
-    else if (what === "accept-all") session.acceptAll().catch(() => {});
-    else if (what === "reject-all") session.rejectAll().catch(() => {});
-    else if (what === "cleanup") void session.cleanUp();
-    else if (what === "next" || what === "previous") session.step(what === "next");
-  }
-
-  /** Review ▸ Accept Change and Reject Change: the suggestion at the cursor (the first, where several meet). */
-  function changeHere(action: "accept" | "reject") {
-    if (inText) {
-      const mark = editor?.marksAtCursor().find((m) => m.kind !== "comment" && m.kind !== "highlight");
-      if (!mark) return say("No suggestion at the cursor");
-      return editor?.decideMarkAt(mark, action === "accept");
+    else if (what === "accept-here" || what === "reject-here") reviewer.decideHere(what === "accept-here");
+    else if (what === "accept-all" || what === "reject-all") void reviewer.decideAll(what === "accept-all");
+    else if (what === "next" || what === "previous") reviewer.step(what === "next");
+    else if (what.startsWith("view-")) {
+      if (reviewer.setView) reviewer.setView(what.slice(5) as ReviewView);
+      else say("Accepted and Original show the review's notes; the marks in the text are shown as they are");
+    } else if (what === "cleanup") {
+      if (reviewer.cleanUp) void reviewer.cleanUp();
+      else say("Clean Up Review tidies the review's notes; the marks in the text are the text's own");
     }
-    const here = editor?.itemsHere().find((i) => i.kind === "suggestion" && i.id && session.items.some((s) => s.id === i.id && s.state === "open"));
-    if (!here) return say("No suggestion at the cursor");
-    session.act(here.id, action).catch(() => {});
-  }
-
-  /** Accept All and Reject All of the marks in the text, asked first. */
-  async function allMarks(accept: boolean) {
-    const n = marks.filter((m) => m.kind !== "comment" && m.kind !== "highlight").length;
-    if (!n) return say("No suggestions in the text");
-    const verb = accept ? "Accept" : "Reject";
-    const ok = await invoke<boolean>("review_confirm", { message: `${verb} the ${n} suggestion${n === 1 ? "" : "s"} in the text?`, ok: `${verb} All` }).catch(() => false);
-    if (ok) editor?.decideAllMarks(accept);
-  }
-
-  /** Next Change and Previous Change among the marks in the text. */
-  function stepMarks(forward: boolean) {
-    if (!marks.length) return say("No changes or comments to go to");
-    const head = editor?.view()?.state.selection.main.head ?? 0;
-    const mark = forward ? (marks.find((m) => m.from > head) ?? marks[0]) : (marks.findLast((m) => m.to < head) ?? marks[marks.length - 1]);
-    editor?.select(mark.from, mark.to);
   }
 
   /** Add Comment…: the box beside the end of the selection. */
   function comment() {
     const view = editor?.view();
     if (!view) return;
-    if (!session.me && !inText) return say("Save the document first, to comment on it");
+    const why = reviewer.cannotComment();
+    if (why) return say(why);
     const { from, to } = view.state.selection.main;
     if (from === to) return say("Select the text to comment on");
     const at = view.coordsAtPos(to) ?? view.coordsAtPos(from);
@@ -931,8 +912,7 @@
     const c = commenting;
     commenting = null;
     editor?.focus();
-    if (c && inText) editor?.commentInText(c.from, c.to, body);
-    else if (c) await session.comment(c.from, c.to, body).catch(() => {});
+    if (c) await reviewer.comment(c.from, c.to, body);
   }
 
   function edit(what: string) {
@@ -1112,9 +1092,8 @@
       listen("preview-labels", () => void refresh()),
       listen("opened", ask),
       listen("save-and-close", saveAndClose),
-      // the project's write.toml changed (Project Info): the suggestions may be kept elsewhere now
-      listen("projects-changed", askStore),
-      listen("projects-changed", askNotes),
+      // the project's write.toml changed (Project Info): the suggestions may be kept elsewhere now, or it is notes now
+      listen("projects-changed", () => (askStore(), void askNotes())),
       listen("file-changed", () => {
         editor?.changedOnDisk();
         session.reload(300);
@@ -1194,8 +1173,8 @@
     kind={markdown ? "markdown" : latex ? "latex" : "text"}
     mode={session.mode}
     view={session.view}
-    open={inText ? marks.length : session.items.filter((item) => item.state === "open").length}
-    where={inText ? "in the text" : "in notes"}
+    open={reviewer.open()}
+    where={reviewer.where}
     {store}
     onstore={(s) => invoke("set_review_store", { store: s }).then(askStore).catch((e) => say(String(e)))}
     colour={userColour}
@@ -1238,9 +1217,9 @@
         mono={!markdown && !latex}
         {latex}
         {prefs}
-        figures={inlineFigures && (markdown || latex) ? figureImage : undefined}
         onsync={syncHere}
         oncontext={editorMenu}
+        figures={inlineFigures && (markdown || latex) ? figureImage : undefined}
         {symbols}
         {completion}
         {hover}
@@ -1283,7 +1262,7 @@
           {marks}
           text={current}
           ondecide={(m, accept) => editor?.decideMarkAt(m, accept)}
-          onall={(accept) => void allMarks(accept)}
+          onall={(accept) => void byMarks.decideAll(accept)}
           onshow={(m) => editor?.select(m.from, m.to)}
         />
       {:else}
@@ -1307,7 +1286,7 @@
   {/if}
   {#if checking}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div class="sheet" role="dialog" aria-label="Check Citations" tabindex="-1" onkeydown={(e) => e.key === "Escape" && closeCheck()} use:grab>
+    <div class="sheet" role="dialog" {@attach overPage} aria-label="Check Citations" tabindex="-1" onkeydown={(e) => e.key === "Escape" && closeCheck()} use:grab>
       <header>
         <b>Check Citations</b>
         <button onclick={closeCheck}>Close</button>

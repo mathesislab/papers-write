@@ -1,6 +1,6 @@
 {
   "name": "papers-write",
-  "version": "0.5.5",
+  "version": "0.6.2",
   "description": "Write papers in plain text: Markdown and LaTeX, cited from the papers library, built with texmark",
   "type": "module",
   "scripts": {
@@ -42,7 +42,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2.7.2",
     "pdfjs-dist": "^6.5.438",
-    "tauri-plugin-pdfkit-api": "github:mathesislab/tauri-plugin-pdfkit#v0.4.0"
+    "tauri-plugin-pdfkit-api": "github:mathesislab/tauri-plugin-pdfkit#v0.7.1"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",

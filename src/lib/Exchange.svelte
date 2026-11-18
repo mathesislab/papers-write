@@ -29,6 +29,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "$lib/events";
   import { said, type Added } from "$lib/git";
+  import { overPage } from "$lib/overlay.svelte";
 
   export type Reviewing = { name: string; email: string; round: string; document: string };
   let {
@@ -213,7 +214,7 @@
 {/if}
 {#if sending}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Send for Review" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Send for Review" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>Send for Review</b>
       <button onclick={close}>{sending.result ? "Close" : "Cancel"}</button>
@@ -245,7 +246,7 @@
 {#if returned}
   {@const r = returned}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Send Back" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Send Back" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>Review to send back</b>
       <button onclick={close}>Close</button>
@@ -259,7 +260,7 @@
 {/if}
 {#if comparing}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Compare as Suggestions" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Compare as Suggestions" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>Compare as Suggestions</b>
       <button onclick={close}>{comparing.done ? "Close" : "Cancel"}</button>
@@ -294,7 +295,7 @@
 {#if exported}
   {@const path = exported.path}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Export as {exported.as}" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Export as {exported.as}" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>Exported as {exported.as}</b>
       <button onclick={close}>Close</button>
@@ -314,7 +315,7 @@
 {/if}
 {#if importing}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div class="sheet" role="dialog" aria-label="Import Review" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
+  <div class="sheet" role="dialog" {@attach overPage} aria-label="Import Review" tabindex="-1" onkeydown={(e) => e.key === "Escape" && close()} use:grab>
     <header>
       <b>Import Review</b>
       <button onclick={close}>{importing.result ? "Close" : "Cancel"}</button>

@@ -14,11 +14,12 @@ pub struct Write;
 
 impl Host for Write {
     fn background(&self, _app: &AppHandle, dark: bool) -> Option<tauri::window::Color> {
-        // the pages' --bg (theme.css), light or dark as Settings ▸ Window ▸ Appearance says, else as the system is
+        use crate::settings::Appearance;
+        // the pages' --bg (theme.css), light or dark as Settings ▸ Window ▸ Appearance says (System: as the window is)
         let dark = match crate::settings::get().appearance {
-            crate::settings::Appearance::Light => false,
-            crate::settings::Appearance::Dark => true,
-            crate::settings::Appearance::System => dark,
+            Appearance::System => dark,
+            Appearance::Light => false,
+            Appearance::Dark => true,
         };
         Some(if dark { tauri::window::Color(0x26, 0x26, 0x28, 0xff) } else { tauri::window::Color(0xf6, 0xf6, 0xf8, 0xff) })
     }
@@ -32,9 +33,12 @@ impl Host for Write {
     }
 
     fn title(&self, app: &AppHandle, page: &str) -> String {
-        let title = crate::documents::title(crate::documents::path_of(app, page).as_deref());
+        crate::documents::title(crate::documents::path_of(app, page).as_deref())
+    }
+
+    fn edited(&self, app: &AppHandle, page: &str) -> bool {
         // changes typed that are not saved yet
-        if crate::documents::is_modified(app, page) { format!("{title} *") } else { title }
+        crate::documents::is_modified(app, page)
     }
 
     fn project_of(&self, _app: &AppHandle, file: &Path) -> Option<PathBuf> {

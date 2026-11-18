@@ -78,11 +78,11 @@
     autosave = true,
     drafts,
     historyStore,
+    onsync,
+    oncontext,
     critic,
     onmarks,
     figures,
-    onsync,
-    oncontext,
     onchange,
     status = $bindable("saved"),
     error = $bindable(""),
@@ -132,6 +132,11 @@
     /** where the undo history is kept as it changes (the app's cache), for the file to undo what was done after its
      *  page is unloaded or the app opened again */
     historyStore?: { write: (path: string, text: string, history: unknown) => Promise<void> };
+    /** ⌃-click (⌘ on macOS) in the text: the cursor put there, then this (its place shown in the PDF or the preview);
+     *  extra cursors are made with ⌥-click instead */
+    onsync?: () => void;
+    /** a right-click in the text: the cursor put there (unless it is in the selection), then the app's menu */
+    oncontext?: (e: MouseEvent) => void;
     /** the review kept in the text itself (CriticMarkup) rather than by the app (`review`): the marks drawn, accepted
      *  and rejected in the text, suggest mode writing marks, with the user's `initials` after each (empty: none) */
     critic?: { initials: string };
@@ -139,11 +144,6 @@
     onmarks?: (marks: Mark[]) => void;
     /** with it, the figures shown under their lines, their images from it (a data URI, none: not found) */
     figures?: (path: string) => Promise<string | null>;
-    /** ⌃-click (⌘ on macOS) in the text: the cursor put there, then this (its place shown in the PDF or the preview);
-     *  extra cursors are made with ⌥-click instead */
-    onsync?: () => void;
-    /** a right-click in the text: the cursor put there (unless it is in the selection), then the app's menu */
-    oncontext?: (e: MouseEvent) => void;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
     /** whether what is shown is written; `error` says what failed */
@@ -365,6 +365,7 @@
           criticSlot.of(critic ? criticOf() : []),
           figuresSlot.of(figures ? inlineFigures(figures) : []),
           marksTold,
+          figuresSlot.of(figures ? inlineFigures(figures) : []),
         ],
       });
     if (critic && !critical) {

@@ -15,12 +15,11 @@
   // (⌥⌘O, `outline`) shows it on the outline. Shown or not, its tab, its width and its open folders are the same in
   // all the project's tabs (ProjectSidebar).
 
-  import { popupReleased } from "$lib/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
   import { OPEN_FOLDER, keys } from "papers-write/editor";
   import { Menu, MenuItem } from "@tauri-apps/api/menu";
   import { onMount, type Snippet } from "svelte";
-  import { ProjectBar, ProjectFrame, ProjectSidebar, cssOf, part } from "papers-write/project";
+  import { ProjectBar, ProjectFrame, ProjectSidebar, cssOf, part, popupReleased } from "papers-write/project";
   import type { Heading } from "papers-write/editor";
   import SwitchProject from "$lib/SwitchProject.svelte";
   import ProjectCard from "$lib/ProjectCard.svelte";
@@ -28,8 +27,9 @@
   import type { Bar } from "$lib/projects";
   import { listen } from "$lib/events";
   import { watchSettings } from "$lib/settings";
+  import { over } from "$lib/overlay.svelte";
 
-  /** Switch Project (⌃⌥P) shown */
+  /** Switch Project (⌃⌘P) shown */
   let switching = $state(false);
 
   let {
@@ -38,7 +38,6 @@
     here = -1,
     outlined = false,
     offset = 0,
-    covering = $bindable(false),
     onheading,
     onsay,
     onproblem = onsay,
@@ -55,8 +54,6 @@
     outlined?: boolean;
     /** the height of what the page draws above the tabs (ProjectFrame) */
     offset?: number;
-    /** a card is over the page (what is drawn above the page, a PDF, makes way) */
-    covering?: boolean;
     onheading?: (heading: Heading) => void;
     /** what was done, or went wrong, for the page to say */
     onsay: (what: string) => void;
@@ -88,6 +85,14 @@
   let barMode = $state<"shown" | "hover" | "hidden">("shown");
   let barOpen = $state(false);
   let slideTimer: ReturnType<typeof setTimeout> | undefined;
+  /** the strip and the bar that slides in from it */
+  let hoverBar = $state<HTMLDivElement>();
+  let slide = $state<HTMLDivElement>();
+  // the part of the window the bar covers while slid in, which PDFKit's view keeps clear of (`over`)
+  $effect(() => {
+    over.left = barMode === "hover" && barOpen && hoverBar && slide ? hoverBar.getBoundingClientRect().left + slide.offsetWidth : 0;
+    return () => (over.left = 0);
+  });
   /** The pointer at the left edge: the bar slides in after a moment (a pointer only passing by does not open it). */
   function barNear() {
     clearTimeout(slideTimer);
@@ -99,10 +104,6 @@
     slideTimer = setTimeout(() => (barOpen = false), 350);
   }
   const barColour = $derived(projects.current && colourBar ? cssOf(projects.current.colour) : null);
-  $effect(() => {
-    covering = !!(asking || carding);
-  });
-
   /** the bar read the first time */
   const barIn = part();
 
@@ -227,17 +228,6 @@
       }
     };
     window.addEventListener("keydown", plus);
-    // ⌃ let go: Switch to Recent Tab (⌃Tab) over, the tab it came to the most recent
-    const ctrlUp = (e: KeyboardEvent) => e.key === "Control" && void invoke("recent_done").catch(() => {});
-    window.addEventListener("keyup", ctrlUp);
-    // ⌃Tab and ⌃⇧Tab: GTK takes no Tab as a menu's key (the menu only shows it), so they are said from here
-    const ctrlTab = (e: KeyboardEvent) => {
-      if (e.key === "Tab" && e.ctrlKey && !e.altKey && !e.metaKey) {
-        e.preventDefault();
-        void invoke("recent_tab", { by: e.shiftKey ? -1 : 1 }).catch(() => {});
-      }
-    };
-    window.addEventListener("keydown", ctrlTab, true);
     const unlisten = [
       listen("projects-changed", loadBar),
       listen("asking-project", askProject),
@@ -252,8 +242,6 @@
       clearTimeout(slideTimer);
       window.removeEventListener("focus", loadBar);
       window.removeEventListener("keydown", plus);
-      window.removeEventListener("keyup", ctrlUp);
-      window.removeEventListener("keydown", ctrlTab, true);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });
@@ -273,12 +261,13 @@
       {@render projectBar()}
     {:else if barMode === "hover"}
       <!-- a strip at the left edge in the project's colour; the bar slides in over the page while the pointer is on
-           it (as the Ubuntu dock), and away when it leaves or a project is chosen -->
+           it (as the Ubuntu dock), and away when it leaves or a project is chosen. PDFKit's view, above the page,
+           makes way for it (`over`) -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="hover-bar" class:open={barOpen} style:--strip={cssOf(projects.current.colour) ?? "var(--line)"} onmouseenter={barNear} onmouseleave={barAway}>
+      <div class="hover-bar" class:open={barOpen} bind:this={hoverBar} style:--strip={cssOf(projects.current.colour) ?? "var(--line)"} onmouseenter={barNear} onmouseleave={barAway}>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="strip" onclick={() => (barOpen = true)} title="Projects"></div>
-        <div class="slide">{@render projectBar()}</div>
+        <div class="slide" bind:this={slide}>{@render projectBar()}</div>
       </div>
     {/if}
   {/if}

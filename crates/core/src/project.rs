@@ -147,12 +147,12 @@ pub struct Manifest {
     pub engine: Option<Engine>,
     /// a `.bib` file or a papers library searched for references, beside the papers library of the user
     pub library: Option<PathBuf>,
-    /// where the suggestions and comments are kept: notes (none) or in the text as CriticMarkup
-    #[serde(default)]
-    pub review: Option<ReviewStore>,
     /// the build profile (`.papers-write/build/<name>.toml`) a fresh checkout starts with; the user's choice takes over
     #[serde(default)]
     pub profile: Option<String>,
+    /// where the suggestions and comments are kept: notes (none) or in the text as CriticMarkup
+    #[serde(default)]
+    pub review: Option<ReviewStore>,
     /// a paper (none) or a folder of notes
     #[serde(default)]
     pub kind: Option<Kind>,
@@ -292,11 +292,11 @@ impl Project {
         if manifest.library != old.library {
             text(doc, "library", path(&manifest.library).as_deref());
         }
-        if manifest.review != old.review {
-            text(doc, "review", manifest.review.map(ReviewStore::name));
-        }
         if manifest.profile != old.profile {
             text(doc, "profile", manifest.profile.as_deref());
+        }
+        if manifest.review != old.review {
+            text(doc, "review", manifest.review.map(ReviewStore::name));
         }
         if manifest.kind != old.kind {
             text(doc, "kind", manifest.kind.filter(|k| *k != Kind::Paper).map(Kind::name));
@@ -370,8 +370,8 @@ impl Manifest {
             build: path(&self.build),
             engine: self.engine,
             library: path(&self.library),
-            review: self.review,
             profile: text(&self.profile),
+            review: self.review,
             kind: self.kind.filter(|k| *k != Kind::Paper),
             gitignore: self.gitignore.filter(|g| !g),
             hide: self.hide.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),

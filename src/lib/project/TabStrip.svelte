@@ -1,6 +1,7 @@
 <script lang="ts" module>
   /** A tab: its id (the app's), its name, the tooltip (a path). */
-  export type TabItem = { id: string; title: string; tooltip?: string | null };
+  /** `edited`: changes not saved, a star after the name */
+  export type TabItem = { id: string; title: string; tooltip?: string | null; edited?: boolean };
 </script>
 
 <script lang="ts">
@@ -116,7 +117,7 @@
         onauxclick={(e) => e.button === 1 && onclose(tab.id)}
         onkeydown={(e) => e.key === "Enter" && onselect(tab.id)}
       >
-        <span class="name">{tab.title}</span>
+        <span class="name">{tab.title}{#if tab.edited}&nbsp;*{/if}</span>
         {#if extra}
           <!-- a click on the app's control is not a click on the tab -->
           <span class="extra" role="none" onclick={(e) => e.stopPropagation()}>{@render extra(tab)}</span>

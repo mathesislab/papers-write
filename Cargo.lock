@@ -2987,7 +2987,7 @@ dependencies = [
 
 [[package]]
 name = "papers-write"
-version = "0.5.5"
+version = "0.6.2"
 dependencies = [
  "notify",
  "objc2",
@@ -4546,8 +4546,8 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-pdfkit"
-version = "0.4.0"
-source = "git+https://github.com/mathesislab/tauri-plugin-pdfkit?tag=v0.4.0#34cbfddbb8701268b94e77abc7d06bc41823a394"
+version = "0.7.1"
+source = "git+https://github.com/mathesislab/tauri-plugin-pdfkit?tag=v0.7.1#65f8f83a0aca8ccf32a16fa5cb742bc1560c1527"
 dependencies = [
  "block2",
  "objc2",

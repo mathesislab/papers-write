@@ -155,7 +155,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                 "read-aloud",
                 "Read Aloud",
                 !crate::settings::get().read_aloud.trim().is_empty(),
-                Some(if cfg!(target_os = "macos") { "Alt+Escape" } else { "Ctrl+Alt+A" }),
+                Some(if MAC { "Alt+Escape" } else { "Ctrl+Alt+A" }),
             )?,
         ],
     )?;
@@ -242,64 +242,38 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
-    // all the moving about, as VS Code's Go menu: between the tabs, to a file, a line, a project, and in a PDF
-    let go = Submenu::with_items(
-        app,
-        "Go",
-        true,
-        &[
-            // the tabs visited, as a browser's Back and Forward
-            &item("tab-back", "Back", if MAC { None } else { Some("Alt+Left") })?,
-            &item("tab-forward", "Forward", if MAC { None } else { Some("Alt+Right") })?,
-            &separator()?,
-            // as Sublime and VS Code: the tab in front before (⌃ held, ⌃Tab again: the one before that), the tabs in
-            // the strip's order, a tab by its place
-            &item("recent-tab", "Switch to Recent Tab", Some("Ctrl+Tab"))?,
-            &item("recent-tab-back", "Switch to Recent Tab Backwards", Some("Shift+Ctrl+Tab"))?,
-            &Submenu::with_items(
-                app,
-                "Tab",
-                true,
-                &(1..=9)
-                    .map(|n| {
-                        let name = if n == 9 { "Last Tab".to_string() } else { format!("Tab {n}") };
-                        let key = format!("{}+{n}", if MAC { "Cmd" } else { "Alt" });
-                        MenuItem::with_id(app, format!("tab-{n}"), name, true, Some(key.as_str()))
-                    })
-                    .collect::<tauri::Result<Vec<_>>>()?
-                    .iter()
-                    .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
-                    .collect::<Vec<_>>(),
-            )?,
-            // ⇧⌘[ ⇧⌘] as macOS's apps have them; Ctrl+PageUp and Ctrl+PageDown elsewhere, as browsers and editors do
-            &item("previous-tab", "Show Previous Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+[" } else { "Ctrl+PageUp" }))?,
-            &item("next-tab", "Show Next Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+]" } else { "Ctrl+PageDown" }))?,
-            &separator()?,
-            // as Sublime's Goto Anything: a file of the project, a heading (@), a line (:)
-            &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
-            &item("go-to-line", "Go to Line…", Some("Ctrl+G"))?,
-            // as Sublime's Quick Switch Project: the projects of the bar and the recent ones, in a list over the page
-            &item("switch-project", "Switch Project…", Some("Alt+CmdOrCtrl+P"))?,
-            &separator()?,
-            // in a PDF: back and forward along its links and jumps, its pages
-            &Submenu::with_items(
-                app,
-                "In the PDF",
-                true,
-                &[
-                    &item("back", "Back", Some("CmdOrCtrl+["))?,
-                    &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
-                    &separator()?,
-                    &item("previous-page", "Previous Page", None)?,
-                    &item("next-page", "Next Page", None)?,
-                    &item("first-page", "First Page", None)?,
-                    &item("last-page", "Last Page", None)?,
-                    &separator()?,
-                    &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
-                ],
-            )?,
-        ],
-    )?;
+    // all the moving about, as VS Code's Go menu: between the tabs (papers-tabs' items, as each app has them), to a
+    // file, a line, a project, and in a PDF
+    let go = Submenu::new(app, "Go", true)?;
+    for item in crate::tabs::menu::items(app)? {
+        go.append(&item)?;
+    }
+    go.append_items(&[
+        &separator()?,
+        // as Sublime's Goto Anything: a file of the project, a heading (@), a line (:)
+        &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
+        &item("go-to-line", "Go to Line…", Some("Ctrl+G"))?,
+        // as Sublime's Quick Switch Project, on its keys: ⌃⌘P on macOS, Ctrl+Alt+P elsewhere
+        &item("switch-project", "Switch Project…", Some(if MAC { "Ctrl+Cmd+P" } else { "Ctrl+Alt+P" }))?,
+        &separator()?,
+        // in a PDF: back and forward along its links and jumps, its pages
+        &Submenu::with_items(
+            app,
+            "In the PDF",
+            true,
+            &[
+                &item("back", "Back", Some("CmdOrCtrl+["))?,
+                &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
+                &separator()?,
+                &item("previous-page", "Previous Page", None)?,
+                &item("next-page", "Next Page", None)?,
+                &item("first-page", "First Page", None)?,
+                &item("last-page", "Last Page", None)?,
+                &separator()?,
+                &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
+            ],
+        )?,
+    ])?;
     let build = Submenu::with_items(
         app,
         "Build",
@@ -375,9 +349,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
-            &separator()?,
-            &item("move-tab-left", "Move Tab Left", Some("Shift+CmdOrCtrl+PageUp"))?,
-            &item("move-tab-right", "Move Tab Right", Some("Shift+CmdOrCtrl+PageDown"))?,
         ],
     )?;
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
@@ -418,6 +389,9 @@ pub fn zoom_key(app: AppHandle, step: i32) {
 
 /// What a menu item does, by its id.
 fn command(app: &AppHandle, id: &str) {
+    if crate::tabs::menu::handle(app, id) {
+        return;
+    }
     match id {
         "new" => {
             if let Err(e) = documents::make(app, None) {
@@ -444,15 +418,6 @@ fn command(app: &AppHandle, id: &str) {
         "check-updates" => crate::settings::show(app, Some("updates")),
         "quit" => documents::quit(app),
         "close" => crate::tabs::close_front(app),
-        "previous-tab" => crate::tabs::step(app, -1),
-        "next-tab" => crate::tabs::step(app, 1),
-        "move-tab-left" => crate::tabs::shift(app, -1),
-        "move-tab-right" => crate::tabs::shift(app, 1),
-        "recent-tab" => crate::tabs::recent(app, 1),
-        "recent-tab-back" => crate::tabs::recent(app, -1),
-        "tab-back" => crate::tabs::history(app, true),
-        "tab-forward" => crate::tabs::history(app, false),
-        id if id.starts_with("tab-") && id[4..].parse::<usize>().is_ok() => crate::tabs::nth(app, id[4..].parse().unwrap_or(1)),
         // the page writes the document, then asks for the build
         "save" | "build" | "build-show" | "marked-up" => {
             if let Some(window) = documents::front(app) {
@@ -475,11 +440,7 @@ fn command(app: &AppHandle, id: &str) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "cite-key", ());
             }
         }
-        "panes-side" | "panes-tabs" | "panes-auto" => {
-            if let Some(window) = documents::front(app) {
-                let _ = app.emit_to(EventTarget::webview(window.label()), "panes", id.trim_start_matches("panes-"));
-            }
-        }
+        "figures-inline" => crate::settings::toggle_inline_figures(app),
         "text-wider" => crate::settings::step_text_width(app, 1.0),
         "text-narrower" => crate::settings::step_text_width(app, -1.0),
         "text-full" => crate::settings::toggle_full_width(app),
@@ -490,10 +451,14 @@ fn command(app: &AppHandle, id: &str) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id.trim_start_matches("pdf-"));
             }
         }
+        "panes-side" | "panes-tabs" | "panes-auto" => {
+            if let Some(window) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(window.label()), "panes", id.trim_start_matches("panes-"));
+            }
+        }
         "appearance-system" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::System),
         "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),
         "appearance-dark" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Dark),
-        "figures-inline" => crate::settings::toggle_inline_figures(app),
         "preview" | "pdf-beside" | "outline" | "sidebar" | "go-to-file" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());

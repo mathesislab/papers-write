@@ -23,16 +23,6 @@ fn words_of(template: &str, text: &str) -> Result<(Vec<String>, bool), String> {
     Ok((words.into_iter().map(|w| w.replace("{text}", text)).collect(), placed))
 }
 
-fn stop(child: &mut Child) {
-    #[cfg(unix)]
-    {
-        // the group: the command and what it started
-        let _ = Command::new("kill").args(["-TERM", &format!("-{}", child.id())]).status();
-    }
-    let _ = child.kill();
-    let _ = child.wait();
-}
-
 /// The text read aloud by the command of the settings, the reading before stopped; what went wrong in a dialog.
 #[tauri::command]
 pub fn read_aloud(app: AppHandle, text: String) -> Result<(), String> {
@@ -81,16 +71,12 @@ fn start(text: &str) -> Result<u32, String> {
     let (words, placed) = words_of(&crate::settings::get().read_aloud, text)?;
     let mut reading = READING.lock().unwrap();
     if let Some(mut child) = reading.take() {
-        stop(&mut child);
+        crate::group::stop(&mut child);
     }
     let mut command = Command::new(&words[0]);
     command.args(&words[1..]).stdin(if placed { Stdio::null() } else { Stdio::piped() }).stdout(Stdio::null()).stderr(Stdio::null());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    let mut child = command.spawn().map_err(|e| format!("{} could not be run ({e}). The command is set in Settings ▸ Read Aloud.", words[0]))?;
+    // what the command starts (a player) stops with it
+    let mut child = crate::group::own(&mut command).spawn().map_err(|e| format!("{} could not be run ({e}). The command is set in Settings ▸ Read Aloud.", words[0]))?;
     // the text as the command's input, written aside: a command reading slowly does not hold the app
     if let (false, Some(mut input)) = (placed, child.stdin.take()) {
         let text = text.to_string();
@@ -107,7 +93,7 @@ fn start(text: &str) -> Result<u32, String> {
 #[tauri::command]
 pub fn stop_reading(app: AppHandle) {
     if let Some(mut child) = READING.lock().unwrap().take() {
-        stop(&mut child);
+        crate::group::stop(&mut child);
     }
     let _ = app.emit("reading-changed", false);
     crate::menu::read_aloud_item(&app, None, Some(false));

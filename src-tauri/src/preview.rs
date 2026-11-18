@@ -38,6 +38,20 @@ pub struct Preview {
 #[derive(Default)]
 pub struct Runs(Mutex<HashMap<String, Arc<AtomicU64>>>);
 
+/// A request's place among its window's (`Runs`): its number, and the generation of the window's latest.
+#[derive(Clone, Copy)]
+pub struct Turn<'a> {
+    generation: &'a AtomicU64,
+    mine: u64,
+}
+
+impl Turn<'_> {
+    /// A newer request was made: this one's pandoc is stopped, its result dropped.
+    fn superseded(&self) -> bool {
+        self.generation.load(Ordering::SeqCst) != self.mine
+    }
+}
+
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The table of the labels of a whole document (a thesis or book: its main document and `chapters:`), for a chapter's
@@ -221,7 +235,7 @@ pub async fn preview(window: Webview, text: String) -> Result<Preview, String> {
         let bibs = path.as_deref().map(|p| write_core::refs::main_bibliography(p, &text)).unwrap_or_default();
         // a chapter of a thesis or book: the labels of the other chapters from the whole document's table
         let labels = path.as_deref().and_then(write_core::refs::document_files).and_then(|files| label_table(&app, &label, files));
-        render(&text, &dir, saved, &bibs, labels.as_deref(), &generation, mine)
+        render(&text, &dir, saved, &bibs, labels.as_deref(), Turn { generation: &generation, mine })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -235,30 +249,20 @@ fn home() -> PathBuf {
 pub(crate) use write_core::exchange::{crossref_filter, pandoc};
 
 /// The text rendered in `dir`. An untitled document (`saved` false) has no citeproc unless it names a bibliography.
-pub fn render(text: &str, dir: &Path, saved: bool, bibs: &[PathBuf], labels: Option<&Path>, generation: &AtomicU64, mine: u64) -> Result<Preview, String> {
-    render_with(text, dir, saved, bibs, labels, generation, mine, crossref_filter())
+pub fn render(text: &str, dir: &Path, saved: bool, bibs: &[PathBuf], labels: Option<&Path>, turn: Turn) -> Result<Preview, String> {
+    render_with(text, dir, saved, bibs, labels, turn, crossref_filter())
 }
 
 /// `render` with the Lua `filter`. What fails is dropped in turn, the filter first (an error that speaks of Lua or
 /// a filter), then the citations (a bibliography that is missing, or one that does not parse): the text still shows.
-#[allow(clippy::too_many_arguments)]
-fn render_with(
-    text: &str,
-    dir: &Path,
-    saved: bool,
-    bibs: &[PathBuf],
-    labels: Option<&Path>,
-    generation: &AtomicU64,
-    mine: u64,
-    filter: Option<&Path>,
-) -> Result<Preview, String> {
+fn render_with(text: &str, dir: &Path, saved: bool, bibs: &[PathBuf], labels: Option<&Path>, turn: Turn, filter: Option<&Path>) -> Result<Preview, String> {
     let start = Instant::now();
     let pandoc = pandoc()?;
     let mut citeproc = saved || text.contains("bibliography") || text.contains("references:");
     let mut filter = filter;
     let mut error = None;
     let html = loop {
-        match run(&pandoc, text, dir, filter, citeproc.then_some(bibs), labels, generation, mine) {
+        match run(&pandoc, text, dir, filter, citeproc.then_some(bibs), labels, turn) {
             Ok(html) => break html,
             Err(e) if e == SUPERSEDED => return Err(e),
             Err(e) => {
@@ -282,17 +286,7 @@ fn render_with(
 
 /// One run of pandoc: its HTML, or what it said when it failed.
 /// `citeproc`: the citations resolved, with these `.bib` files besides those the text names.
-#[allow(clippy::too_many_arguments)]
-fn run(
-    pandoc: &Path,
-    text: &str,
-    dir: &Path,
-    filter: Option<&Path>,
-    citeproc: Option<&[PathBuf]>,
-    labels: Option<&Path>,
-    generation: &AtomicU64,
-    mine: u64,
-) -> Result<String, String> {
+fn run(pandoc: &Path, text: &str, dir: &Path, filter: Option<&Path>, citeproc: Option<&[PathBuf]>, labels: Option<&Path>, turn: Turn) -> Result<String, String> {
     let mut command = Command::new(pandoc);
     command
         .args(["-f", "markdown", "-t", "html5", "--mathml", "--wrap=none"])
@@ -331,7 +325,7 @@ fn run(
             Ok(None) => {}
             Err(e) => return Err(e.to_string()),
         }
-        let stop = if generation.load(Ordering::SeqCst) != mine {
+        let stop = if turn.superseded() {
             Some(SUPERSEDED.to_string())
         } else if start.elapsed() > TIMEOUT {
             Some(format!("pandoc took more than {} s", TIMEOUT.as_secs()))
@@ -347,7 +341,7 @@ fn run(
     };
     let _ = feed.join();
     let (out, err) = (out.join().unwrap_or_default(), err.join().unwrap_or_default());
-    if generation.load(Ordering::SeqCst) != mine {
+    if turn.superseded() {
         return Err(SUPERSEDED.into());
     }
     if status.success() { Ok(out) } else { Err(err.trim().to_string()) }
@@ -494,17 +488,17 @@ mod tests {
             text.push_str(&format!("Paragraph {i} of words repeated to make a long text, with a citation @schoof2007 and some math $x_{i}$.\n\n"));
         }
         let generation = AtomicU64::new(1);
-        let p = render(&text, &dir, true, &[], None, &generation, 1).unwrap();
+        let p = render(&text, &dir, true, &[], None, Turn { generation: &generation, mine: 1 }).unwrap();
         println!("preview of {} words: {} ms, error {:?}", text.split_whitespace().count(), p.ms, p.error);
         assert!(p.error.is_none(), "{:?}", p.error);
         assert!(p.html.contains("<math"), "MathML");
         assert!(p.html.contains("Schoof"), "citeproc");
         // a missing bibliography: the text still shows, the message too
         let missing = text.replace("refs.bib", "none.bib");
-        let p = render(&missing, &dir, true, &[], None, &generation, 1).unwrap();
+        let p = render(&missing, &dir, true, &[], None, Turn { generation: &generation, mine: 1 }).unwrap();
         assert!(p.error.is_some() && p.html.contains("<h1"));
         // superseded: a newer generation
-        assert_eq!(render(&text, &dir, true, &[], None, &generation, 0).unwrap_err(), SUPERSEDED);
+        assert_eq!(render(&text, &dir, true, &[], None, Turn { generation: &generation, mine: 0 }).unwrap_err(), SUPERSEDED);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -546,7 +540,7 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
         }
         let dir = scratch("xref");
         let generation = AtomicU64::new(1);
-        let p = render(SAMPLE, &dir, false, &[], None, &generation, 1).unwrap();
+        let p = render(SAMPLE, &dir, false, &[], None, Turn { generation: &generation, mine: 1 }).unwrap();
         println!("cross-reference sample: {} ms", p.ms);
         assert!(p.error.is_none(), "{:?}", p.error);
         let h = &p.html;
@@ -570,7 +564,7 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
         let dir = scratch("quarto");
         let generation = AtomicU64::new(1);
         let text = "# Intro {#sec-intro}\n\n$$\na = b\n$$ {#eq-a}\n\nSee @eq-a, @sec-intro and [@fig-x; @fig-y], @fig-nope.\n\n![X](x.png){#fig-x}\n\n![Y](y.png){#fig-y}\n";
-        let p = render(text, &dir, false, &[], None, &generation, 1).unwrap();
+        let p = render(text, &dir, false, &[], None, Turn { generation: &generation, mine: 1 }).unwrap();
         assert!(p.error.is_none(), "{:?}", p.error);
         let h = &p.html;
         assert!(h.contains("Equation\u{a0}<a href=\"#eq-a\">1</a>"), "{h}");
@@ -579,7 +573,7 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
         assert!(h.contains("Figure 1: X") && h.contains("<strong>??</strong>"), "{h}");
         // the front matter's prefix, as Quarto's
         let text = format!("---\ncrossref:\n  fig-prefix: Fig.\n---\n\n{text}");
-        let h = render(&text, &dir, false, &[], None, &generation, 1).unwrap().html;
+        let h = render(&text, &dir, false, &[], None, Turn { generation: &generation, mine: 1 }).unwrap().html;
         assert!(h.contains("Fig.\u{a0}<a href=\"#fig-x\">1</a> and"), "{h}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -592,7 +586,7 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
         let dir = scratch("words");
         let generation = AtomicU64::new(1);
         let text = format!("---\ncrossref: {{fig: Fig., figs: Figs., eq: Eq., sec: Sect., tbl: \"\"}}\n---\n\n{SAMPLE}\nThree: [@fig:loop; @fig:second; @fig:loop] and @eq:mass, [@eq:mass; @eq:friction].\n");
-        let p = render(&text, &dir, false, &[], None, &generation, 1).unwrap();
+        let p = render(&text, &dir, false, &[], None, Turn { generation: &generation, mine: 1 }).unwrap();
         assert!(p.error.is_none(), "{:?}", p.error);
         let h = &p.html;
         assert!(h.contains("Fig.\u{a0}<a href=\"#fig:loop\">1</a>"), "{h}");
@@ -614,7 +608,7 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
         let dir = scratch("env");
         let generation = AtomicU64::new(1);
         let text = "\\begin{align}\n a &= b \\label{eq:a} \\nonumber\\\\\n c &= d\n\\end{align}\n\n\\begin{gather*}\n x = 1\n\\end{gather*}\n\nSee \\ref{eq:a} and \\eqref{eq:a}, \\ref{nope}.\n";
-        let p = render(text, &dir, false, &[], None, &generation, 1).unwrap();
+        let p = render(text, &dir, false, &[], None, Turn { generation: &generation, mine: 1 }).unwrap();
         let h = &p.html;
         assert_eq!(h.matches("<math").count(), 2, "{h}");
         assert!(h.contains(r#"<span class="eqno">(1)</span>"#) && !h.contains(r#"eqno">(2)"#), "gather* is not numbered: {h}");
@@ -632,12 +626,12 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
         let bad = dir.join("bad.lua");
         std::fs::write(&bad, "this is not lua (").unwrap();
         let generation = AtomicU64::new(1);
-        let p = render_with("# Title\n\nSome $x^2$ text.\n", &dir, false, &[], None, &generation, 1, Some(&bad)).unwrap();
+        let p = render_with("# Title\n\nSome $x^2$ text.\n", &dir, false, &[], None, Turn { generation: &generation, mine: 1 }, Some(&bad)).unwrap();
         assert!(p.html.contains("<h1") && p.html.contains("<math"), "{}", p.html);
         assert!(p.error.is_some(), "the message is shown");
         // an error raised while running, outside the filter's own pcall
         std::fs::write(&bad, "function Pandoc(d) error('boom') end").unwrap();
-        let p = render_with("# Title\n", &dir, false, &[], None, &generation, 1, Some(&bad)).unwrap();
+        let p = render_with("# Title\n", &dir, false, &[], None, Turn { generation: &generation, mine: 1 }, Some(&bad)).unwrap();
         assert!(p.html.contains("<h1") && p.error.as_deref().is_some_and(|e| e.contains("boom")));
         std::fs::remove_dir_all(&dir).unwrap();
     }

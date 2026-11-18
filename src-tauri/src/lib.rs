@@ -6,6 +6,7 @@ mod drafts;
 mod exchange;
 mod files;
 mod git;
+mod group;
 mod hover;
 mod menu;
 mod notes;
@@ -100,6 +101,8 @@ pub fn run() {
             WindowEvent::CloseRequested { api, .. } => documents::closing(window, api),
             WindowEvent::Focused(true) => tabs::window_focused(window.app_handle(), window.label()),
             WindowEvent::Destroyed => tabs::window_closed(window.app_handle(), window.label()),
+            // the system's appearance changed: the windows' background, as Settings ▸ Window ▸ Appearance System has it
+            WindowEvent::ThemeChanged(_) => tabs::repaint(window.app_handle()),
             // files dropped on a window open in tabs of their own
             WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) => {
                 documents::open_files(window.app_handle(), paths);

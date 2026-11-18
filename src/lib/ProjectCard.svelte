@@ -8,11 +8,12 @@
   // nothing. There is no Esc for a new one: it would drop it by a stray key.
 
   import { invoke } from "@tauri-apps/api/core";
-  import { REVEAL } from "papers-write/editor";
+  import { REVEAL, keys } from "papers-write/editor";
   import { onMount } from "svelte";
   import { COLOURS, SHORT, initials, type Colour } from "papers-write/project";
   import "./card.css";
   import type { Card, Manifest } from "./projects";
+  import { overPage } from "$lib/overlay.svelte";
 
   let { root, onclose }: { /** the project's folder */ root: string; onclose: () => void } = $props();
 
@@ -156,7 +157,7 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && card?.defined && cancel()} />
 
-<div class="scrim" role="presentation"></div>
+<div class="scrim" role="presentation" {@attach overPage}></div>
 <form class="card" aria-label={fresh ? "New project" : "Project Info"} onsubmit={(e) => (e.preventDefault(), submit())}>
   {#if fresh}<h2>New project</h2>{/if}
   {#if card}
@@ -191,7 +192,7 @@
           <option value="notes">Notes</option>
         </select>
         <span class="hint">
-          {#if notes}opened on the last note changed, searched by title, name and text (⇧⌘F){#if keptBy} — this folder is kept by {keptBy}{/if}{:else}its main document opens first{/if}
+          {#if notes}opened on the last note changed, searched by title, name and text {keys("(⇧⌘F)")}{#if keptBy} — this folder is kept by {keptBy}{/if}{:else}its main document opens first{/if}
         </span>
       </div>
 

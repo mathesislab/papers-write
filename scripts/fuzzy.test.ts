@@ -2,7 +2,7 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { matchIn, rank, scorePath } from "../src/lib/fuzzy.ts";
+import { matchIn, pieces, rank, scorePath } from "../src/lib/fuzzy.ts";
 
 const files = (...paths: string[]) => paths.map((relative, i) => ({ relative, modified: i }));
 
@@ -37,4 +37,19 @@ test("without a query, the most recently changed first", () => {
 
 test("the places matched, for showing them", () => {
   assert.deepEqual(scorePath("res", "sections/results.md").at, [9, 10, 11]);
+});
+
+test("the places matched in pieces, to show them in bold", () => {
+  assert.deepEqual(pieces("paper.md", [0, 1, 6]), [
+    { text: "pa", on: true },
+    { text: "per.", on: false },
+    { text: "m", on: true },
+    { text: "d", on: false },
+  ]);
+  // counted from a longer text: the name after its folder
+  assert.deepEqual(pieces("intro.md", [4, 5], 4), [
+    { text: "in", on: true },
+    { text: "tro.md", on: false },
+  ]);
+  assert.deepEqual(pieces("abc", []), [{ text: "abc", on: false }]);
 });

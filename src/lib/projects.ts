@@ -13,10 +13,10 @@ export type Manifest = {
   /** what builds the Markdown documents: texmark (none) or Quarto; a `.qmd` is always Quarto's */
   engine: "texmark" | "quarto" | null;
   library: string | null;
-  /** where the suggestions and comments are kept: notes (none) or in the text as CriticMarkup */
-  review: "notes" | "in-file" | null;
   /** the build profile a fresh checkout starts with */
   profile: string | null;
+  /** where the suggestions and comments are kept: notes (none) or in the text as CriticMarkup */
+  review: "notes" | "in-file" | null;
   /** a paper (none) or a folder of notes */
   kind: "paper" | "notes" | null;
   /** Go to File and Find in Project: the .gitignore followed (null: it is), paths left out, paths brought back */

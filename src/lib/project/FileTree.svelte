@@ -14,14 +14,14 @@
   // on a row (`badge`), items atop a file's menu (`extra`).
   //
   // The keys, with the tree in front (a click on a row leaves it there): Up and Down go from row to row, Right and Left
-  // open and close a folder, Enter opens the file (or folder), Delete moves it to the Trash (asked first; ⇧Delete
-  // without asking: it is in the Trash still). A file
+  // open and close a folder, Enter opens the file (or folder), and the file manager's keys move it to the Trash
+  // (`trashKey`: ⌘⌫ at once on macOS, as the Finder; Delete asked first, ⇧Delete at once, elsewhere). A file
   // opened from the tree shows in a tab of its own, another page: that page's tree takes the keys back, on the file
   // (`FOCUS`, which the pages of an app share).
 
-  import { popupReleased } from "$lib/contextMenu";
+  import { popupReleased } from "./contextMenu";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
-  import { REVEAL } from "../editor/platform";
+  import { REVEAL, trashKey } from "../editor/platform";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { onMount } from "svelte";
@@ -115,7 +115,9 @@
 
   /** The keys of the tree. */
   function keys(e: KeyboardEvent) {
-    if (naming || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (naming) return;
+    const trash = trashKey(e);
+    if (!trash && (e.altKey || e.ctrlKey || e.metaKey)) return;
     const list = rows();
     const at = list.findIndex((r) => r.dataset.path === selected);
     const node = selected ? byPath.get(selected) : undefined;
@@ -133,10 +135,10 @@
     else if (e.key === "ArrowRight" && node?.kind === "folder" && !opened.has(node.path) && node.children?.length) toggle(node);
     else if (e.key === "ArrowLeft" && node?.kind === "folder" && opened.has(node.path)) toggle(node);
     else if (e.key === "Enter" && node) node.kind === "folder" ? node.children?.length && toggle(node) : !node.missing && openFromTree(node);
-    else if ((e.key === "Delete" || e.key === "Backspace") && node && ontrash && !isLinked(node.path)) {
+    else if (trash && node && ontrash && !isLinked(node.path)) {
       // the next row takes the keys, the one moved to the Trash going
       const next = list[at + 1] ?? list[at - 1];
-      ontrash(node, e.shiftKey);
+      ontrash(node, trash === "now");
       if (next) selected = next.dataset.path ?? null;
     }
     else return;

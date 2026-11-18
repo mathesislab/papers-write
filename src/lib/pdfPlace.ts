@@ -1,15 +1,14 @@
-// A place of a source shown in its PDF (Show in PDF), whether the PDF is beside the text (SidePdf) or in a tab of its
-// own (the pdf page): the lines the source line made, from the map the build left beside the PDF (texmark's, or
-// SyncTeX's), the one as far through them as the cursor is through the source line, marked with the word.
+// A place of a source shown in its PDF (Show in PDF) by a page that is not the text's: the PDF's own tab, asked by the
+// text with the panes in tabs (panetabs.rs). The lines the source line made, from the map the build left beside the
+// PDF (texmark's, or SyncTeX's), the one as far through them as the cursor is through the source line, marked with the
+// word by the view (`PdfViewer.show`), as SidePdf does beside the text.
 
 import { invoke } from "@tauri-apps/api/core";
-import type PdfjsView from "$lib/PdfjsView.svelte";
-
-type Box = { page: number; x: number; y: number; width: number; height: number };
+import type { Box, PdfViewer } from "$lib/pdf";
 
 /** The place shown in `view`; its page, or none (no map beside the PDF, or nothing there), and what was done. */
 export async function showSourceIn(
-  view: PdfjsView,
+  view: PdfViewer,
   pdf: string,
   source: string,
   line: number,
@@ -29,6 +28,6 @@ export async function showSourceIn(
     const height = Math.max(...own.map((l) => l.height));
     return { page, top: Math.min(...own.map((l) => l.y)) - height * 2.6, bottom: Math.max(...own.map((l) => l.y)) + height * 0.4 };
   });
-  const how = view.showBox(box, word, regions, before, after);
+  const how = await view.show({ box, regions, word, before, after });
   return { page: box.page, status: `→ page ${box.page}: ${how}` };
 }

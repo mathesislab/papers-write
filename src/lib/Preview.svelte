@@ -4,13 +4,13 @@
   // to the same one (pandoc's Markdown reader has no source positions, so the blocks are matched by their order).
   // `error` is what pandoc said, in a bar at the foot.
 
-  import { showPdfImages } from "$lib/pdfImage";
 
+  import { followButtons, popupReleased } from "papers-write/project";
   import { readAloudItems } from "$lib/readAloud";
-  import { followButtons, popupReleased } from "$lib/contextMenu";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
-  const keysOf = (k: string) => (navigator.userAgent.includes("Mac") ? k : "Ctrl");
+  import { showPdfImages } from "$lib/pdfImage";
+  import { keys } from "papers-write/editor";
 
   let {
     html,
@@ -137,8 +137,8 @@
     return { text: (block.textContent ?? "").replace(/\s+/g, " ").trim(), word, around };
   }
 
-  /** The frame loaded: its PDF figures drawn as images (WebKitGTK does not draw them), ⌃-click and its menu taken to
-   *  the source, the block in view. */
+  /** The frame loaded: its PDF figures drawn as images (WebKitGTK does not draw them), ⌃-click and its menu taken
+   *  to the source, the block in view. */
   function loaded() {
     const doc = frame?.contentDocument;
     if (doc?.body) void showPdfImages(doc.body);
@@ -194,7 +194,7 @@
         const selected = doc.getSelection()?.toString().trim() ?? "";
         const reading = await readAloudItems(selected || at.text, selected ? "Read Aloud" : "Read Aloud Paragraph");
         const items = await Promise.all([
-          MenuItem.new({ text: `Go to Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word, at.around) }),
+          MenuItem.new({ text: keys("Go to Source (⌘-click)"), action: () => onsource(at.text, at.word, at.around) }),
           ...(onpdf ? [MenuItem.new({ text: "Show in PDF", action: () => onpdf(at.text, at.word, at.around) })] : []),
           PredefinedMenuItem.new({ item: "Separator" }),
           PredefinedMenuItem.new({ item: "Copy" }),
@@ -210,7 +210,8 @@
 </script>
 
 <aside>
-  <!-- no allow-scripts: what the text holds as HTML cannot run; allow-same-origin only for the page to scroll it -->
+  <!-- allow-scripts only for the page's own listeners on the frame: the document's policy runs none of its scripts;
+       allow-same-origin for the page to scroll it -->
   <iframe bind:this={frame} title="Preview" sandbox="allow-same-origin allow-scripts" srcdoc={doc} onload={loaded}></iframe>
   {#if error}<p class="error">{error}</p>{/if}
 </aside>

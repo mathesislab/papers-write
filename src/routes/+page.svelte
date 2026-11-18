@@ -611,7 +611,13 @@
     return spokenOf(doc.sliceString(doc.line(first).from, doc.line(last).to));
   }
 
-  /** A right-click in the text: Read Aloud (when set), Show in Preview or in PDF, and the edits of the selection. */
+  /** Edit ▸ Read Aloud (⌃⌥A; ⌥Esc on macOS): the selection or the paragraph read, or the reading going on stopped. */
+  async function readOrStop() {
+    if (await invoke<boolean>("reading").catch(() => false)) return void invoke("stop_reading");
+    void invoke("read_aloud", { text: spokenHere() }).catch(() => {});
+  }
+
+  /** A right-click in the text: Show in Preview or in PDF, the edits of the selection, Read Aloud (when set). */
   async function editorMenu(e: MouseEvent) {
     // where ⌘-click shows the place: the preview when it is beside the text or in its tab, else the PDF (as syncHere)
     const where = (previewing || previewTab) && markdown ? "Preview" : "PDF";
@@ -619,7 +625,6 @@
     const reading = await readAloudItems(spokenHere(), editor?.view()?.state.selection.main.empty ? "Read Aloud Paragraph" : "Read Aloud");
     const click = ` (${mac ? "⌘" : "Ctrl"}-click)`;
     const items = await Promise.all([
-      ...reading,
       // the pane shown says what ⌘-click does
       ...(markdown ? [MenuItem.new({ text: `Show in Preview${where === "Preview" ? click : ""}`, action: () => void showInPreview() })] : []),
       MenuItem.new({ text: `Show in PDF${where === "PDF" ? click : ""}`, enabled: !!path, action: () => void showInPdf() }),
@@ -628,6 +633,7 @@
       PredefinedMenuItem.new({ item: "Copy" }),
       PredefinedMenuItem.new({ item: "Paste" }),
       PredefinedMenuItem.new({ item: "SelectAll" }),
+      ...reading,
       // macOS: the system's Services, as its own menu had them (Look Up and Speech are not open to apps' menus)
       ...(mac ? [PredefinedMenuItem.new({ item: "Separator" }), PredefinedMenuItem.new({ item: "Services" })] : []),
     ]);
@@ -941,7 +947,8 @@
       // of the text's language (<!-- --> in Markdown, % in LaTeX)
       ({ "go-to-line": gotoLine, "select-next": selectNextOccurrence, "toggle-comment": toggleComment })[what](view);
       view.focus();
-    } else (what === "redo" ? editor.redo : editor.undo)();
+    } else if (what === "read-aloud") void readOrStop();
+    else (what === "redo" ? editor.redo : editor.undo)();
   }
 
   /** Edit ▸ Find: in the text (the editor's bar), or in the project (the sidebar's search). */

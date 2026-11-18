@@ -147,6 +147,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             // a menu item, not a key of the page: macOS takes ⌘. for Cancel before the page sees it
             &item("cite-key", "Cite as [@key]", Some("CmdOrCtrl+."))?,
             &item("check", "Check Citations…", None)?,
+            &separator()?,
+            // the selection or the paragraph read, or the reading stopped (the command of Preferences ▸ Read Aloud;
+            // none set: off); macOS's own key for speaking there
+            &MenuItem::with_id(
+                app,
+                "read-aloud",
+                "Read Aloud",
+                !crate::settings::get().read_aloud.trim().is_empty(),
+                Some(if cfg!(target_os = "macos") { "Alt+Escape" } else { "Ctrl+Alt+A" }),
+            )?,
         ],
     )?;
     // the formats of the toolbar, at the selection of the text in front (Markdown, or LaTeX in a .tex file)
@@ -525,7 +535,7 @@ fn command(app: &AppHandle, id: &str) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "format", &id["format-".len()..]);
             }
         }
-        "undo" | "redo" | "symbols" | "references" | "check" | "go-to-line" | "select-next" | "toggle-comment" => {
+        "undo" | "redo" | "symbols" | "references" | "check" | "go-to-line" | "select-next" | "toggle-comment" | "read-aloud" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "edit", id);
             }
@@ -563,5 +573,18 @@ pub fn view_shown(app: AppHandle, preview: bool, pdf: bool, panes: String) {
         if let Some(item) = app.menu().and_then(|m| m.get(&format!("panes-{mode}"))).and_then(|k| k.as_check_menuitem().cloned()) {
             let _ = item.set_checked(panes == mode);
         }
+    }
+}
+
+/** Edit ▸ Read Aloud as Read Aloud can be: on while a command is set, Stop Reading while it reads. */
+pub fn read_aloud_item(app: &AppHandle, set: Option<bool>, reading: Option<bool>) {
+    let Some(item) = app.menu().and_then(|m| m.get("read-aloud")).and_then(|k| k.as_menuitem().cloned()) else {
+        return;
+    };
+    if let Some(set) = set {
+        let _ = item.set_enabled(set);
+    }
+    if let Some(reading) = reading {
+        let _ = item.set_text(if reading { "Stop Reading" } else { "Read Aloud" });
     }
 }

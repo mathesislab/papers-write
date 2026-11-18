@@ -40,6 +40,7 @@ pub fn read_aloud(app: AppHandle, text: String) -> Result<(), String> {
     match start(&text) {
         Ok(id) => {
             let _ = app.emit("reading-changed", true);
+            crate::menu::read_aloud_item(&app, None, Some(true));
             watch(app, id);
             Ok(())
         }
@@ -62,6 +63,7 @@ fn watch(app: AppHandle, id: u32) {
                 }
                 *reading = None;
                 let _ = app.emit("reading-changed", false);
+                crate::menu::read_aloud_item(&app, None, Some(false));
                 return;
             }
             // stopped (Stop Reading tells it) or followed by another
@@ -108,6 +110,7 @@ pub fn stop_reading(app: AppHandle) {
         stop(&mut child);
     }
     let _ = app.emit("reading-changed", false);
+    crate::menu::read_aloud_item(&app, None, Some(false));
 }
 
 /// Whether the command is reading (for the menus' Stop Reading).

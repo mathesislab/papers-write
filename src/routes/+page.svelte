@@ -431,7 +431,8 @@
 
   /** A right-click in the text: Show in Preview or in PDF, and the edits of the selection. */
   async function editorMenu(e: MouseEvent) {
-    const where = previewing && markdown ? "Preview" : "PDF";
+    // where ⌘-click shows the place: the preview when it is beside the text or in its tab, else the PDF (as syncHere)
+    const where = (previewing || previewTab) && markdown ? "Preview" : "PDF";
     const mac = navigator.userAgent.includes("Mac");
     const click = ` (${mac ? "⌘" : "Ctrl"}-click)`;
     const items = await Promise.all([

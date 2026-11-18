@@ -37,7 +37,7 @@
   import GoToFile from "$lib/GoToFile.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { emit } from "@tauri-apps/api/event";
-  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { onMount, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
@@ -464,6 +464,20 @@
     }
     if (!previewing) togglePreview(false);
     if (active) setTimeout(focusPane, 400);
+  }
+  /** The foot's Panes ▾: the three forms of View ▸ Panes. */
+  async function panesMenu(e: MouseEvent) {
+    const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const items = await Promise.all(
+      (
+        [
+          ["side", "Beside the Text"],
+          ["tabs", "In Tabs of Their Own"],
+          ["auto", "In Tabs on a Narrow Window"],
+        ] as const
+      ).map(([mode, text]) => CheckMenuItem.new({ text, checked: panesMode === mode, action: () => setPanes(mode) })),
+    );
+    await (await Menu.new({ items })).popup(new LogicalPosition(at.left, at.top));
   }
   /** The side worked in: the pane's or the text's, kept. */
   function setActive(pane: boolean) {
@@ -1447,6 +1461,12 @@
   <!-- the foot of the window: the build, what was just done or went wrong, the repository -->
   <footer>
     <Build bind:this={builds} can={markdown || latex} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
+    <!-- View ▸ Panes, a mode of the window, at its foot -->
+    {#if markdown || latex || path}
+      <button class="panes-mode" onclick={panesMenu} title="The preview and the PDF: beside the text, or in tabs of their own">
+        Panes: {panesMode === "side" ? "beside" : panesMode === "tabs" ? "tabs" : "auto"} ▾
+      </button>
+    {/if}
     {#if error || problem || session.problem}
       {@const said = problem || error || session.problem}
       <span class="said error" title={said}>{said}</span>
@@ -1457,6 +1477,18 @@
 </Frame>
 
 <style>
+  .panes-mode {
+    flex: none;
+    font: inherit;
+    font-size: 11.5px;
+    margin-left: 6px;
+    padding: 1px 8px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
+  }
   /* not a box: the panes and the foot are the frame's; what is placed absolutely is placed in its content */
   .body {
     display: contents;

@@ -386,6 +386,20 @@ pub fn step_zoom(app: &AppHandle, by: f64) {
     put(app, settings);
 }
 
+/// The preview following the cursor or not (the preview's ▾).
+#[tauri::command]
+pub fn set_preview_follow(app: AppHandle, on: bool) {
+    let mut settings = get();
+    settings.preview_follow = on;
+    put(&app, settings);
+}
+
+/// The Settings window, at `section` (a menu's Settings…).
+#[tauri::command]
+pub fn show_settings(app: AppHandle, section: Option<String>) {
+    show(&app, section.as_deref());
+}
+
 /// The settings changed in the Settings window.
 #[tauri::command]
 pub async fn set_settings(app: AppHandle, settings: Settings) {

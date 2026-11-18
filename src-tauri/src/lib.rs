@@ -138,6 +138,8 @@ pub fn run() {
             readaloud::stop_reading,
             readaloud::reading,
             settings::set_settings,
+            settings::set_preview_follow,
+            settings::show_settings,
             settings::set_text_width,
             settings::zoom_window,
             settings::set_appearance,

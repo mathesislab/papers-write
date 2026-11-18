@@ -48,6 +48,38 @@
   } = $props();
 
   type Chapter = { path: string; title: string };
+
+  /** The ▾ in the corner: Follows the Cursor, Panes ▸, Settings ▸ Editor. */
+  async function settingsMenu(e: MouseEvent) {
+    const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const now = await invoke<{ preview_follow: boolean }>("settings").catch(() => null);
+    const items = await Promise.all([
+      CheckMenuItem.new({
+        text: "Follows the Cursor",
+        checked: now?.preview_follow ?? true,
+        action: () => void invoke("set_preview_follow", { on: !(now?.preview_follow ?? true) }),
+      }),
+      ...(panes
+        ? [
+            Submenu.new({
+              text: "Panes",
+              items: await Promise.all(
+                (
+                  [
+                    ["side", "Beside the Text"],
+                    ["tabs", "In Tabs of Their Own"],
+                    ["auto", "In Tabs on a Narrow Window"],
+                  ] as const
+                ).map(([mode, text]) => CheckMenuItem.new({ text, checked: panes.mode === mode, action: () => panes.onpanes(mode) })),
+              ),
+            }),
+          ]
+        : []),
+      PredefinedMenuItem.new({ item: "Separator" }),
+      MenuItem.new({ text: "Settings…", action: () => void invoke("show_settings", { section: "editor" }) }),
+    ]);
+    await (await Menu.new({ items })).popup(new LogicalPosition(at.left, at.top));
+  }
   /** the chapters whose previews were made ahead */
   const prepared = new Set<string>();
 
@@ -388,9 +420,28 @@
        allow-same-origin for the page to scroll it -->
   <iframe bind:this={frame} title="Preview" sandbox="allow-same-origin allow-scripts" srcdoc={doc} onload={loaded}></iframe>
   {#if error}<p class="error">{error}</p>{/if}
+  <!-- the preview's settings, in its corner (settings at the foot, as Build's): whether it follows the cursor, the panes -->
+  <button class="settings" onclick={settingsMenu} title="The preview's settings" aria-label="Preview settings">Preview ▾</button>
 </aside>
 
 <style>
+  /* in the corner, over the preview, faint till hovered */
+  .settings {
+    position: absolute;
+    right: 10px;
+    bottom: 8px;
+    font: 11.5px system-ui, sans-serif;
+    padding: 1px 8px;
+    color: var(--muted, #888);
+    background: var(--bg, transparent);
+    border: 1px solid var(--border, #888);
+    border-radius: 5px;
+    opacity: 0.6;
+    cursor: pointer;
+  }
+  .settings:hover {
+    opacity: 1;
+  }
   aside {
     position: relative;
     height: 100%;

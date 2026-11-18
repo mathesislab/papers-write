@@ -841,7 +841,15 @@ fn document_of(window: &Webview) -> Result<PathBuf, String> {
 /// PDF shown; without, the document in front built by texmark, Quarto or latexmk.
 #[tauri::command]
 pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> {
-    let file = document_of(&window)?;
+    // a PDF's tab builds with the project's Build With profile (it has no text of its own to build)
+    let file = match document_of(&window) {
+        Ok(file) => file,
+        Err(e) => match documents::path_of(&app, window.label()).filter(|p| documents::is_pdf(p)) {
+            Some(pdf) if crate::profiles::active(&app, &pdf).is_some() => pdf,
+            Some(_) => return Err("A PDF is built from its text, or with a Build With profile of its project".into()),
+            None => return Err(e),
+        },
+    };
     let Some((profile, root)) = crate::profiles::active(&app, &file) else {
         request(&app, &window, file, Job::Build { show });
         return Ok(());

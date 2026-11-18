@@ -17,6 +17,7 @@
   import { part, ready } from "papers-write/project";
   import { mac } from "papers-write/editor";
   import Frame from "$lib/Frame.svelte";
+  import Build from "$lib/Build.svelte";
   import "$lib/theme.css";
   import { printPdf } from "$lib/print";
 
@@ -180,9 +181,27 @@
       {/key}
     {/if}
   </div>
+  <!-- the foot, as a text's: the project's build (Build With, Build After Saves) and what runs in the background, so
+       that a PDF in a tab of its own shows it too -->
+  {#if path}
+    <footer>
+      <Build can={true} flush={() => {}} onfocus={() => view?.focus()} />
+    </footer>
+  {/if}
 </Frame>
 
 <style>
+  footer {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--foot, 26px);
+    box-sizing: border-box;
+    padding: 0 8px;
+    border-top: 1px solid var(--line);
+    background: var(--sidebar);
+  }
   .name {
     flex: 1;
     overflow: hidden;

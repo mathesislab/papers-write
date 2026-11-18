@@ -19,8 +19,8 @@
   type LatexError = { message: string; line: number | null; file: string | null; here: boolean; context: string | null; md_line: number | null };
   type Status = {
     what: "build" | "diff";
-    /** "watching": a watch profile's command left running; "external": a profile built elsewhere, only followed */
-    state: "building" | "done" | "failed" | "watching" | "external";
+    /** "external": a profile built elsewhere, only followed */
+    state: "building" | "done" | "failed" | "external";
     seconds: number | null;
     pdf: string | null;
     log: string | null;
@@ -53,20 +53,23 @@
   let ended = $state<Date | null>(null);
 
   /** the build profiles of the document's project (`.papers-write/build/*.toml`) and the one active */
-  type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "external" };
-  type Profiles = { profiles: Profile[]; active: string | null; watching: string | null; wrong: string[]; folder: string | null };
+  type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "save" | "external" };
+  /** what runs in the background of the project: "watching" (started here), "elsewhere" (the same command started in
+   *  a terminal, followed), "ended" (its command exited), "on-save" (run after the saves) */
+  type Background = { name: string; state: "watching" | "elsewhere" | "ended" | "on-save" };
+  type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; wrong: string[]; folder: string | null };
   let profiles = $state<Profiles | null>(null);
   const loadProfiles = async () => (profiles = await invoke<Profiles>("build_profiles").catch(() => null));
   /** the active profile's name, said after what the button says */
   const named = $derived(profiles?.active ? ` · ${profiles.active}` : "");
+  /** the background, said after it */
+  const BACKGROUND = { watching: "watching", elsewhere: "watching (terminal)", ended: "ended", "on-save": "on save" };
+  const behind = $derived(profiles?.background ? ` · ● ${profiles.background.name} ${BACKGROUND[profiles.background.state]}` : "");
+  const commandOf = (name: string) => profiles?.profiles.find((p) => p.name === name)?.command ?? name;
 
   const errors = $derived(status?.errors.length ?? 0);
   const label = $derived(
-    status?.state === "watching"
-      ? `Watching${named}`
-      : status?.state === "external"
-        ? `Built elsewhere${named}`
-        : labelOf() + (status?.state === "building" ? "" : named),
+    (status?.state === "external" ? `Built elsewhere${named}` : labelOf() + (status?.state === "building" ? "" : named)) + behind,
   );
   function labelOf(): string {
     return !status
@@ -81,11 +84,13 @@
   }
   const title = $derived(
     keys(
-      status?.state === "watching" || status?.state === "external"
+      (status?.state === "external"
         ? `${status.message ?? ""}. Show the PDF (⌥⇧⌘B)`
         : status?.state === "done"
           ? `Made in ${status.seconds?.toFixed(1)} s. Build and Show PDF (⌥⇧⌘B)`
-          : "Build and Show PDF (⌥⇧⌘B)",
+          : "Build and Show PDF (⌥⇧⌘B)") +
+        `\nBuild (⇧⌘B) runs: ${profiles?.active ? commandOf(profiles.active) : "this document"}` +
+        (profiles?.background ? `\nIn the background: ${commandOf(profiles.background.name)} (${BACKGROUND[profiles.background.state]})` : ""),
     ),
   );
 
@@ -113,13 +118,25 @@
       profiles = (await request<Profiles>("set_build_profile", { name })) ?? profiles;
       status = null;
     };
-    const RUNS = { build: "", watch: " (kept running)", external: " (built elsewhere)" };
+    const behind = async (name: string | null) => (profiles = (await request<Profiles>("set_background", { name })) ?? profiles);
+    const RUNS = { build: "", watch: " (kept running)", save: " (after saves)", external: " (built elsewhere)" };
+    const now = profiles.profiles.filter((p) => p.run === "build" || p.run === "external");
+    const background = profiles.profiles.filter((p) => p.run === "watch" || p.run === "save");
+    const on = profiles.background?.name;
     return [
       PredefinedMenuItem.new({ item: "Separator" }),
-      CheckMenuItem.new({ text: "No Profile: This Document", checked: !profiles.active, action: () => void choose(null) }),
-      ...profiles.profiles.map((p) =>
-        CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}`, checked: profiles?.active === p.name, action: () => void choose(p.name) }),
-      ),
+      MenuItem.new({ text: "Build With", enabled: false }),
+      CheckMenuItem.new({ text: "This Document", checked: !profiles.active, action: () => void choose(null) }),
+      ...now.map((p) => CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}`, checked: profiles?.active === p.name, action: () => void choose(p.name) })),
+      ...(background.length
+        ? [
+            PredefinedMenuItem.new({ item: "Separator" }),
+            MenuItem.new({ text: "In the Background", enabled: false }),
+            CheckMenuItem.new({ text: "Nothing", checked: !on, action: () => void behind(null) }),
+            ...background.map((p) => CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}`, checked: on === p.name, action: () => void behind(p.name) })),
+          ]
+        : []),
+      PredefinedMenuItem.new({ item: "Separator" }),
       ...(profiles.wrong.length ? [MenuItem.new({ text: `${profiles.wrong.length} profile file${profiles.wrong.length === 1 ? "" : "s"} not read`, enabled: false })] : []),
       MenuItem.new({ text: "Build Profiles…", action: () => void request("reveal_profiles") }),
     ];
@@ -130,7 +147,10 @@
     status = next;
     refused = "";
     sheet = next.state === "failed";
-    if (next.state !== "building") ended = new Date();
+    if (next.state !== "building") {
+      ended = new Date();
+      void loadProfiles();
+    }
   }
 
   async function request<T>(command: string, args: Record<string, unknown> = {}): Promise<T | undefined> {
@@ -181,7 +201,15 @@
   onMount(() => {
     loadProfiles();
     const unlisten = listen<Status>("build-status", (e) => told(e.payload));
-    return () => void unlisten.then((f) => f());
+    // the background of the project as the tab comes in front (chosen from another of its tabs, or its command ended)
+    const shown = () => document.visibilityState === "visible" && void loadProfiles();
+    document.addEventListener("visibilitychange", shown);
+    window.addEventListener("focus", shown);
+    return () => {
+      void unlisten.then((f) => f());
+      document.removeEventListener("visibilitychange", shown);
+      window.removeEventListener("focus", shown);
+    };
   });
 </script>
 

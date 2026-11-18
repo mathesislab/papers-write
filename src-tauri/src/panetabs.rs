@@ -33,6 +33,8 @@ pub struct PaneTabs {
     shows: Mutex<HashMap<String, ShowSource>>,
     /// each text's preview tab
     previews: Mutex<HashMap<String, String>>,
+    /// the text each PDF's tab was last shown from (Show PDF in that tab goes back to it)
+    shown_from: Mutex<HashMap<String, String>>,
     next: AtomicUsize,
 }
 
@@ -43,6 +45,7 @@ pub fn pdf_tab_show(window: Webview, show: Option<ShowSource>) -> Result<(), Str
     let source = documents::path_of(app, window.label()).ok_or("Save the document first, to show its PDF")?;
     let pdf = crate::sidepdf::pdf_of(app, &source).ok_or("No PDF yet: Build first, or choose one with the PDF beside the text")?;
     let page = crate::tabs::page_of(app, &pdf);
+    app.state::<PaneTabs>().shown_from.lock().unwrap().insert(pdf.to_string_lossy().into_owned(), window.label().to_string());
     if let Some(show) = show {
         let state = app.state::<PaneTabs>();
         let key = pdf.to_string_lossy().into_owned();
@@ -55,6 +58,24 @@ pub fn pdf_tab_show(window: Webview, show: Option<ShowSource>) -> Result<(), Str
             Ok(())
         }
         None => documents::open_file(app, &pdf),
+    }
+}
+
+/// View ▸ Show PDF in a PDF's tab (in tabs: the PDF in front): back to the text it was last shown from, as Show
+/// Preview in a preview's tab goes back to its text. Whether there was one.
+#[tauri::command]
+pub fn pdf_tab_back(window: Webview) -> bool {
+    let app = window.app_handle();
+    let Some(pdf) = documents::path_of(app, window.label()) else {
+        return false;
+    };
+    let text = app.state::<PaneTabs>().shown_from.lock().unwrap().get(pdf.to_string_lossy().as_ref()).cloned();
+    match text.filter(|t| app.get_webview(t).is_some()) {
+        Some(text) => {
+            crate::tabs::select(app, &text);
+            true
+        }
+        None => false,
     }
 }
 

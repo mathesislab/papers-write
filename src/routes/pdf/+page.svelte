@@ -131,7 +131,10 @@
     ready(opened.promise, frame?.loaded() ?? Promise.resolve());
     ask();
     void showAsked();
-    const unlisten = [listen("show-source", () => void showAsked()), listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
+    const unlisten = [
+      listen("show-source", () => void showAsked()),
+      // View ▸ Show PDF with this PDF in front (shown from a text, panes in tabs): back to the text, as a toggle
+      listen("pdf-beside", () => void invoke("pdf_tab_back").catch(() => false)), listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
     return () => {
       clearTimeout(timer);
       clearTimeout(noteTimer);

@@ -96,6 +96,7 @@
   import { applyEditor, watchSettings, type Appearance, type Settings } from "$lib/settings";
   import "$lib/theme.css";
   import { overPage } from "$lib/overlay.svelte";
+  import { printHtml, printText } from "$lib/print";
 
   // The toolbar above the text (Toolbar): the formats (also the Format menu, `format`: ⌘B, ⌘I, ⌘K), Add Comment…, Find and Find and
   // Replace, the review panel and the mode.
@@ -521,6 +522,17 @@
   /** The text as typed. */
   const current = () => editor?.view()?.state.doc.toString() ?? typed;
 
+  async function printThis() {
+    try {
+      if (path && !/\.(md|markdown|qmd)$/i.test(path)) return await printText(current());
+      const made = await invoke<{ html: string; error: string | null }>("preview", { text: current() });
+      if (made.error && !made.html) throw made.error;
+      await printHtml(made.html);
+    } catch (e) {
+      if (String(e) !== "superseded") say(`Print: ${e}`);
+    }
+  }
+
   const search = (query: string, limit: number) => invoke<Found>("references", { query, limit, text: current() });
   const closest = (selected: string, limit: number) => invoke<Found>("closest_references", { selected, limit, text: current() });
   const sources = () => invoke<string[]>("reference_sources", { text: current() });
@@ -841,6 +853,8 @@
     const stop = watchSettings(apply);
     ready(ask(), textIn.promise, frame?.loaded() ?? Promise.resolve());
     const unlisten = [
+      // File ▸ Print…: the text's preview (fresh), or the text itself where it has none (LaTeX)
+      listen("print", () => void printThis()),
       // the labels of the other chapters known anew (preview.rs): previewed again
       listen("preview-labels", () => void refresh()),
       listen("opened", ask),

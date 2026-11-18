@@ -512,3 +512,75 @@ mod tests {
         assert_eq!(quit_message(2), "2 tabs have text that was never saved.");
     }
 }
+
+/// File ▸ Close All Tabs of This Project: the tabs of the project of the tab in front (or, out of a project, of its
+/// window's tabs out of one).
+pub fn close_all_front(app: &AppHandle) {
+    let Some(front) = front(app) else { return };
+    let pages = match crate::tabs::project_of_page(app, front.label()) {
+        Some(root) => crate::tabs::pages_of_project(app, &root),
+        None => {
+            let window = crate::tabs::window_of(app, front.label()).unwrap_or_default();
+            let pages = crate::tabs::pages_of(app, &window);
+            pages.into_iter().filter(|p| crate::tabs::project_of_page(app, p).is_none()).collect()
+        }
+    };
+    close_all(app, pages);
+}
+
+/// The project bar's Close All Tabs: the tabs of the project at `root`.
+#[tauri::command]
+pub fn close_project_tabs(app: AppHandle, root: String) {
+    let pages = crate::tabs::pages_of_project(&app, Path::new(&root));
+    close_all(&app, pages);
+}
+
+/// `pages` closed, after one question for those not saved: Save All (the files saved, then closed; text never saved,
+/// which has no file to go to, discarded), Don't Save (the changes and their drafts discarded), Cancel (none closed).
+fn close_all(app: &AppHandle, pages: Vec<String>) {
+    let changed: Vec<String> = pages.iter().filter(|p| is_modified(app, p)).cloned().collect();
+    let untitled: Vec<String> = pages.iter().filter(|p| !is_modified(app, p) && unsaved(app, p)).cloned().collect();
+    if changed.is_empty() && untitled.is_empty() {
+        for page in &pages {
+            crate::tabs::remove(app, page);
+        }
+        return;
+    }
+    let names = |list: &[String]| list.iter().map(|p| title(path_of(app, p).as_deref())).collect::<Vec<_>>().join(", ");
+    let mut message = String::new();
+    if !changed.is_empty() {
+        message += &format!("Changes not saved: {}.", names(&changed));
+    }
+    if !untitled.is_empty() {
+        message += &format!("{}Text never saved: {} (discarded either way).", if message.is_empty() { "" } else { " " }, names(&untitled));
+    }
+    let buttons: &[&str] = if changed.is_empty() { &["Discard", "Cancel"] } else { &["Save All", "Don't Save", "Cancel"] };
+    let window = front(app);
+    let handle = app.clone();
+    sheet::ask_then(app, window.as_ref(), "Close All Tabs", message, Level::Warning, buttons, move |button| {
+        let save = match button.as_deref() {
+            Some("Save All") => true,
+            Some("Don't Save") | Some("Discard") => false,
+            _ => return,
+        };
+        for page in &pages {
+            if changed.contains(page) {
+                if save {
+                    let _ = handle.emit_to(EventTarget::webview(page), "save-and-close", ());
+                    continue;
+                }
+                if let Some(path) = path_of(&handle, page) {
+                    crate::drafts::drop_draft(&handle, &path);
+                }
+                handle.state::<Documents>().modified.lock().unwrap().remove(page);
+            }
+            crate::tabs::remove(&handle, page);
+        }
+    });
+}
+
+/// File ▸ Print…: the page printed, by the system's print dialog (`$lib/print.ts` has put what to print in it).
+#[tauri::command]
+pub fn print_page(window: Webview) -> Result<(), String> {
+    window.print().map_err(|e| e.to_string())
+}

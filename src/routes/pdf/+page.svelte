@@ -17,6 +17,7 @@
   import { mac } from "papers-write/editor";
   import Frame from "$lib/Frame.svelte";
   import "$lib/theme.css";
+  import { printPdf } from "$lib/print";
 
   let path = $state<string | null | undefined>();
   let view = $state<PdfViewer>();
@@ -115,7 +116,10 @@
   onMount(() => {
     ready(opened.promise, frame?.loaded() ?? Promise.resolve());
     ask();
-    const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
+    const unlisten = [
+      // File ▸ Print…: the PDF's pages
+      listen("print", () => void (path ? printPdf(path).catch((e) => say(`Print: ${e}`)) : undefined)),
+      listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
     return () => {
       clearTimeout(timer);
       clearTimeout(noteTimer);

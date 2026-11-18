@@ -103,6 +103,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &separator()?,
             &item("save", "Save", Some("CmdOrCtrl+S"))?,
             &item("close", "Close", Some("CmdOrCtrl+W"))?,
+            // the tabs of the project in front, after one question for what is not saved; no key, so never by mistake
+            &item("close-all", "Close All Tabs of This Project", None)?,
+            &separator()?,
+            &item("print", "Print…", None)?,
             &separator()?,
             // ⌘I is Italic
             &item("project-info", "Project Info…", Some("Shift+CmdOrCtrl+I"))?,
@@ -355,6 +359,12 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "check-updates" => crate::settings::show(app, Some("updates")),
         "quit" => documents::quit(app),
         "close" => crate::tabs::close_front(app),
+        "close-all" => crate::documents::close_all_front(app),
+        "print" => {
+            if let Some(page) = documents::front(app) {
+                let _ = app.emit_to(EventTarget::webview(page.label()), "print", ());
+            }
+        }
         // the page writes the document, then asks for the build
         "save" | "build" | "build-show" | "marked-up" => {
             if let Some(window) = documents::front(app) {

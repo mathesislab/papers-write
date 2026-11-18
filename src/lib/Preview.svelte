@@ -19,6 +19,9 @@
     onsource,
     onblock,
     onpdf,
+    previous = null,
+    next = null,
+    onchapter,
   }: {
     html: string;
     error?: string;
@@ -30,9 +33,44 @@
     onblock?: (index: number) => void;
     /** Show in PDF, in the menu: the place clicked found in the text, then shown in the PDF (the block, the word) */
     onpdf?: (text: string, word: string, around: { before: string[]; after: string[] }) => void;
+    /** the chapters before and after this one in its document (`chapter_neighbours`), linked at the top and the end */
+    previous?: Chapter | null;
+    next?: Chapter | null;
+    /** a click on one of them: that chapter opened, its preview shown as this one is */
+    onchapter?: (path: string) => void;
   } = $props();
 
+  type Chapter = { path: string; title: string };
+
   let frame: HTMLIFrameElement;
+
+  /** The blocks of the text in the frame: the body's children, but the links to the chapters around. */
+  const blocks = (body: HTMLElement) => [...body.children].filter((e) => !e.classList.contains("pw-chapter")) as HTMLElement[];
+
+  /** The links to the previous chapter (at the top) and the next (at the end), as the props say. */
+  function chapterLinks() {
+    const doc = frame?.contentDocument;
+    if (!doc?.body) return;
+    doc.querySelectorAll(".pw-chapter").forEach((n) => n.remove());
+    const link = (chapter: Chapter, which: "previous" | "next") => {
+      const nav = doc.createElement("nav");
+      nav.className = `pw-chapter ${which}`;
+      const a = doc.createElement("a");
+      a.href = "#";
+      a.dataset.chapter = chapter.path;
+      a.textContent = which === "previous" ? `↑ ${chapter.title}` : `${chapter.title} ↓`;
+      a.title = which === "previous" ? "The previous chapter" : "The next chapter";
+      nav.append(a);
+      return nav;
+    };
+    if (previous) doc.body.prepend(link(previous, "previous"));
+    if (next) doc.body.append(link(next, "next"));
+  }
+  $effect(() => {
+    void previous;
+    void next;
+    chapterLinks();
+  });
 
   const SHEET = `
     :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fdfdfd; --muted: #6e6e73; --rule: #888; --code: rgba(0,0,0,.05); --link: #2f6fde; }
@@ -63,6 +101,10 @@
     .csl-entry { padding-left: 2em; text-indent: -2em; margin: 0 0 .5em; text-align: left; }
     .footnotes { font-size: .85em; border-top: 1px solid var(--rule); margin-top: 2em; }
     .citation, .footnote-ref { white-space: nowrap; }
+    .pw-chapter { font: .85em/1.4 system-ui, sans-serif; margin: 0 0 2em; }
+    .pw-chapter.next { margin: 3em 0 0; text-align: right; }
+    .pw-chapter a { color: var(--muted); }
+    .pw-chapter a:hover { color: var(--link); }
     .synced { background: rgba(255, 221, 0, 0.35); border-radius: 3px; transition: background 1.2s ease-out; }
   `;
 
@@ -82,7 +124,8 @@
   function reveal() {
     const body = frame?.contentDocument?.body;
     if (!body) return;
-    const el = body.children[Math.min(block, body.children.length - 1)] as HTMLElement | undefined;
+    const all = blocks(body);
+    const el = all[Math.min(block, all.length - 1)];
     if (el) frame.contentWindow?.scrollTo({ top: Math.max(0, el.offsetTop - 48) });
   }
 
@@ -100,7 +143,8 @@
   export function flash() {
     reveal();
     const body = frame?.contentDocument?.body;
-    const el = body?.children[Math.min(block, body.children.length - 1)] as HTMLElement | undefined;
+    const all = body ? blocks(body) : [];
+    const el = all[Math.min(block, all.length - 1)];
     if (!el) return;
     el.classList.add("synced");
     setTimeout(() => el.classList.remove("synced"), 1400);
@@ -142,6 +186,7 @@
   function loaded() {
     const doc = frame?.contentDocument;
     if (doc?.body) void showPdfImages(doc.body);
+    chapterLinks();
     if (doc) {
       followButtons(doc);
       // the keys typed in the frame given to the page too (its own keys: ⌃Tab, ⌃+, ⌃ let go), which a frame's keep
@@ -155,13 +200,19 @@
     if (doc && onsource) {
       doc.addEventListener("click", (e) => {
         if (e.button !== 0) return;
+        const chapter = (e.target as Element | null)?.closest?.("a[data-chapter]") as HTMLAnchorElement | null;
+        if (chapter) {
+          e.preventDefault();
+          onchapter?.(chapter.dataset.chapter ?? "");
+          return;
+        }
         if (!(e.ctrlKey || e.metaKey)) {
           // a plain click, not the end of a selection: the text scrolled to the block, as the preview follows the
           // cursor
           if (doc.getSelection()?.toString()) return;
           let el = e.target as Element | null;
           while (el && el.parentElement && el.parentElement !== doc.body) el = el.parentElement;
-          const index = el && el.parentElement === doc.body ? [...doc.body.children].indexOf(el) : -1;
+          const index = el && el.parentElement === doc.body ? blocks(doc.body).indexOf(el as HTMLElement) : -1;
           if (index >= 0) onblock?.(index);
           return;
         }

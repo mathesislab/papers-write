@@ -21,6 +21,11 @@
   let block = $state(0);
   let preview = $state<Preview>();
   let frame = $state<Frame>();
+  /** the chapters before and after the text in its document, linked at the top and the end */
+  let chapters = $state<{ previous: { path: string; title: string } | null; next: { path: string; title: string } | null }>({ previous: null, next: null });
+  $effect(() => {
+    if (path) void invoke<typeof chapters>("chapter_neighbours", { path }).then((c) => (chapters = c)).catch(() => {});
+  });
 
   /** Something told to the text's page; false when it is gone (its tab closed). */
   const tell = (what: Record<string, unknown>) => invoke<boolean>("relay", { to: of, event: "preview-tab", payload: what }).catch(() => false);
@@ -62,6 +67,9 @@
       onsource={(text, word, around) => void tell({ kind: "source", text, word, around })}
       onblock={(index) => void tell({ kind: "block", index })}
       onpdf={(text, word, around) => void tell({ kind: "pdf", text, word, around })}
+      previous={chapters.previous}
+      next={chapters.next}
+      onchapter={(file) => void tell({ kind: "chapter", text: file })}
     />
   </div>
 </Frame>

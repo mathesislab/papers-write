@@ -129,6 +129,7 @@ pub fn run() {
             menu::zoom_key,
             projects::project_list,
             preview::document_outline,
+            preview::chapter_neighbours,
             preview::heading_place,
             settings::settings,
             readaloud::read_aloud,

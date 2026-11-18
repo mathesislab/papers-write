@@ -56,20 +56,26 @@
   type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "save" | "external" };
   /** what runs in the background of the project: "watching" (started here), "elsewhere" (the same command started in
    *  a terminal, followed), "ended" (its command exited), "on-save" (run after the saves) */
-  type Background = { name: string; file: string | null; state: "watching" | "elsewhere" | "ended" | "on-save" };
+  type Background = { name: string; file: string | null; state: "watching" | "elsewhere" | "ended" | "on-save" | "paused" };
   type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; wrong: string[]; folder: string | null };
   let profiles = $state<Profiles | null>(null);
   const loadProfiles = async () => (profiles = await invoke<Profiles>("build_profiles").catch(() => null));
   /** the active profile's name, said after what the button says */
   const named = $derived(profiles?.active ? ` · ${profiles.active}` : "");
   /** the background, said after it */
-  const BACKGROUND = { watching: "watching", elsewhere: "watching (terminal)", ended: "ended", "on-save": "on save" };
-  const behind = $derived(profiles?.background ? ` · ● ${profiles.background.name}${profiles.background.file ? `: ${profiles.background.file}` : ""} ${BACKGROUND[profiles.background.state]}` : "");
+  const BACKGROUND = { watching: "watching", elsewhere: "watching (terminal)", ended: "ended", "on-save": "on save", paused: "paused" };
+  /** the background's button: ▶ starts what is paused (or ended), ❚❚ pauses what runs (still chosen) */
+  const behind = $derived(profiles?.background ?? null);
+  const running = $derived(behind?.state === "watching" || behind?.state === "on-save");
+  async function playPause() {
+    if (!behind || behind.state === "elsewhere") return;
+    profiles = (await request<Profiles>("background_play", { play: !running })) ?? profiles;
+  }
   const commandOf = (name: string) => profiles?.profiles.find((p) => p.name === name)?.command ?? name;
 
   const errors = $derived(status?.errors.length ?? 0);
   const label = $derived(
-    (status?.state === "external" ? `Built elsewhere${named}` : labelOf() + (status?.state === "building" ? "" : named)) + behind,
+    status?.state === "external" ? `Built elsewhere${named}` : labelOf() + (status?.state === "building" ? "" : named),
   );
   function labelOf(): string {
     return !status
@@ -232,6 +238,15 @@
       <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
     </button>
   </div>
+  {#if behind}
+    <button
+      class="behind {behind.state}"
+      onclick={playPause}
+      title="{commandOf(behind.name)}: {BACKGROUND[behind.state]}. {behind.state === 'elsewhere' ? 'Started in a terminal: stopped there' : running ? 'A click pauses it (still chosen)' : 'A click starts it'}"
+    >
+      {running || behind.state === "elsewhere" ? "●" : "▶"} {behind.name}{behind.file ? `: ${behind.file}` : ""}{behind.state === "on-save" ? " (on save)" : behind.state === "elsewhere" ? " (terminal)" : behind.state === "ended" ? " (ended)" : ""}
+    </button>
+  {/if}
   {#if status && status.state !== "building" && (status.state === "failed" || errors)}
     <button class="errors" onclick={() => (sheet = true)} title="Show the errors">
       {status.state === "failed" ? "Show why" : `${errors} LaTeX error${errors === 1 ? "" : "s"}`}
@@ -300,6 +315,30 @@
 {/if}
 
 <style>
+  /* what runs in the background: ● running (a click pauses it), ▶ paused or ended (a click starts it) */
+  .behind {
+    font: inherit;
+    font-size: 11.5px;
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border, #888);
+    background: transparent;
+    color: var(--muted, #888);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .behind.watching,
+  .behind.on-save,
+  .behind.elsewhere {
+    color: #2f9e57;
+    border-color: #2f9e57;
+  }
+  .behind.paused,
+  .behind.ended {
+    color: var(--accent, #2f6fde);
+    border-color: var(--accent, #2f6fde);
+  }
   .goto {
     display: block;
     font: inherit;

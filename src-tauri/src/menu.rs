@@ -372,14 +372,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // outside macOS, the choices of the Build button's ▾ here too, for the tab in front (`profiles::menu_lists`),
     // and where the profiles and the tools are set
     if !MAC {
-        build.append_items(&[
-            &separator()?,
-            &Submenu::with_id(app, "build-with", "Build With", true)?,
-            &Submenu::with_id(app, "background", "In the Background", true)?,
-            &separator()?,
-            &item("build-profiles", "Build Profiles…", None)?,
-            &item("build-tools", "Build Tools…", None)?,
-        ])?;
+        let with = Submenu::with_id(app, "build-with", "Build With", true)?;
+        let behind = Submenu::with_id(app, "background", "In the Background", true)?;
+        build.append_items(&[&separator()?, &separator()?, &item("build-profiles", "Build Profiles…", None)?, &item("build-tools", "Build Tools…", None)?])?;
+        // the two lists put in (after the first separator) by `profiles::menu_lists` when they have something to list
+        crate::profiles::keep_menu_lists(app, build.clone(), with, behind);
     }
     // the PDF of the window in front (a window of a PDF; the other pages ignore these)
     // macOS: Alex's PDF menu, the zoom's keys in it; elsewhere View has them (and the PDF's own tools)

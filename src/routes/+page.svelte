@@ -36,6 +36,7 @@
   import { gotoLine, selectNextOccurrence } from "@codemirror/search";
   import GoToFile from "$lib/GoToFile.svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { emit } from "@tauri-apps/api/event";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { onMount, untrack } from "svelte";
@@ -287,9 +288,10 @@
     if (!place) return;
     const end = view.state.doc.length;
     const at = (n: number) => Math.max(0, Math.min(n, end));
+    // a top below 0: at the end (opened from the next chapter's preview, going up)
     view.dispatch({
       selection: { anchor: at(place.anchor), head: at(place.head) },
-      effects: EditorView.scrollIntoView(at(place.top), { y: "start" }),
+      effects: place.top < 0 ? EditorView.scrollIntoView(end, { y: "end" }) : EditorView.scrollIntoView(at(place.top), { y: "start" }),
     });
   }
 
@@ -437,8 +439,11 @@
   /** A chapter of the preview's links opened, with its preview as this one's is: beside it, or its tab (in front when
    *  the click was there). Its page reads the pane kept for it as it loads; one loaded already is told (`CHAPTER`). */
   const CHAPTER = "chapter-open";
-  function openChapter(file: string, fromTab = false) {
+  function openChapter(file: string, fromTab = false, atEnd = false) {
     try {
+      // where it opens: its start going down, its end going up
+      const place = atEnd ? { anchor: 1e15, head: 1e15, top: -1 } : { anchor: 0, head: 0, top: 0 };
+      localStorage.setItem(placeKey(file), JSON.stringify(place));
       localStorage.setItem(paneKey(file), "preview");
       if (inTabs ? fromTab : paneActive) localStorage.setItem(activeKey(file), "1");
       else localStorage.removeItem(activeKey(file));
@@ -452,6 +457,7 @@
     try {
       active = localStorage.getItem(activeKey(path ?? "")) === "1";
     } catch {}
+    restorePlace();
     if (inTabs) {
       if (!previewTab) void openPreviewTab().then(() => !active && bringText());
       return;
@@ -597,7 +603,7 @@
     }
     else if (what.kind === "shown") setActive(true);
     else if (what.kind === "block") scrollToBlock(what.index ?? 0, true);
-    else if (what.kind === "chapter" && what.text) openChapter(what.text, true);
+    else if (what.kind === "chapter" && what.text) openChapter(what.text, true, what.index === 1);
     else if (what.kind === "pdf") void previewToPdf(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
     else if (what.kind === "source") {
       void invoke("bring_tab", { page: getCurrentWebview().label });
@@ -649,11 +655,22 @@
   });
 
   function togglePdf(keep = true) {
-    if (inTabs) return void (keep && pdfTab());
+    if (inTabs) {
+      if (keep) (pdfTab(), playBackground());
+      return;
+    }
     if (!path) return say("Save the document first, to show its PDF");
     pdfBeside = !pdfBeside;
     if (pdfBeside) [previewing, panel] = [false, false];
+    if (pdfBeside) playBackground();
     if (keep) keepPane();
+  }
+  /** The PDF shown: what was chosen to run in the background of the project (paused since the start) started, so
+   *  that the PDF keeps up with the text. */
+  function playBackground() {
+    void invoke("background_play", { play: true })
+      .then(() => emit("profiles-changed"))
+      .catch(() => {});
   }
 
   let previewPane = $state<Preview>();
@@ -1332,7 +1349,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
-      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file) => openChapter(file)} panes={{ mode: panesMode, onpanes: setPanes }} />
+      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file, atEnd) => openChapter(file, false, atEnd)} panes={{ mode: panesMode, onpanes: setPanes }} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}

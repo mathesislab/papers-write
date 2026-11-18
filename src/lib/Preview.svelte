@@ -38,8 +38,8 @@
     /** the chapters before and after this one in its document (`chapter_neighbours`), linked at the top and the end */
     previous?: Chapter | null;
     next?: Chapter | null;
-    /** a click on one of them: that chapter opened, its preview shown as this one is */
-    onchapter?: (path: string) => void;
+    /** a click on one of them: that chapter opened (at its end, going up), its preview shown as this one is */
+    onchapter?: (path: string, atEnd: boolean) => void;
     /** scrolled (by hand or not): the index of the top-level block at the top of what shows */
     onscrolled?: (index: number) => void;
     /** View ▸ Panes, in the right-click menu too: the form chosen, and the choice */
@@ -53,24 +53,38 @@
   /** The blocks of the text in the frame: the body's children, but the links to the chapters around. */
   const blocks = (body: HTMLElement) => [...body.children].filter((e) => !e.classList.contains("pw-chapter")) as HTMLElement[];
 
-  /** The links to the previous chapter (at the top) and the next (at the end), as the props say. */
+  /** The ways on, at the top and the end: the previous chapter (opened at its end) and To the Bottom; the next
+   *  chapter (at its start) and To the Top. The two jumps only on a text longer than a screen and a half. */
   function chapterLinks() {
     const doc = frame?.contentDocument;
-    if (!doc?.body) return;
+    const win = frame?.contentWindow;
+    if (!doc?.body || !win) return;
     doc.querySelectorAll(".pw-chapter").forEach((n) => n.remove());
-    const link = (chapter: Chapter, which: "previous" | "next") => {
-      const nav = doc.createElement("nav");
-      nav.className = `pw-chapter ${which}`;
+    const long = doc.body.scrollHeight > win.innerHeight * 1.5;
+    const link = (text: string, title: string, data: Record<string, string>) => {
       const a = doc.createElement("a");
       a.href = "#";
-      a.dataset.chapter = chapter.path;
-      a.textContent = which === "previous" ? `↑ ${chapter.title}` : `${chapter.title} ↓`;
-      a.title = which === "previous" ? "The previous chapter" : "The next chapter";
-      nav.append(a);
-      return nav;
+      a.textContent = text;
+      a.title = title;
+      Object.assign(a.dataset, data);
+      return a;
     };
-    if (previous) doc.body.prepend(link(previous, "previous"));
-    if (next) doc.body.append(link(next, "next"));
+    const nav = (which: "previous" | "next", links: HTMLElement[]) => {
+      const n = doc.createElement("nav");
+      n.className = `pw-chapter ${which}`;
+      n.append(...links);
+      return n;
+    };
+    const top = [
+      ...(previous ? [link(`↑ ${previous.title}`, "The previous chapter, at its end", { chapter: previous.path, end: "1" })] : []),
+      ...(long ? [link("To the bottom ↓", "The end of this text", { jump: "bottom" })] : []),
+    ];
+    const end = [
+      ...(long ? [link("↑ To the top", "The start of this text", { jump: "top" })] : []),
+      ...(next ? [link(`${next.title} ↓`, "The next chapter, at its start", { chapter: next.path })] : []),
+    ];
+    if (top.length) doc.body.prepend(nav("previous", top));
+    if (end.length) doc.body.append(nav("next", end));
   }
   $effect(() => {
     void previous;
@@ -107,8 +121,10 @@
     .csl-entry { padding-left: 2em; text-indent: -2em; margin: 0 0 .5em; text-align: left; }
     .footnotes { font-size: .85em; border-top: 1px solid var(--rule); margin-top: 2em; }
     .citation, .footnote-ref { white-space: nowrap; }
-    .pw-chapter { font: .85em/1.4 system-ui, sans-serif; margin: 0 0 2em; }
-    .pw-chapter.next { margin: 3em 0 0; text-align: right; }
+    .pw-chapter { display: flex; justify-content: space-between; gap: 1em; font: .85em/1.4 system-ui, sans-serif; margin: 0 0 2em; }
+    .pw-chapter.next { margin: 3em 0 0; }
+    .pw-chapter a:only-child { margin-left: auto; }
+    .pw-chapter.previous a:only-child[data-chapter] { margin-left: 0; }
     .pw-chapter a { color: var(--muted); }
     .pw-chapter a:hover { color: var(--link); }
     .synced { background: rgba(255, 221, 0, 0.35); border-radius: 3px; transition: background 1.2s ease-out; }
@@ -219,10 +235,13 @@
     if (doc && onsource) {
       doc.addEventListener("click", (e) => {
         if (e.button !== 0) return;
-        const chapter = (e.target as Element | null)?.closest?.("a[data-chapter]") as HTMLAnchorElement | null;
+        const chapter = (e.target as Element | null)?.closest?.("a[data-chapter], a[data-jump]") as HTMLAnchorElement | null;
         if (chapter) {
           e.preventDefault();
-          onchapter?.(chapter.dataset.chapter ?? "");
+          if (chapter.dataset.jump) {
+            const win = frame?.contentWindow;
+            win?.scrollTo({ top: chapter.dataset.jump === "top" ? 0 : doc.body.scrollHeight, behavior: "smooth" });
+          } else onchapter?.(chapter.dataset.chapter ?? "", chapter.dataset.end === "1");
           return;
         }
         if (!(e.ctrlKey || e.metaKey)) {

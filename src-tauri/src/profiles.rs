@@ -54,7 +54,8 @@ pub struct Shown {
     name: String,
     /// the document it runs for, when its command names it (`{file}`)
     file: Option<String>,
-    /// "watching" (started here), "elsewhere" (followed), "ended" (its command exited), "on-save"
+    /// "watching" (started here), "elsewhere" (followed), "ended" (its command exited), "on-save", "paused" (chosen,
+    /// not started: the app started since, or paused by hand)
     state: &'static str,
 }
 
@@ -109,6 +110,15 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
             Background::OnSave(_) => "on-save",
         },
     });
+    let background = background.or_else(|| {
+        let (name, file) = projects::with_saved(app, |saved| saved.background.get(&root).cloned())?;
+        let shown = profiles.iter().find(|p| p.name == name)?;
+        Some(Shown {
+            file: shown.per_document().then(|| file.file_name().unwrap_or_default().to_string_lossy().into_owned()),
+            name,
+            state: "paused",
+        })
+    });
     Profiles { profiles, active, background, wrong, folder: Some(profiles::dir_of(&root).to_string_lossy().into_owned()) }
 }
 
@@ -145,7 +155,41 @@ pub fn set_background(window: Webview, name: Option<String>) -> Result<Profiles,
     let source = documents::path_of(app, window.label()).ok_or("Save the document first")?;
     let root = project::find(&source).ok_or("Not in a project: File ▸ Open Project… makes a folder one")?;
     stop(app, &root);
-    if let Some(name) = name.filter(|n| !n.is_empty()) {
+    let name = name.filter(|n| !n.is_empty());
+    projects::with_saved(app, |saved| match &name {
+        Some(n) => saved.background.insert(root.clone(), (n.clone(), source.clone())),
+        None => saved.background.remove(&root),
+    });
+    start_background(app, &root, name, &source)?;
+    menu_lists(app);
+    Ok(profiles_of(app, &source))
+}
+
+/// The Build button's ▶ (and the PDF shown beside a text: `play` true, `only` paused ones): what was chosen for the
+/// background of the page's project started; its ❚❚ (`play` false): stopped, still chosen.
+#[tauri::command]
+pub fn background_play(window: Webview, play: bool) -> Result<Profiles, String> {
+    let app = window.app_handle();
+    let source = documents::path_of(app, window.label()).ok_or("Save the document first")?;
+    let root = project::find(&source).ok_or("Not in a project")?;
+    let running = app.state::<Watches>().0.lock().unwrap().contains_key(&root);
+    if play && !running {
+        if let Some((name, from)) = projects::with_saved(app, |saved| saved.background.get(&root).cloned()) {
+            start_background(app, &root, Some(name), if from.exists() { &from } else { &source })?;
+        }
+    } else if !play {
+        stop(app, &root);
+    }
+    menu_lists(app);
+    Ok(profiles_of(app, &source))
+}
+
+/// The profile `name` started in the background of `root`, for the document `source` (none: nothing).
+fn start_background(app: &AppHandle, root: &Path, name: Option<String>, source: &Path) -> Result<(), String> {
+    let window_label = documents::front(app).map(|w| w.label().to_string()).unwrap_or_default();
+    let root = root.to_path_buf();
+    let source = source.to_path_buf();
+    if let Some(name) = name {
         let (all, _) = profiles::list(&root);
         let profile = all.into_iter().find(|p| p.name == name).ok_or_else(|| format!("{name}: no such profile"))?;
         let profile = profile.for_document(&root, &source)?;
@@ -155,15 +199,14 @@ pub fn set_background(window: Webview, name: Option<String>) -> Result<Profiles,
                 None => Background::Started(start(&root, &profile)?),
             },
             Run::Save => {
-                crate::build::run_profile_for(app, window.label(), profile.clone(), root.clone());
+                crate::build::run_profile_for(app, &window_label, profile.clone(), root.clone());
                 Background::OnSave(0)
             }
             _ => return Err(format!("{name}: a profile Build runs, not one for the background")),
         };
         app.state::<Watches>().0.lock().unwrap().insert(root.clone(), (name, how, source.clone()));
     }
-    menu_lists(app);
-    Ok(profiles_of(app, &source))
+    Ok(())
 }
 
 /// A file of a project saved by the page `label`: the project's `save` profile run once its files have been quiet.
@@ -197,7 +240,12 @@ pub fn reveal_profiles(window: Webview) -> Result<(), String> {
     let root = project::find(&source).ok_or("Not in a project")?;
     let dir = profiles::dir_of(&root);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    crate::build::reveal(dir.to_string_lossy().into_owned())
+    // macOS: shown in Finder, selected; elsewhere the folder itself opened (revealing it shows its parent)
+    if cfg!(target_os = "macos") {
+        crate::build::reveal(dir.to_string_lossy().into_owned())
+    } else {
+        tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|e| format!("{}: {e}", dir.display()))
+    }
 }
 
 /// A shell running `command` in `root`, as a terminal would (`sh -c`; `cmd /C` on Windows), with the PATH the builds
@@ -300,29 +348,46 @@ mod tests {
     }
 }
 
-/// Outside macOS, Build ▸ Build With and In the Background as the Build button's ▾ has them, for the tab in front:
-/// made again on the main thread (the menu's), not waited for.
-pub fn menu_lists(app: &AppHandle) {
-    if cfg!(target_os = "macos") {
-        return;
+/// Outside macOS, the Build menu and its two lists, and whether each is in it now.
+pub struct MenuLists {
+    build: tauri::menu::Submenu<tauri::Wry>,
+    with: tauri::menu::Submenu<tauri::Wry>,
+    behind: tauri::menu::Submenu<tauri::Wry>,
+    shown: (bool, bool),
+}
+
+/// The Build menu's lists kept, for `menu_lists` to fill them, and to put them in or take them out.
+pub fn keep_menu_lists(app: &AppHandle, build: tauri::menu::Submenu<tauri::Wry>, with: tauri::menu::Submenu<tauri::Wry>, behind: tauri::menu::Submenu<tauri::Wry>) {
+    let lists = MenuLists { build, with, behind, shown: (false, false) };
+    match app.try_state::<Mutex<Option<MenuLists>>>() {
+        Some(state) => *state.lock().unwrap() = Some(lists),
+        None => {
+            app.manage(Mutex::new(Some(lists)));
+        }
     }
+    menu_lists(app);
+}
+
+/// Outside macOS, Build ▸ Build With and In the Background as the Build button's ▾ has them, for the tab in front;
+/// a list with nothing to choose (out of a project; no `watch` or `save` profile) not in the menu at all. Made again
+/// on the main thread (the menu's), not waited for.
+pub fn menu_lists(app: &AppHandle) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
         let app = &handle;
+        let Some(state) = app.try_state::<Mutex<Option<MenuLists>>>() else { return };
+        let mut slot = state.lock().unwrap();
+        let Some(lists) = slot.as_mut() else { return };
         let shown = documents::front(app).and_then(|page| documents::path_of(app, page.label())).map(|source| profiles_of(app, &source));
-        let menu = app.menu();
-        for (id, background) in [("build-with", false), ("background", true)] {
-            let Some(sub) = menu.as_ref().and_then(|m| m.get(id)).and_then(|k| k.as_submenu().cloned()) else { continue };
+        let p = shown.as_ref().filter(|p| p.folder.is_some());
+        let want = (p.is_some(), p.is_some_and(|p| p.profiles.iter().any(|q| !builds_now(q))));
+        for (sub, background) in [(&lists.with, false), (&lists.behind, true)] {
             for item in sub.items().unwrap_or_default() {
                 let _ = sub.remove(&item);
             }
-            let Some(p) = shown.as_ref().filter(|p| p.folder.is_some()) else {
-                let _ = sub.append(&tauri::menu::MenuItem::new(app, "Not in a project", false, None::<&str>).unwrap());
-                continue;
-            };
+            let Some(p) = p else { continue };
             let on = if background { p.background.as_ref().map(|b| b.name.clone()) } else { p.active.clone() };
-            let first = if background { "Nothing" } else { "This Document" };
-            let mut items = vec![(String::new(), first.to_string())];
+            let mut items = vec![(String::new(), if background { "Nothing" } else { "This Document" }.to_string())];
             for profile in p.profiles.iter().filter(|q| builds_now(q) != background) {
                 let how = match profile.run {
                     Run::Watch => " (kept running)",
@@ -332,15 +397,27 @@ pub fn menu_lists(app: &AppHandle) {
                 };
                 items.push((profile.name.clone(), format!("{}{how}", profile.name)));
             }
+            let id = if background { "background" } else { "build-with" };
             for (name, text) in items {
                 let checked = on.as_deref().unwrap_or("") == name;
                 if let Ok(item) = tauri::menu::CheckMenuItem::with_id(app, format!("{id}:{name}"), text, true, checked, None::<&str>) {
                     let _ = sub.append(&item);
                 }
             }
-            if background && p.profiles.iter().all(builds_now) {
-                let _ = sub.append(&tauri::menu::MenuItem::new(app, "No watch or save profile (Build Profiles…)", false, None::<&str>).unwrap());
-            }
         }
+        // in the menu after Marked-up PDF and its separator (position 5), as they have something to list
+        if lists.shown.1 && !want.1 {
+            let _ = lists.build.remove(&lists.behind);
+        }
+        if lists.shown.0 && !want.0 {
+            let _ = lists.build.remove(&lists.with);
+        }
+        if want.0 && !lists.shown.0 {
+            let _ = lists.build.insert(&lists.with, 5);
+        }
+        if want.1 && !lists.shown.1 {
+            let _ = lists.build.insert(&lists.behind, if want.0 { 6 } else { 5 });
+        }
+        lists.shown = want;
     });
 }

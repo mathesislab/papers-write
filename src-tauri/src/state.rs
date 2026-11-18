@@ -33,6 +33,9 @@ pub struct Saved {
     /// View ▸ Panes as the pages last said it ("side", "tabs", "auto"; empty: side): preview tabs are made again at
     /// the start only in tabs, before any page can say
     pub panes: String,
+    /// what was chosen to run in the background of each project, and the document it was chosen from: not started at
+    /// the start, shown paused till asked (the Build button's ▶, the PDF shown beside a text)
+    pub background: BTreeMap<PathBuf, (String, PathBuf)>,
     /// the sidebar of each project, and the last one changed (`sidebars` and `sidebar` in the file)
     #[serde(flatten)]
     pub sidebars: Sidebars,

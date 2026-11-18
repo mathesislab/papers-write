@@ -364,6 +364,18 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("marked-up", "Marked-up PDF…", None)?,
         ],
     )?;
+    // outside macOS, the choices of the Build button's ▾ here too, for the tab in front (`profiles::menu_lists`),
+    // and where the profiles and the tools are set
+    if !MAC {
+        build.append_items(&[
+            &separator()?,
+            &Submenu::with_id(app, "build-with", "Build With", true)?,
+            &Submenu::with_id(app, "background", "In the Background", true)?,
+            &separator()?,
+            &item("build-profiles", "Build Profiles…", None)?,
+            &item("build-tools", "Build Tools…", None)?,
+        ])?;
+    }
     // the PDF of the window in front (a window of a PDF; the other pages ignore these)
     // macOS: Alex's PDF menu, the zoom's keys in it; elsewhere View has them (and the PDF's own tools)
     let pdf = Submenu::with_items(
@@ -500,6 +512,30 @@ fn command(app: &AppHandle, id: &str) {
         "quit" => documents::quit(app),
         "close" => crate::tabs::close_front(app),
         "close-all" => crate::documents::close_all_front(app),
+        "build-tools" => crate::settings::show(app, Some("build")),
+        "build-profiles" => {
+            if let Some(page) = documents::front(app)
+                && let Err(e) = crate::profiles::reveal_profiles(page)
+            {
+                crate::sheet::tell(app, None, "Build Profiles", e, crate::sheet::Level::Error);
+            }
+        }
+        _ if id.starts_with("build-with:") || id.starts_with("background:") => {
+            let (list, name) = id.split_once(':').unwrap_or_default();
+            let name = (!name.is_empty()).then(|| name.to_string());
+            if let Some(page) = documents::front(app) {
+                let label = page.label().to_string();
+                let done = if list == "build-with" {
+                    crate::profiles::set_build_profile(page, name).map(|_| ())
+                } else {
+                    crate::profiles::set_background(page, name).map(|_| ())
+                };
+                if let Err(e) = done {
+                    crate::sheet::tell(app, None, "Build", e, crate::sheet::Level::Error);
+                }
+                let _ = app.emit_to(EventTarget::webview(&label), "profiles-changed", ());
+            }
+        }
         "print" => {
             if let Some(page) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(page.label()), "print", ());

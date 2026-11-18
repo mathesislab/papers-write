@@ -279,8 +279,13 @@ fn put(app: &AppHandle, settings: Settings) {
     if who_changed {
         crate::review::identity_changed(app);
     }
-    sync_menu(app, &settings);
-    crate::menu::read_aloud_item(app, Some(!settings.read_aloud.trim().is_empty()), None);
+    // the menu's items changed on the main thread, not waited for (from a command's thread, waiting for the main
+    // thread while it waits for something of this one would hang the app)
+    let (handle, shown) = (app.clone(), settings.clone());
+    let _ = app.run_on_main_thread(move || {
+        sync_menu(&handle, &shown);
+        crate::menu::read_aloud_item(&handle, Some(!shown.read_aloud.trim().is_empty()), None);
+    });
     if let Err(e) = app.emit("settings-changed", settings) {
         eprintln!("settings-changed: {e}");
     }

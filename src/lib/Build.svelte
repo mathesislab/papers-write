@@ -201,12 +201,15 @@
   onMount(() => {
     loadProfiles();
     const unlisten = listen<Status>("build-status", (e) => told(e.payload));
+    // chosen in Build ▸ Build With or In the Background (outside macOS)
+    const unlistenChosen = listen("profiles-changed", () => void loadProfiles());
     // the background of the project as the tab comes in front (chosen from another of its tabs, or its command ended)
     const shown = () => document.visibilityState === "visible" && void loadProfiles();
     document.addEventListener("visibilitychange", shown);
     window.addEventListener("focus", shown);
     return () => {
       void unlisten.then((f) => f());
+      void unlistenChosen.then((f) => f());
       document.removeEventListener("visibilitychange", shown);
       window.removeEventListener("focus", shown);
     };

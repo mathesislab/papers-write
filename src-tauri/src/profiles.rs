@@ -132,6 +132,7 @@ pub fn set_build_profile(window: Webview, name: Option<String>) -> Result<Profil
         saved.profiles.insert(source.clone(), name.clone());
         saved.profiles.insert(root.clone(), name.clone());
     });
+    menu_lists(app);
     Ok(profiles_of(app, &source))
 }
 
@@ -161,6 +162,7 @@ pub fn set_background(window: Webview, name: Option<String>) -> Result<Profiles,
         };
         app.state::<Watches>().0.lock().unwrap().insert(root.clone(), (name, how, source.clone()));
     }
+    menu_lists(app);
     Ok(profiles_of(app, &source))
 }
 
@@ -296,4 +298,49 @@ mod tests {
         assert!(!alive(child.id()));
         let _ = std::fs::remove_dir_all(&root);
     }
+}
+
+/// Outside macOS, Build ▸ Build With and In the Background as the Build button's ▾ has them, for the tab in front:
+/// made again on the main thread (the menu's), not waited for.
+pub fn menu_lists(app: &AppHandle) {
+    if cfg!(target_os = "macos") {
+        return;
+    }
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let app = &handle;
+        let shown = documents::front(app).and_then(|page| documents::path_of(app, page.label())).map(|source| profiles_of(app, &source));
+        let menu = app.menu();
+        for (id, background) in [("build-with", false), ("background", true)] {
+            let Some(sub) = menu.as_ref().and_then(|m| m.get(id)).and_then(|k| k.as_submenu().cloned()) else { continue };
+            for item in sub.items().unwrap_or_default() {
+                let _ = sub.remove(&item);
+            }
+            let Some(p) = shown.as_ref().filter(|p| p.folder.is_some()) else {
+                let _ = sub.append(&tauri::menu::MenuItem::new(app, "Not in a project", false, None::<&str>).unwrap());
+                continue;
+            };
+            let on = if background { p.background.as_ref().map(|b| b.name.clone()) } else { p.active.clone() };
+            let first = if background { "Nothing" } else { "This Document" };
+            let mut items = vec![(String::new(), first.to_string())];
+            for profile in p.profiles.iter().filter(|q| builds_now(q) != background) {
+                let how = match profile.run {
+                    Run::Watch => " (kept running)",
+                    Run::Save => " (after saves)",
+                    Run::External => " (built elsewhere)",
+                    Run::Build => "",
+                };
+                items.push((profile.name.clone(), format!("{}{how}", profile.name)));
+            }
+            for (name, text) in items {
+                let checked = on.as_deref().unwrap_or("") == name;
+                if let Ok(item) = tauri::menu::CheckMenuItem::with_id(app, format!("{id}:{name}"), text, true, checked, None::<&str>) {
+                    let _ = sub.append(&item);
+                }
+            }
+            if background && p.profiles.iter().all(builds_now) {
+                let _ = sub.append(&tauri::menu::MenuItem::new(app, "No watch or save profile (Build Profiles…)", false, None::<&str>).unwrap());
+            }
+        }
+    });
 }

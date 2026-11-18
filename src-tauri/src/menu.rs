@@ -159,6 +159,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             )?,
         ],
     )?;
+    if MAC {
+        file.insert(&item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?, 2)?;
+        file.insert(&item("switch-project", "Switch Project…", Some("Ctrl+Cmd+P"))?, 5)?;
+        edit.insert(&item("go-to-line", "Go to Line…", Some("Ctrl+G"))?, 10)?;
+    }
     // the formats of the toolbar, at the selection of the text in front (Markdown, or LaTeX in a .tex file)
     let format = Submenu::with_items(
         app,
@@ -176,104 +181,169 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("format-quote", "Quote", Some("Shift+CmdOrCtrl+9"))?,
         ],
     )?;
-    let view = Submenu::with_items(
-        app,
-        "View",
-        true,
-        &[
-            &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
-            &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
-            // the text's preview and PDF beside it, or in tabs of their own (a small screen: panetabs.rs), or so only
-            // while the window is narrow; the one chosen checked by the page (`view_shown`)
-            &Submenu::with_items(
-                app,
-                "Panes",
-                true,
-                &[
-                    &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, true, None::<&str>)?,
-                    &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, false, None::<&str>)?,
-                    &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, false, None::<&str>)?,
-                ],
-            )?,
-            &separator()?,
-            // the sidebar on a tab (pressed again: hidden); outside macOS O for the files (open), H for the outline (the
-            // headings), as Ctrl+Shift+F is the search's
-            &item("sidebar", "Show Files", Some(if MAC { "Alt+CmdOrCtrl+S" } else { "Ctrl+Alt+O" }))?,
-            &item("outline", "Show Outline", Some(if MAC { "Alt+CmdOrCtrl+O" } else { "Ctrl+Alt+H" }))?,
-            // the project bar hidden at the window's left edge till the pointer comes there (Settings ▸ Window)
-            &CheckMenuItem::with_id(
-                app,
-                "project-bar",
-                "Show Project Bar on Hover",
-                true,
-                crate::settings::get().project_bar == crate::settings::ProjectBar::Hover,
-                None::<&str>,
-            )?,
-            &separator()?,
-            // the keys of zooming, whatever the tab: a text's window zoomed, a PDF's pages (the PDF menu's, without
-            // keys); ⌃+ itself where + is a key of its own (Italian, German…) is the page's (`zoom_key`); in the menu
-            // itself, not a submenu, for their keys to be seen
-            &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
-            &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
-            &item("zoom-fit", "Actual Size (a PDF: Fit Width)", Some("CmdOrCtrl+0"))?,
-            &separator()?,
-            &Submenu::with_items(
-                app,
-                "Text",
-                true,
-                &[
-                    &item("text-wider", "Wider", None)?,
-                    &item("text-narrower", "Narrower", None)?,
-                    &item("text-full", "Full Width", None)?,
-                    &separator()?,
-                    &item("figures-inline", "Show Figures in the Text", None)?,
-                ],
-            )?,
-            &Submenu::with_items(
-                app,
-                "Appearance",
-                true,
-                &[
-                    &item("appearance-system", "As the System", None)?,
-                    &item("appearance-light", "Light", None)?,
-                    &item("appearance-dark", "Dark", None)?,
-                ],
-            )?,
-        ],
-    )?;
+    // macOS: Alex's View, as it was (the Panes submenu added); elsewhere, grouped (as Linux's apps have them), with
+    // the zoom's keys, which the PDF menu has on macOS
+    let view = if MAC {
+        Submenu::with_items(
+            app,
+            "View",
+            true,
+            &[
+                &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
+                &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
+                // the text's preview and PDF beside it, or in tabs of their own (a small screen: panetabs.rs), or so only
+                // while the window is narrow; the one chosen checked by the page (`view_shown`)
+                &Submenu::with_items(
+                    app,
+                    "Panes",
+                    true,
+                    &[
+                        &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, true, None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, false, None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, false, None::<&str>)?,
+                    ],
+                )?,
+                &item("sidebar", "Show Files", Some("Alt+CmdOrCtrl+S"))?,
+                &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
+                // the project bar hidden at the window's left edge till the pointer comes there (Settings ▸ Window)
+                &CheckMenuItem::with_id(
+                    app,
+                    "project-bar",
+                    "Show Project Bar on Hover",
+                    true,
+                    crate::settings::get().project_bar == crate::settings::ProjectBar::Hover,
+                    None::<&str>,
+                )?,
+                &item("figures-inline", "Show Figures in the Text", None)?,
+                &separator()?,
+                &item("text-wider", "Text Width +", None)?,
+                &item("text-narrower", "Text Width −", None)?,
+                &item("text-full", "Full Width", None)?,
+                &separator()?,
+                &item("zoom-window-in", "Zoom In", None)?,
+                &item("zoom-window-out", "Zoom Out", None)?,
+                &item("zoom-window-reset", "Actual Size", None)?,
+                &separator()?,
+                &item("appearance-system", "System Appearance", None)?,
+                &item("appearance-light", "Light Appearance", None)?,
+                &item("appearance-dark", "Dark Appearance", None)?,
+            ],
+        )?
+    } else {
+        Submenu::with_items(
+            app,
+            "View",
+            true,
+            &[
+                &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
+                &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
+                // the text's preview and PDF beside it, or in tabs of their own (a small screen: panetabs.rs), or so only
+                // while the window is narrow; the one chosen checked by the page (`view_shown`)
+                &Submenu::with_items(
+                    app,
+                    "Panes",
+                    true,
+                    &[
+                        &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, true, None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, false, None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, false, None::<&str>)?,
+                    ],
+                )?,
+                &separator()?,
+                // the sidebar on a tab (pressed again: hidden); outside macOS O for the files (open), H for the outline (the
+                // headings), as Ctrl+Shift+F is the search's
+                &item("sidebar", "Show Files", Some(if MAC { "Alt+CmdOrCtrl+S" } else { "Ctrl+Alt+O" }))?,
+                &item("outline", "Show Outline", Some(if MAC { "Alt+CmdOrCtrl+O" } else { "Ctrl+Alt+H" }))?,
+                // the project bar hidden at the window's left edge till the pointer comes there (Settings ▸ Window)
+                &CheckMenuItem::with_id(
+                    app,
+                    "project-bar",
+                    "Show Project Bar on Hover",
+                    true,
+                    crate::settings::get().project_bar == crate::settings::ProjectBar::Hover,
+                    None::<&str>,
+                )?,
+                &separator()?,
+                // the keys of zooming, whatever the tab: a text's window zoomed, a PDF's pages (the PDF menu's, without
+                // keys); ⌃+ itself where + is a key of its own (Italian, German…) is the page's (`zoom_key`); in the menu
+                // itself, not a submenu, for their keys to be seen
+                &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
+                &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
+                &item("zoom-fit", "Actual Size (a PDF: Fit Width)", Some("CmdOrCtrl+0"))?,
+                &separator()?,
+                &Submenu::with_items(
+                    app,
+                    "Text",
+                    true,
+                    &[
+                        &item("text-wider", "Wider", None)?,
+                        &item("text-narrower", "Narrower", None)?,
+                        &item("text-full", "Full Width", None)?,
+                        &separator()?,
+                        &item("figures-inline", "Show Figures in the Text", None)?,
+                    ],
+                )?,
+                &Submenu::with_items(
+                    app,
+                    "Appearance",
+                    true,
+                    &[
+                        &item("appearance-system", "As the System", None)?,
+                        &item("appearance-light", "Light", None)?,
+                        &item("appearance-dark", "Dark", None)?,
+                    ],
+                )?,
+            ],
+        )?
+    };
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
     // all the moving about, as VS Code's Go menu: between the tabs (papers-tabs' items, as each app has them), to a
     // file, a line, a project, and in a PDF
     let go = Submenu::new(app, "Go", true)?;
-    for item in crate::tabs::menu::items(app)? {
-        go.append(&item)?;
+    if MAC {
+        // macOS: Alex's Go, as Preview's: the PDF's
+        go.append_items(&[
+            &item("back", "Back", Some("CmdOrCtrl+["))?,
+            &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
+            &separator()?,
+            &item("previous-page", "Previous Page", None)?,
+            &item("next-page", "Next Page", None)?,
+            &item("first-page", "First Page", None)?,
+            &item("last-page", "Last Page", None)?,
+            &separator()?,
+            &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
+        ])?;
+    } else {
+        for item in crate::tabs::menu::items(app)? {
+            go.append(&item)?;
+        }
+        go.append_items(&[
+            &separator()?,
+            // as Sublime's Goto Anything: a file of the project, a heading (@), a line (:)
+            &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
+            &item("go-to-line", "Go to Line…", Some("Ctrl+G"))?,
+            // as Sublime's Quick Switch Project, on its keys: ⌃⌘P on macOS, Ctrl+Alt+P elsewhere
+            &item("switch-project", "Switch Project…", Some(if MAC { "Ctrl+Cmd+P" } else { "Ctrl+Alt+P" }))?,
+            &separator()?,
+            // in a PDF: back and forward along its links and jumps, its pages
+            &Submenu::with_items(
+                app,
+                "In the PDF",
+                true,
+                &[
+                    &item("back", "Back", Some("CmdOrCtrl+["))?,
+                    &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
+                    &separator()?,
+                    &item("previous-page", "Previous Page", None)?,
+                    &item("next-page", "Next Page", None)?,
+                    &item("first-page", "First Page", None)?,
+                    &item("last-page", "Last Page", None)?,
+                    &separator()?,
+                    &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
+                ],
+            )?,
+        ])?;
     }
-    go.append_items(&[
-        &separator()?,
-        // as Sublime's Goto Anything: a file of the project, a heading (@), a line (:)
-        &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
-        &item("go-to-line", "Go to Line…", Some("Ctrl+G"))?,
-        // as Sublime's Quick Switch Project, on its keys: ⌃⌘P on macOS, Ctrl+Alt+P elsewhere
-        &item("switch-project", "Switch Project…", Some(if MAC { "Ctrl+Cmd+P" } else { "Ctrl+Alt+P" }))?,
-        &separator()?,
-        // in a PDF: back and forward along its links and jumps, its pages
-        &Submenu::with_items(
-            app,
-            "In the PDF",
-            true,
-            &[
-                &item("back", "Back", Some("CmdOrCtrl+["))?,
-                &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
-                &separator()?,
-                &item("previous-page", "Previous Page", None)?,
-                &item("next-page", "Next Page", None)?,
-                &item("first-page", "First Page", None)?,
-                &item("last-page", "Last Page", None)?,
-                &separator()?,
-                &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
-            ],
-        )?,
-    ])?;
     let build = Submenu::with_items(
         app,
         "Build",
@@ -291,14 +361,15 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         ],
     )?;
     // the PDF of the window in front (a window of a PDF; the other pages ignore these)
+    // macOS: Alex's PDF menu, the zoom's keys in it; elsewhere View has them (and the PDF's own tools)
     let pdf = Submenu::with_items(
         app,
         "PDF",
         true,
         &[
-            &item("pdf-zoom-in", "Zoom In", None)?,
-            &item("pdf-zoom-out", "Zoom Out", None)?,
-            &item("pdf-zoom-fit", "Fit Width", None)?,
+            &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
+            &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
+            &item("zoom-fit", "Fit Width", Some("CmdOrCtrl+0"))?,
         ],
     )?;
     let review = Submenu::with_id_and_items(
@@ -346,11 +417,15 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         app,
         "Window",
         true,
-        &[
-            &PredefinedMenuItem::minimize(app, None)?,
-            &PredefinedMenuItem::maximize(app, None)?,
-        ],
+        &[&PredefinedMenuItem::minimize(app, None)?, &PredefinedMenuItem::maximize(app, None)?],
     )?;
+    // macOS: the tabs' items, as each app has them (papers-tabs: Alex's); elsewhere they are in Go
+    if MAC {
+        window.append(&separator()?)?;
+        for item in crate::tabs::menu::items(app)? {
+            window.append(&item)?;
+        }
+    }
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
@@ -369,7 +444,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[&item("check-updates", "Check for Updates…", None)?, &separator()?, &PredefinedMenuItem::about(app, Some("About Papers Write"), None)?],
     )?;
-    Menu::with_items(app, &[&file, &edit, &format, &view, &go, &review, &git, &build, &pdf, &window, &help])
+    Menu::with_items(app, &[&file, &edit, &format, &view, &go, &review, &git, &build, &window, &help])
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
@@ -445,12 +520,10 @@ fn command(app: &AppHandle, id: &str) {
         "text-narrower" => crate::settings::step_text_width(app, -1.0),
         "text-full" => crate::settings::toggle_full_width(app),
         // the whole window, text and all (the text's own size is Settings ▸ Editor ▸ Size)
-        // the PDF menu's: the pages of a PDF tab
-        "pdf-zoom-in" | "pdf-zoom-out" | "pdf-zoom-fit" => {
-            if let Some(window) = documents::front(app) {
-                let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id.trim_start_matches("pdf-"));
-            }
-        }
+        // macOS's View: the whole window, text and all (the text's own size is Settings ▸ Editor ▸ Size)
+        "zoom-window-in" => crate::settings::step_zoom(app, 1.0),
+        "zoom-window-out" => crate::settings::step_zoom(app, -1.0),
+        "zoom-window-reset" => crate::settings::step_zoom(app, 0.0),
         "panes-side" | "panes-tabs" | "panes-auto" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "panes", id.trim_start_matches("panes-"));

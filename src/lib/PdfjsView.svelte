@@ -27,6 +27,44 @@
   let error = $state("");
   /** the pages fit the width, until zoomed */
   let fit = true;
+
+  /** Where the PDF was read last, per file (the pages' storage, the same in the PDF's tab and beside its text): the
+   *  page, how far down it (0 to 1), the zoom (none: the width of the area). Kept as the PDF is scrolled or zoomed. */
+  type Place = { page: number; down: number; scale: number | null };
+  const placeKey = () => `pdf-place:${path}`;
+  function readPlace(): Place | null {
+    try {
+      return JSON.parse(localStorage.getItem(placeKey()) ?? "null");
+    } catch {
+      return null;
+    }
+  }
+  let keepTimer: ReturnType<typeof setTimeout> | undefined;
+  function keepPlace() {
+    clearTimeout(keepTimer);
+    keepTimer = setTimeout(() => {
+      if (!viewer || !container || !count) return;
+      const page = viewer.currentPageNumber;
+      const div = viewer.getPageView(page - 1)?.div as HTMLElement | undefined;
+      const down = div && div.offsetHeight ? Math.min(1, Math.max(0, (container.scrollTop - div.offsetTop) / div.offsetHeight)) : 0;
+      try {
+        localStorage.setItem(placeKey(), JSON.stringify({ page, down, scale: fit ? null : viewer.currentScale } satisfies Place));
+      } catch {}
+    }, 400);
+  }
+  /** The PDF where it was read last, if it was. */
+  function restorePlace(): boolean {
+    const place = readPlace();
+    if (!viewer || !container || !place || place.page > count) return false;
+    if (place.scale) {
+      fit = false;
+      viewer.currentScale = place.scale;
+    }
+    viewer.currentPageNumber = place.page;
+    const div = viewer.getPageView(place.page - 1)?.div as HTMLElement | undefined;
+    if (div) container.scrollTop = div.offsetTop + place.down * div.offsetHeight;
+    return true;
+  }
   /** the pages left by links and jumps, and those gone back from */
   let behind: number[] = [];
   let ahead: number[] = [];
@@ -146,8 +184,23 @@
     return withNext(textAt(middle(own)), below === undefined ? "" : textAt(below));
   }
 
+  /** where the second press of a double-click was: a double-click whose pointer moved before it was let go is a
+   *  selection (double-tap and drag), not a double-click */
+  let secondPress: { x: number; y: number } | null = null;
+  function pressed(e: MouseEvent) {
+    if (e.detail >= 2) secondPress = { x: e.clientX, y: e.clientY };
+  }
+
+  /** ⌃-click, or a double-click (one that did not drag: a selection made by tap and drag stays one), on the text:
+   *  its place in the source (Go to Source). */
   function sourceClick(e: MouseEvent) {
-    if (!onsource || !(e.ctrlKey || e.metaKey) || e.button !== 0) return;
+    if (!onsource || e.button !== 0) return;
+    if (e.type === "dblclick") {
+      const moved = secondPress && Math.hypot(e.clientX - secondPress.x, e.clientY - secondPress.y) > 4;
+      secondPress = null;
+      if (moved) return;
+      window.getSelection()?.removeAllRanges();
+    } else if (!(e.ctrlKey || e.metaKey)) return;
     const span = (e.target as HTMLElement).closest<HTMLElement>(".textLayer span");
     if (!span) return;
     e.preventDefault();
@@ -422,6 +475,8 @@
   onMount(() => {
     let task: PDFDocumentLoadingTask | null = null;
     container.addEventListener("click", sourceClick, true);
+    container.addEventListener("dblclick", sourceClick, true);
+    container.addEventListener("mousedown", pressed, true);
     container.addEventListener("contextmenu", sourceMenu);
     const pages = document.createElement("div");
     pages.className = "pdfViewer";
@@ -444,8 +499,11 @@
     links.setViewer(view);
     bus.on("pagesinit", () => {
       view.currentScaleValue = "page-width";
-      if (page > 1) view.currentPageNumber = Math.min(page, count);
+      // where it was read last; else the page asked
+      if (!restorePlace() && page > 1) view.currentPageNumber = Math.min(page, count);
     });
+    bus.on("scalechanging", keepPlace);
+    container.addEventListener("scroll", keepPlace, { passive: true });
     bus.on("pagechanging", ({ pageNumber }: { pageNumber: number }) => onpage(pageNumber));
     bus.on("textlayerrendered", redrawn);
     // a click in the PDF: the mark of Show in PDF gone
@@ -504,6 +562,8 @@
     })();
     return () => {
       container.removeEventListener("click", sourceClick, true);
+      container.removeEventListener("dblclick", sourceClick, true);
+      container.removeEventListener("mousedown", pressed, true);
       container.removeEventListener("contextmenu", sourceMenu);
       resize.disconnect();
       task?.destroy();

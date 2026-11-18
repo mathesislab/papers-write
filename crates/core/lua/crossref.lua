@@ -35,6 +35,9 @@ local WRAP = { equation = false, align = "aligned", gather = "gathered" }
 local NBSP = "\xC2\xA0"
 
 local labels, count, hdr = {}, { fig = 0, eq = 0, tbl = 0, sec = 0, lst = 0 }, { 0, 0, 0, 0, 0, 0 }
+-- the headings of a whole document, for its outline (PAPERS_WRITE_HEADINGS_OUT): each with the file it is in (the
+-- app's marks `<!-- papers-write-file N -->`), its level, number and text
+local headings, file_at = {}, 0
 local appendix = false
 
 -- the whole document's labels (PAPERS_WRITE_LABELS), for those this text does not have
@@ -210,7 +213,10 @@ pass1.Header = function(h)
     h.identifier = l
     h.content = content
   end
-  if unnumbered then return h end
+  if unnumbered then
+    headings[#headings + 1] = { file_at, h.level, "", pandoc.utils.stringify(h.content) }
+    return h
+  end
   local lv = h.level
   hdr[lv] = hdr[lv] + 1
   for i = lv + 1, 6 do hdr[i] = 0 end
@@ -220,6 +226,7 @@ pass1.Header = function(h)
   for i = first, lv do parts[#parts + 1] = (appendix and i == 1) and string.char(64 + hdr[i]) or tostring(hdr[i]) end
   local text = table.concat(parts, ".")
   if kind_of(h.identifier) == "sec" then register(h.identifier, "sec", hdr[lv], text) end
+  headings[#headings + 1] = { file_at, lv, number_sections and text or "", pandoc.utils.stringify(h.content) }
   if number_sections then
     local c = pandoc.List({ pandoc.Str(text), pandoc.Space() })
     c:extend(h.content)
@@ -252,6 +259,11 @@ pass1.Para = function(p)
 end
 
 pass1.RawBlock = function(b)
+  local mark = b.format == "html" and b.text:match("^<!%-%- papers%-write%-file (%d+) %-%->$")
+  if mark then
+    file_at = tonumber(mark)
+    return {}
+  end
   if not is_tex(b.format) then return nil end
   if b.text:match("^%s*\\appendix%s*$") then
     appendix = true
@@ -377,6 +389,12 @@ function Pandoc(doc)
     doc:walk({ Header = function(h) if kind_of(h.identifier) == "sec" then number_sections = true end end })
     local d = doc:walk(pass1)
     -- the table of the labels, when the app asks for it
+    local hout = os.getenv("PAPERS_WRITE_HEADINGS_OUT")
+    local hf = hout and io.open(hout, "w")
+    if hf then
+      for _, h in ipairs(headings) do hf:write(h[1], "\t", h[2], "\t", h[3], "\t", (h[4]:gsub("[\t\n]", " ")), "\n") end
+      hf:close()
+    end
     local out = os.getenv("PAPERS_WRITE_LABELS_OUT")
     local f = out and io.open(out, "w")
     if f then

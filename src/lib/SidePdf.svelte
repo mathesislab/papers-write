@@ -122,6 +122,8 @@
 
   /** Find… with the PDF in front: its field, with the PDF's selection. */
   export const focusFind = () => tools?.focusFind();
+  /** The keys to the PDF (its side was the one worked in). */
+  export const focus = () => view?.focus();
   /** Find Next and Find Previous with the PDF in front. */
   export const findAgain = (backwards: boolean) => tools?.findAgain(backwards);
   /** Use Selection for Find with the PDF in front. */
@@ -198,7 +200,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* the room left, and no more: cut short rather than pushing the PDF's name to a line of its own */
   .status {
+    flex: 1 1 0;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

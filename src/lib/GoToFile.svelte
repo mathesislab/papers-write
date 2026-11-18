@@ -10,7 +10,7 @@
   import { matchIn, pieces, rank } from "$lib/fuzzy";
   import type { Heading } from "papers-write/editor";
 
-  type Listed = { path: string; relative: string; modified: number };
+  type Listed = { path: string; relative: string; modified: number; open: boolean };
 
   let {
     headings,
@@ -113,6 +113,7 @@
             {#if row.kind === "file"}
               {@const p = split(row.file.relative)}
               <span class="name">{#each pieces(p.name, row.at, p.cut) as piece, k (k)}{#if piece.on}<b>{piece.text}</b>{:else}{piece.text}{/if}{/each}</span>
+              {#if row.file.open}<span class="open">open</span>{/if}
               {#if p.folder}<span class="folder">{#each pieces(p.folder, row.at) as piece, k (k)}{#if piece.on}<b>{piece.text}</b>{:else}{piece.text}{/if}{/each}</span>{/if}
             {:else if row.kind === "heading"}
               <span class="name" style:padding-left="{(row.heading.level - 1) * 1.1}em"
@@ -202,6 +203,11 @@
     text-overflow: ellipsis;
     font-size: 12px;
     color: var(--muted);
+  }
+  .open {
+    flex: none;
+    font-size: 11px;
+    color: var(--accent);
   }
   b {
     font-weight: 700;

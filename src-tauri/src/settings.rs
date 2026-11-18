@@ -117,6 +117,10 @@ pub struct Settings {
     pub project_bar: ProjectBar,
     /// look for updates at start and twice a day; they are installed only when asked
     pub check_updates: bool,
+    /// the tabs not shown for this long have their page unloaded (minutes; 0: never), and at most this many keep
+    /// theirs, the most recently shown (Preferences ▸ Window): a tab comes back as it was when shown again
+    pub unload_after: u32,
+    pub loaded_tabs: u32,
 }
 
 impl Default for Settings {
@@ -149,6 +153,8 @@ impl Default for Settings {
             project_colour_bar: false,
             project_bar: ProjectBar::Shown,
             check_updates: true,
+            unload_after: 15,
+            loaded_tabs: 10,
         }
     }
 }
@@ -274,6 +280,7 @@ fn put(app: &AppHandle, settings: Settings) {
         crate::review::identity_changed(app);
     }
     sync_menu(app, &settings);
+    crate::menu::read_aloud_item(app, Some(!settings.read_aloud.trim().is_empty()), None);
     if let Err(e) = app.emit("settings-changed", settings) {
         eprintln!("settings-changed: {e}");
     }
@@ -291,13 +298,6 @@ fn sync_menu(app: &AppHandle, settings: &Settings) {
     if let Some(item) = app.menu().and_then(|m| m.get("project-bar")).and_then(|k| k.as_check_menuitem().cloned()) {
         let _ = item.set_checked(settings.project_bar == ProjectBar::Hover);
     }
-}
-
-/// View ▸ Show Figures in the Text: the figures in the text, or in their tooltips.
-pub fn toggle_inline_figures(app: &AppHandle) {
-    let mut settings = get();
-    settings.inline_figures = !settings.inline_figures;
-    put(app, settings);
 }
 
 /// The narrowest and widest column of text (em).
@@ -349,6 +349,13 @@ pub fn toggle_full_width(app: &AppHandle) {
     put(app, settings);
 }
 
+/// View ▸ Show Figures in the Text: the figures in the text, or in their tooltips.
+pub fn toggle_inline_figures(app: &AppHandle) {
+    let mut settings = get();
+    settings.inline_figures = !settings.inline_figures;
+    put(app, settings);
+}
+
 /// The settings, for the Settings window and the document pages; the page asking zoomed as they say.
 #[tauri::command]
 pub fn settings(webview: tauri::Webview) -> Settings {
@@ -372,6 +379,20 @@ pub fn step_zoom(app: &AppHandle, by: f64) {
     let mut settings = get();
     settings.zoom = if by == 0.0 { 1.0 } else { ((settings.zoom + by * 0.1) * 10.0).round() / 10.0 };
     put(app, settings);
+}
+
+/// The preview following the cursor or not (the preview's ▾).
+#[tauri::command]
+pub fn set_preview_follow(app: AppHandle, on: bool) {
+    let mut settings = get();
+    settings.preview_follow = on;
+    put(&app, settings);
+}
+
+/// The Settings window, at `section` (a menu's Settings…).
+#[tauri::command]
+pub fn show_settings(app: AppHandle, section: Option<String>) {
+    show(&app, section.as_deref());
 }
 
 /// The settings changed in the Settings window.
@@ -513,6 +534,8 @@ mod tests {
             project_colour_bar: true,
             project_bar: ProjectBar::Hover,
             check_updates: false,
+            unload_after: 30,
+            loaded_tabs: 6,
         };
         settings.save(&dir);
         assert_eq!(Settings::load(&dir), settings);

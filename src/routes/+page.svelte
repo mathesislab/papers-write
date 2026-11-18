@@ -311,19 +311,25 @@
     return spokenOf(doc.sliceString(doc.line(first).from, doc.line(last).to));
   }
 
-  /** A right-click in the text: Read Aloud (when set), Show in Preview or in PDF, and the edits of the selection. */
+  /** Edit ▸ Read Aloud (⌃⌥A; ⌥Esc on macOS): the selection or the paragraph read, or the reading going on stopped. */
+  async function readOrStop() {
+    if (await invoke<boolean>("reading").catch(() => false)) return void invoke("stop_reading");
+    void invoke("read_aloud", { text: spokenHere() }).catch(() => {});
+  }
+
+  /** A right-click in the text: Show in Preview or in PDF, the edits of the selection, Read Aloud (when set). */
   async function editorMenu(e: MouseEvent) {
     const where = previewing && markdown ? "Preview" : "PDF";
     const mac = navigator.userAgent.includes("Mac");
     const reading = await readAloudItems(spokenHere(), editor?.view()?.state.selection.main.empty ? "Read Aloud Paragraph" : "Read Aloud");
     const items = await Promise.all([
-      ...reading,
       MenuItem.new({ text: `Show in ${where} (${mac ? "⌘" : "Ctrl"}-click)`, enabled: !!path, action: syncHere }),
       PredefinedMenuItem.new({ item: "Separator" }),
       PredefinedMenuItem.new({ item: "Cut" }),
       PredefinedMenuItem.new({ item: "Copy" }),
       PredefinedMenuItem.new({ item: "Paste" }),
       PredefinedMenuItem.new({ item: "SelectAll" }),
+      ...reading,
       // macOS: the system's Services, as its own menu had them (Look Up and Speech are not open to apps' menus)
       ...(mac ? [PredefinedMenuItem.new({ item: "Separator" }), PredefinedMenuItem.new({ item: "Services" })] : []),
     ]);
@@ -579,6 +585,7 @@
     if (what === "check") check();
     else if (what === "references") listing = true;
     else if (what === "symbols") editor.list();
+    else if (what === "read-aloud") void readOrStop();
     else (what === "redo" ? editor.redo : editor.undo)();
   }
 

@@ -129,9 +129,9 @@
         const selected = doc.getSelection()?.toString().trim() ?? "";
         const reading = await readAloudItems(selected || at.text, selected ? "Read Aloud" : "Read Aloud Paragraph");
         const items = await Promise.all([
-          ...reading,
           MenuItem.new({ text: `Find in Source (${keysOf("⌘")}-click)`, action: () => onsource(at.text, at.word, at.around) }),
           PredefinedMenuItem.new({ item: "Copy" }),
+          ...reading,
         ]);
         // at the pointer: the frame's own place added to where the click is in it
         const box = frame.getBoundingClientRect();

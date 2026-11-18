@@ -192,6 +192,7 @@ fn put(app: &AppHandle, settings: Settings) {
     if who_changed {
         crate::review::identity_changed(app);
     }
+    crate::menu::read_aloud_item(app, Some(!settings.read_aloud.trim().is_empty()), None);
     if let Err(e) = app.emit("settings-changed", settings) {
         eprintln!("settings-changed: {e}");
     }

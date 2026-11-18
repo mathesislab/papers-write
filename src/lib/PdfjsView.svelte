@@ -246,9 +246,9 @@
     const selected = window.getSelection()?.toString().trim() ?? "";
     const reading = await readAloudItems(selected || fromHere(span), selected ? "Read Aloud" : "Read Aloud from Here");
     const items = await Promise.all([
-      ...reading,
       MenuItem.new({ text: `Find in Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word, around) }),
       PredefinedMenuItem.new({ item: "Copy" }),
+      ...reading,
     ]);
     // at the pointer (without a place, it opens elsewhere in the window)
     await (await Menu.new({ items })).popup(new LogicalPosition(e.clientX, e.clientY));

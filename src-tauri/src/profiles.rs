@@ -31,9 +31,10 @@ use write_core::project::{self, Project};
 
 use crate::{documents, projects};
 
-/// What runs in the background of each project (by its folder): the profile's name, and how.
+/// What runs in the background of each project (by its folder): the profile's name, how, and the document it was
+/// chosen from (its `{file}`).
 #[derive(Default)]
-pub struct Watches(Mutex<HashMap<PathBuf, (String, Background)>>);
+pub struct Watches(Mutex<HashMap<PathBuf, (String, Background, PathBuf)>>);
 
 pub enum Background {
     /// the `watch` command, started here
@@ -51,6 +52,8 @@ const QUIET: std::time::Duration = std::time::Duration::from_secs(5);
 #[derive(Serialize)]
 pub struct Shown {
     name: String,
+    /// the document it runs for, when its command names it (`{file}`)
+    file: Option<String>,
     /// "watching" (started here), "elsewhere" (followed), "ended" (its command exited), "on-save"
     state: &'static str,
 }
@@ -92,7 +95,9 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
     };
     let (profiles, wrong) = profiles::list(&root);
     let active = chosen(app, source, &root).filter(|n| profiles.iter().any(|p| &p.name == n && builds_now(p)));
-    let background = app.state::<Watches>().0.lock().unwrap().get_mut(&root).map(|(name, how)| Shown {
+    let per_document = |name: &str| profiles.iter().any(|p| p.name == name && p.per_document());
+    let background = app.state::<Watches>().0.lock().unwrap().get_mut(&root).map(|(name, how, file)| Shown {
+        file: per_document(name).then(|| file.file_name().unwrap_or_default().to_string_lossy().into_owned()),
         name: name.clone(),
         state: match how {
             Background::Started(child) => match child.try_wait() {
@@ -142,6 +147,7 @@ pub fn set_background(window: Webview, name: Option<String>) -> Result<Profiles,
     if let Some(name) = name.filter(|n| !n.is_empty()) {
         let (all, _) = profiles::list(&root);
         let profile = all.into_iter().find(|p| p.name == name).ok_or_else(|| format!("{name}: no such profile"))?;
+        let profile = profile.for_document(&root, &source)?;
         let how = match profile.run {
             Run::Watch => match running_elsewhere(&root, &profile.command) {
                 Some(pid) => Background::Elsewhere(pid),
@@ -153,7 +159,7 @@ pub fn set_background(window: Webview, name: Option<String>) -> Result<Profiles,
             }
             _ => return Err(format!("{name}: a profile Build runs, not one for the background")),
         };
-        app.state::<Watches>().0.lock().unwrap().insert(root.clone(), (name, how));
+        app.state::<Watches>().0.lock().unwrap().insert(root.clone(), (name, how, source.clone()));
     }
     Ok(profiles_of(app, &source))
 }
@@ -164,19 +170,19 @@ pub fn saved(app: &AppHandle, label: &str, path: &Path) {
     let count = {
         let state = app.state::<Watches>();
         let mut watches = state.0.lock().unwrap();
-        let Some((_, Background::OnSave(count))) = watches.get_mut(&root) else { return };
+        let Some((_, Background::OnSave(count), _)) = watches.get_mut(&root) else { return };
         *count += 1;
         *count
     };
     let (app, label) = (app.clone(), label.to_string());
     std::thread::spawn(move || {
         std::thread::sleep(QUIET);
-        let name = match app.state::<Watches>().0.lock().unwrap().get(&root) {
-            Some((name, Background::OnSave(now))) if *now == count => name.clone(),
+        let (name, source) = match app.state::<Watches>().0.lock().unwrap().get(&root) {
+            Some((name, Background::OnSave(now), source)) if *now == count => (name.clone(), source.clone()),
             _ => return,
         };
         let (all, _) = profiles::list(&root);
-        if let Some(profile) = all.into_iter().find(|p| p.name == name) {
+        if let Some(Ok(profile)) = all.into_iter().find(|p| p.name == name).map(|p| p.for_document(&root, &source)) {
             crate::build::run_profile_for(&app, &label, profile, root);
         }
     });
@@ -223,14 +229,14 @@ fn start(root: &Path, profile: &Profile) -> Result<Child, String> {
 
 /// What runs in the background of `root`, stopped (a command started elsewhere is left to run).
 pub fn stop(app: &AppHandle, root: &Path) {
-    if let Some((_, Background::Started(mut child))) = app.state::<Watches>().0.lock().unwrap().remove(root) {
+    if let Some((_, Background::Started(mut child), _)) = app.state::<Watches>().0.lock().unwrap().remove(root) {
         crate::group::stop(&mut child);
     }
 }
 
 /// Every command started here, stopped (the app quits).
 pub fn stop_all(app: &AppHandle) {
-    for (_, (_, how)) in app.state::<Watches>().0.lock().unwrap().drain() {
+    for (_, (_, how, _)) in app.state::<Watches>().0.lock().unwrap().drain() {
         if let Background::Started(mut child) = how {
             crate::group::stop(&mut child);
         }

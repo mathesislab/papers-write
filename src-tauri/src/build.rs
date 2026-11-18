@@ -846,6 +846,7 @@ pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> 
         request(&app, &window, file, Job::Build { show });
         return Ok(());
     };
+    let profile = profile.for_document(&root, &file)?;
     let pdf = profile.pdf.as_ref().map(|p| root.join(p));
     let show_pdf = |pdf: &Option<PathBuf>| {
         if show && let Some(pdf) = pdf.as_ref().filter(|p| p.is_file()) {

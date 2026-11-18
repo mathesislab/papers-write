@@ -56,7 +56,7 @@
   type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "save" | "external" };
   /** what runs in the background of the project: "watching" (started here), "elsewhere" (the same command started in
    *  a terminal, followed), "ended" (its command exited), "on-save" (run after the saves) */
-  type Background = { name: string; state: "watching" | "elsewhere" | "ended" | "on-save" };
+  type Background = { name: string; file: string | null; state: "watching" | "elsewhere" | "ended" | "on-save" };
   type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; wrong: string[]; folder: string | null };
   let profiles = $state<Profiles | null>(null);
   const loadProfiles = async () => (profiles = await invoke<Profiles>("build_profiles").catch(() => null));
@@ -64,7 +64,7 @@
   const named = $derived(profiles?.active ? ` · ${profiles.active}` : "");
   /** the background, said after it */
   const BACKGROUND = { watching: "watching", elsewhere: "watching (terminal)", ended: "ended", "on-save": "on save" };
-  const behind = $derived(profiles?.background ? ` · ● ${profiles.background.name} ${BACKGROUND[profiles.background.state]}` : "");
+  const behind = $derived(profiles?.background ? ` · ● ${profiles.background.name}${profiles.background.file ? `: ${profiles.background.file}` : ""} ${BACKGROUND[profiles.background.state]}` : "");
   const commandOf = (name: string) => profiles?.profiles.find((p) => p.name === name)?.command ?? name;
 
   const errors = $derived(status?.errors.length ?? 0);

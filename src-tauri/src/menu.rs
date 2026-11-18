@@ -94,8 +94,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &item("new", "New", Some("CmdOrCtrl+N"))?,
             &item("open", "Open…", Some("CmdOrCtrl+O"))?,
+            // as Sublime's Goto Anything: a file of the project, a heading (@), a line (:)
+            &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
             &recent,
             &item("open-project", "Open Project…", Some("Shift+CmdOrCtrl+O"))?,
+            // as Sublime's Quick Switch Project, on its keys: ⌃⌘P on macOS, Ctrl+Alt+P elsewhere
+            &item("switch-project", "Switch Project…", Some(if MAC { "Ctrl+Cmd+P" } else { "Ctrl+Alt+P" }))?,
             &separator()?,
             &item("save", "Save", Some("CmdOrCtrl+S"))?,
             &item("close", "Close", Some("CmdOrCtrl+W"))?,
@@ -138,6 +142,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &separator()?,
             &find,
             &separator()?,
+            &item("go-to-line", "Go to Line…", Some("Ctrl+G"))?,
             &item("select-next", "Select Next Occurrence", Some("CmdOrCtrl+D"))?,
             // outside macOS Ctrl+/ comments, as in the editors there; Symbols moves aside
             &item("toggle-comment", "Toggle Comment", if MAC { None } else { Some("Ctrl+/") })?,
@@ -195,7 +200,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                     &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, false, None::<&str>)?,
                 ],
             )?,
-            &separator()?,
             // the sidebar on a tab (pressed again: hidden); outside macOS O for the files (open), H for the outline (the
             // headings), as Ctrl+Shift+F is the search's
             &item("sidebar", "Show Files", Some(if MAC { "Alt+CmdOrCtrl+S" } else { "Ctrl+Alt+O" }))?,
@@ -209,71 +213,38 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                 crate::settings::get().project_bar == crate::settings::ProjectBar::Hover,
                 None::<&str>,
             )?,
+            &item("figures-inline", "Show Figures in the Text", None)?,
             &separator()?,
-            // the keys of zooming, whatever the tab: a text's window zoomed, a PDF's pages (the PDF menu's, without
-            // keys); ⌃+ itself where + is a key of its own (Italian, German…) is the page's (`zoom_key`); in the menu
-            // itself, not a submenu, for their keys to be seen
-            &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
-            &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
-            &item("zoom-fit", "Actual Size (a PDF: Fit Width)", Some("CmdOrCtrl+0"))?,
+            &item("text-wider", "Text Width +", None)?,
+            &item("text-narrower", "Text Width −", None)?,
+            &item("text-full", "Full Width", None)?,
             &separator()?,
-            &Submenu::with_items(
-                app,
-                "Text",
-                true,
-                &[
-                    &item("text-wider", "Wider", None)?,
-                    &item("text-narrower", "Narrower", None)?,
-                    &item("text-full", "Full Width", None)?,
-                    &separator()?,
-                    &item("figures-inline", "Show Figures in the Text", None)?,
-                ],
-            )?,
-            &Submenu::with_items(
-                app,
-                "Appearance",
-                true,
-                &[
-                    &item("appearance-system", "As the System", None)?,
-                    &item("appearance-light", "Light", None)?,
-                    &item("appearance-dark", "Dark", None)?,
-                ],
-            )?,
+            &item("zoom-window-in", "Zoom In", None)?,
+            &item("zoom-window-out", "Zoom Out", None)?,
+            &item("zoom-window-reset", "Actual Size", None)?,
+            &separator()?,
+            &item("appearance-system", "System Appearance", None)?,
+            &item("appearance-light", "Light Appearance", None)?,
+            &item("appearance-dark", "Dark Appearance", None)?,
         ],
     )?;
     // the PDF in front: back to the page a link or a jump left, and its pages (a text takes ⌘[ ⌘] as its indent)
-    // all the moving about, as VS Code's Go menu: between the tabs (papers-tabs' items, as each app has them), to a
-    // file, a line, a project, and in a PDF
-    let go = Submenu::new(app, "Go", true)?;
-    for item in crate::tabs::menu::items(app)? {
-        go.append(&item)?;
-    }
-    go.append_items(&[
-        &separator()?,
-        // as Sublime's Goto Anything: a file of the project, a heading (@), a line (:)
-        &item("go-to-file", "Go to File…", Some("CmdOrCtrl+P"))?,
-        &item("go-to-line", "Go to Line…", Some("Ctrl+G"))?,
-        // as Sublime's Quick Switch Project, on its keys: ⌃⌘P on macOS, Ctrl+Alt+P elsewhere
-        &item("switch-project", "Switch Project…", Some(if MAC { "Ctrl+Cmd+P" } else { "Ctrl+Alt+P" }))?,
-        &separator()?,
-        // in a PDF: back and forward along its links and jumps, its pages
-        &Submenu::with_items(
-            app,
-            "In the PDF",
-            true,
-            &[
-                &item("back", "Back", Some("CmdOrCtrl+["))?,
-                &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
-                &separator()?,
-                &item("previous-page", "Previous Page", None)?,
-                &item("next-page", "Next Page", None)?,
-                &item("first-page", "First Page", None)?,
-                &item("last-page", "Last Page", None)?,
-                &separator()?,
-                &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
-            ],
-        )?,
-    ])?;
+    let go = Submenu::with_items(
+        app,
+        "Go",
+        true,
+        &[
+            &item("back", "Back", Some("CmdOrCtrl+["))?,
+            &item("forward", "Forward", Some("CmdOrCtrl+]"))?,
+            &separator()?,
+            &item("previous-page", "Previous Page", None)?,
+            &item("next-page", "Next Page", None)?,
+            &item("first-page", "First Page", None)?,
+            &item("last-page", "Last Page", None)?,
+            &separator()?,
+            &item("go-to-page", "Go to Page…", Some("Alt+CmdOrCtrl+G"))?,
+        ],
+    )?;
     let build = Submenu::with_items(
         app,
         "Build",
@@ -296,9 +267,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         "PDF",
         true,
         &[
-            &item("pdf-zoom-in", "Zoom In", None)?,
-            &item("pdf-zoom-out", "Zoom Out", None)?,
-            &item("pdf-zoom-fit", "Fit Width", None)?,
+            &item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?,
+            &item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?,
+            &item("zoom-fit", "Fit Width", Some("CmdOrCtrl+0"))?,
         ],
     )?;
     let review = Submenu::with_id_and_items(
@@ -349,8 +320,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
+            &separator()?,
         ],
     )?;
+    // the tabs' items, as each app has them (papers-tabs)
+    for item in crate::tabs::menu::items(app)? {
+        window.append(&item)?;
+    }
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
@@ -445,17 +421,14 @@ fn command(app: &AppHandle, id: &str) {
         "text-narrower" => crate::settings::step_text_width(app, -1.0),
         "text-full" => crate::settings::toggle_full_width(app),
         // the whole window, text and all (the text's own size is Settings ▸ Editor ▸ Size)
-        // the PDF menu's: the pages of a PDF tab
-        "pdf-zoom-in" | "pdf-zoom-out" | "pdf-zoom-fit" => {
-            if let Some(window) = documents::front(app) {
-                let _ = app.emit_to(EventTarget::webview(window.label()), "pdf", id.trim_start_matches("pdf-"));
-            }
-        }
         "panes-side" | "panes-tabs" | "panes-auto" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "panes", id.trim_start_matches("panes-"));
             }
         }
+        "zoom-window-in" => crate::settings::step_zoom(app, 1.0),
+        "zoom-window-out" => crate::settings::step_zoom(app, -1.0),
+        "zoom-window-reset" => crate::settings::step_zoom(app, 0.0),
         "appearance-system" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::System),
         "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),
         "appearance-dark" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Dark),

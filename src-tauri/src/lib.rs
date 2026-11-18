@@ -122,6 +122,8 @@ pub fn run() {
             panetabs::page_path,
             menu::zoom_key,
             projects::project_list,
+            preview::document_outline,
+            preview::heading_place,
             settings::settings,
             readaloud::read_aloud,
             readaloud::stop_reading,

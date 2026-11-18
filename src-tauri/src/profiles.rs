@@ -7,16 +7,17 @@
 //! has. A profile chosen from a document is that document's, and the project's from then on, so the files never chosen
 //! for (the chapters of a book) follow it.
 //!
-//! Two choices per project. *Build with*: the profile Build (⇧⌘B) runs now, a `build` one (or an `external` one, its PDF
-//! only shown). *In the background*: a `watch` or `save` profile, or none (the default: nothing runs at launch), chosen
-//! in the Build button's menu only, never by Build, and kept for the session, not saved.
+//! Per project, kept in the app's state: *Build With*, the profile Build (⇧⌘B) runs now, a `build` one (or an `external`
+//! one, its PDF only shown); *Build After Saves*, the same build once the project's files have been quiet `QUIET` after
+//! a save (autosave saves as one types; one run at a time, `build.rs`: a save during a run makes one more); *In the
+//! Background*, a `watch` profile or none, chosen in the Build button's menu only, never by Build.
 //!
-//! A `watch` profile's command is started when chosen and runs till another (or none) is chosen or the app quits; it
-//! runs in a process group of its own, which is stopped whole (`make watch` starts texmark, which starts LaTeX). What it
-//! prints goes to `.papers-write/build/<name>.log`. The same command running already in the project's folder (started
-//! in a terminal) is not started again: it is followed, and never stopped. A `save` profile's command is run when chosen,
-//! then after the project's files are saved, once they have been quiet `QUIET` (autosave saves as one types), one run at
-//! a time (`build.rs`: a save during a run makes one more).
+//! A `watch` profile's command is not started at the start: it shows paused till the Build button's ▶, or a PDF shown
+//! beside a text. Then it runs till paused, another (or none) is chosen, or the app quits; in a process group of its own,
+//! stopped whole (`make watch` starts texmark, which starts LaTeX). What it prints goes to
+//! `.papers-write/build/<name>.log`, read to tell whether it is building now. The same command running already in the
+//! project's folder (started in a terminal) is not started again: it is followed, and never stopped. While a watch runs,
+//! a Build With profile making the same PDF is not run (`kept_pdf`): the watch keeps it.
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -41,12 +42,12 @@ pub enum Background {
     Started(Child),
     /// the same command, started elsewhere (a terminal): its process, followed
     Elsewhere(u32),
-    /// a `save` profile: the saves counted, the last one's run waits `QUIET` for no other
-    OnSave(u64),
 }
 
-/// How long the project's files are to be quiet after a save before a `save` profile runs.
+/// How long the project's files are to be quiet after a save before Build After Saves builds.
 const QUIET: std::time::Duration = std::time::Duration::from_secs(5);
+/// The saves of each project (by folder) counted: a build after saves waits `QUIET` for no other.
+static SAVES: std::sync::LazyLock<Mutex<HashMap<PathBuf, u64>>> = std::sync::LazyLock::new(Default::default);
 
 /// What the Build button says of a project's background.
 #[derive(Serialize)]
@@ -55,7 +56,7 @@ pub struct Shown {
     /// the document it runs for, when its command names it (`{file}`)
     file: Option<String>,
     /// "busy" (started here, building now: its log written a moment ago and not yet back to watching), "watching"
-    /// (started here), "elsewhere" (followed), "ended" (its command exited), "on-save", "paused" (chosen,
+    /// (started here), "elsewhere" (followed), "ended" (its command exited), "paused" (chosen,
     /// not started: the app started since, or paused by hand)
     state: &'static str,
 }
@@ -67,6 +68,11 @@ pub struct Profiles {
     active: Option<String>,
     /// the profile in the background, and how it is
     background: Option<Shown>,
+    /// the PDF a running watch keeps up to date (as its profile says it): a Build With profile making the same one is
+    /// not run while it runs
+    kept: Option<PathBuf>,
+    /// Build ▸ Build After Saves, for the project
+    on_save: bool,
     wrong: Vec<String>,
     /// the folder of the profiles, to open
     folder: Option<String>,
@@ -93,7 +99,7 @@ fn builds_now(profile: &Profile) -> bool {
 
 fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
     let Some(root) = project::find(source) else {
-        return Profiles { profiles: vec![], active: None, background: None, wrong: vec![], folder: None };
+        return Profiles { profiles: vec![], active: None, background: None, kept: None, on_save: false, wrong: vec![], folder: None };
     };
     let (profiles, wrong) = profiles::list(&root);
     let active = chosen(app, source, &root).filter(|n| profiles.iter().any(|p| &p.name == n && builds_now(p)));
@@ -109,9 +115,10 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
             },
             Background::Elsewhere(pid) if alive(*pid) => "elsewhere",
             Background::Elsewhere(_) => "ended",
-            Background::OnSave(_) => "on-save",
         },
     });
+    let kept = kept_pdf(app, &root);
+    let on_save = projects::with_saved(app, |saved| saved.build_on_save.contains(&root));
     let background = background.or_else(|| {
         let (name, file) = projects::with_saved(app, |saved| saved.background.get(&root).cloned())?;
         let shown = profiles.iter().find(|p| p.name == name)?;
@@ -121,7 +128,40 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
             state: "paused",
         })
     });
-    Profiles { profiles, active, background, wrong, folder: Some(profiles::dir_of(&root).to_string_lossy().into_owned()) }
+    Profiles { profiles, active, background, kept, on_save, wrong, folder: Some(profiles::dir_of(&root).to_string_lossy().into_owned()) }
+}
+
+/// The PDF the watch running in `root` keeps up to date (its profile's `pdf`, for the document it was chosen from),
+/// relative to `root`; none when no watch runs.
+pub fn kept_pdf(app: &AppHandle, root: &Path) -> Option<PathBuf> {
+    let (name, source) = {
+        let state = app.state::<Watches>();
+        let mut watches = state.0.lock().unwrap();
+        let (name, how, source) = watches.get_mut(root)?;
+        let live = match how {
+            Background::Started(child) => matches!(child.try_wait(), Ok(None)),
+            Background::Elsewhere(pid) => alive(*pid),
+        };
+        live.then(|| (name.clone(), source.clone()))?
+    };
+    let (all, _) = profiles::list(root);
+    all.into_iter().find(|p| p.name == name)?.for_document(root, &source).ok()?.pdf
+}
+
+/// Build ▸ Build After Saves for the page's project, on or off.
+#[tauri::command]
+pub fn set_build_on_save(window: Webview, on: bool) -> Result<Profiles, String> {
+    let app = window.app_handle();
+    let source = documents::path_of(app, window.label()).ok_or("Save the document first")?;
+    let root = project::find(&source).ok_or("Not in a project: File ▸ Open Project… makes a folder one")?;
+    projects::with_saved(app, |saved| {
+        saved.build_on_save.retain(|r| r != &root);
+        if on {
+            saved.build_on_save.push(root.clone());
+        }
+    });
+    menu_lists(app);
+    Ok(profiles_of(app, &source))
 }
 
 /// The build profiles of the page's document.
@@ -129,7 +169,7 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
 pub fn build_profiles(window: Webview) -> Profiles {
     match documents::path_of(window.app_handle(), window.label()) {
         Some(source) => profiles_of(window.app_handle(), &source),
-        None => Profiles { profiles: vec![], active: None, background: None, wrong: vec![], folder: None },
+        None => Profiles { profiles: vec![], active: None, background: None, kept: None, on_save: false, wrong: vec![], folder: None },
     }
 }
 
@@ -150,7 +190,7 @@ pub fn set_build_profile(window: Webview, name: Option<String>) -> Result<Profil
 
 /// The profile `name` chosen to run in the background of the page's project (none: nothing). What ran there is
 /// stopped (unless started elsewhere); a `watch` profile's command is started, unless it runs already in the project's
-/// folder; a `save` profile's is run now, then after the saves.
+/// folder.
 #[tauri::command]
 pub fn set_background(window: Webview, name: Option<String>) -> Result<Profiles, String> {
     let app = window.app_handle();
@@ -178,7 +218,6 @@ pub fn background_play(window: Webview, play: bool) -> Result<Profiles, String> 
     let running = app.state::<Watches>().0.lock().unwrap().get_mut(&root).is_some_and(|(_, how, _)| match how {
         Background::Started(child) => matches!(child.try_wait(), Ok(None)),
         Background::Elsewhere(pid) => alive(*pid),
-        Background::OnSave(_) => true,
     });
     if play && !running {
         stop(app, &root);
@@ -194,7 +233,6 @@ pub fn background_play(window: Webview, play: bool) -> Result<Profiles, String> 
 
 /// The profile `name` started in the background of `root`, for the document `source` (none: nothing).
 fn start_background(app: &AppHandle, root: &Path, name: Option<String>, source: &Path) -> Result<(), String> {
-    let window_label = documents::front(app).map(|w| w.label().to_string()).unwrap_or_default();
     let root = root.to_path_buf();
     let source = source.to_path_buf();
     if let Some(name) = name {
@@ -206,10 +244,6 @@ fn start_background(app: &AppHandle, root: &Path, name: Option<String>, source: 
                 Some(pid) => Background::Elsewhere(pid),
                 None => Background::Started(start(&root, &profile)?),
             },
-            Run::Save => {
-                crate::build::run_profile_for(app, &window_label, profile.clone(), root.clone());
-                Background::OnSave(0)
-            }
             _ => return Err(format!("{name}: a profile Build runs, not one for the background")),
         };
         app.state::<Watches>().0.lock().unwrap().insert(root.clone(), (name, how, source.clone()));
@@ -217,26 +251,27 @@ fn start_background(app: &AppHandle, root: &Path, name: Option<String>, source: 
     Ok(())
 }
 
-/// A file of a project saved by the page `label`: the project's `save` profile run once its files have been quiet.
+/// A file of a project saved by the page `label`: with Build After Saves on for the project, Build (as Build With
+/// says) once its files have been quiet `QUIET`.
 pub fn saved(app: &AppHandle, label: &str, path: &Path) {
     let Some(root) = project::find(path) else { return };
+    if !projects::with_saved(app, |saved| saved.build_on_save.contains(&root)) {
+        return;
+    }
     let count = {
-        let state = app.state::<Watches>();
-        let mut watches = state.0.lock().unwrap();
-        let Some((_, Background::OnSave(count), _)) = watches.get_mut(&root) else { return };
+        let mut saves = SAVES.lock().unwrap();
+        let count = saves.entry(root.clone()).or_default();
         *count += 1;
         *count
     };
     let (app, label) = (app.clone(), label.to_string());
     std::thread::spawn(move || {
         std::thread::sleep(QUIET);
-        let (name, source) = match app.state::<Watches>().0.lock().unwrap().get(&root) {
-            Some((name, Background::OnSave(now), source)) if *now == count => (name.clone(), source.clone()),
-            _ => return,
-        };
-        let (all, _) = profiles::list(&root);
-        if let Some(Ok(profile)) = all.into_iter().find(|p| p.name == name).map(|p| p.for_document(&root, &source)) {
-            crate::build::run_profile_for(&app, &label, profile, root);
+        if SAVES.lock().unwrap().get(&root) != Some(&count) {
+            return;
+        }
+        if let Some(window) = app.get_webview(&label) {
+            let _ = crate::build::build(app.clone(), window, false);
         }
     });
 }
@@ -361,12 +396,19 @@ pub struct MenuLists {
     build: tauri::menu::Submenu<tauri::Wry>,
     with: tauri::menu::Submenu<tauri::Wry>,
     behind: tauri::menu::Submenu<tauri::Wry>,
+    on_save: tauri::menu::CheckMenuItem<tauri::Wry>,
     shown: (bool, bool),
 }
 
 /// The Build menu's lists kept, for `menu_lists` to fill them, and to put them in or take them out.
-pub fn keep_menu_lists(app: &AppHandle, build: tauri::menu::Submenu<tauri::Wry>, with: tauri::menu::Submenu<tauri::Wry>, behind: tauri::menu::Submenu<tauri::Wry>) {
-    let lists = MenuLists { build, with, behind, shown: (false, false) };
+pub fn keep_menu_lists(
+    app: &AppHandle,
+    build: tauri::menu::Submenu<tauri::Wry>,
+    with: tauri::menu::Submenu<tauri::Wry>,
+    behind: tauri::menu::Submenu<tauri::Wry>,
+    on_save: tauri::menu::CheckMenuItem<tauri::Wry>,
+) {
+    let lists = MenuLists { build, with, behind, on_save, shown: (false, false) };
     match app.try_state::<Mutex<Option<MenuLists>>>() {
         Some(state) => *state.lock().unwrap() = Some(lists),
         None => {
@@ -389,6 +431,8 @@ pub fn menu_lists(app: &AppHandle) {
         let shown = documents::front(app).and_then(|page| documents::path_of(app, page.label())).map(|source| profiles_of(app, &source));
         let p = shown.as_ref().filter(|p| p.folder.is_some());
         let want = (p.is_some(), p.is_some_and(|p| p.profiles.iter().any(|q| !builds_now(q))));
+        let _ = lists.on_save.set_enabled(p.is_some());
+        let _ = lists.on_save.set_checked(p.is_some_and(|p| p.on_save));
         for (sub, background) in [(&lists.with, false), (&lists.behind, true)] {
             for item in sub.items().unwrap_or_default() {
                 let _ = sub.remove(&item);
@@ -397,10 +441,11 @@ pub fn menu_lists(app: &AppHandle) {
             let on = if background { p.background.as_ref().map(|b| b.name.clone()) } else { p.active.clone() };
             let mut items = vec![(String::new(), if background { "Nothing" } else { "This Document" }.to_string())];
             for profile in p.profiles.iter().filter(|q| builds_now(q) != background) {
+                let kept = !background && p.kept.is_some() && p.kept == profile.pdf;
                 let how = match profile.run {
                     Run::Watch => " (kept running)",
-                    Run::Save => " (after saves)",
                     Run::External => " (built elsewhere)",
+                    Run::Build if kept => " (kept by the watch)",
                     Run::Build => "",
                 };
                 items.push((profile.name.clone(), format!("{}{how}", profile.name)));

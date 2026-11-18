@@ -260,6 +260,7 @@ pub fn run() {
             profiles::set_build_profile,
             profiles::set_background,
             profiles::background_play,
+            profiles::set_build_on_save,
             profiles::reveal_profiles,
             sidepdf::set_side_pdf,
             sidepdf::choose_side_pdf,

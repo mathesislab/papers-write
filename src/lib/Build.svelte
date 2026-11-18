@@ -20,7 +20,8 @@
   type Status = {
     what: "build" | "diff";
     /** "external": a profile built elsewhere, only followed */
-    state: "building" | "done" | "failed" | "external";
+    /** "kept": not built, the watch in the background keeps its PDF */
+    state: "building" | "done" | "failed" | "external" | "kept";
     seconds: number | null;
     pdf: string | null;
     log: string | null;
@@ -53,20 +54,20 @@
   let ended = $state<Date | null>(null);
 
   /** the build profiles of the document's project (`.papers-write/build/*.toml`) and the one active */
-  type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "save" | "external" };
+  type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "external" };
   /** what runs in the background of the project: "watching" (started here), "elsewhere" (the same command started in
-   *  a terminal, followed), "ended" (its command exited), "on-save" (run after the saves) */
-  type Background = { name: string; file: string | null; state: "busy" | "watching" | "elsewhere" | "ended" | "on-save" | "paused" };
-  type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; wrong: string[]; folder: string | null };
+   *  a terminal, followed), "ended" (its command exited), "paused" (chosen, not started), "busy" (building now) */
+  type Background = { name: string; file: string | null; state: "busy" | "watching" | "elsewhere" | "ended" | "paused" };
+  type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; kept: string | null; on_save: boolean; wrong: string[]; folder: string | null };
   let profiles = $state<Profiles | null>(null);
   const loadProfiles = async () => (profiles = await invoke<Profiles>("build_profiles").catch(() => null));
   /** the active profile's name, said after what the button says */
-  const named = $derived(profiles?.active ? ` · ${profiles.active}` : "");
+  const named = $derived((profiles?.active ? ` · ${profiles.active}` : "") + (profiles?.on_save ? " · after saves" : ""));
   /** the background, said after it */
-  const BACKGROUND = { busy: "building", watching: "watching", elsewhere: "watching (terminal)", ended: "ended", "on-save": "on save", paused: "paused" };
+  const BACKGROUND = { busy: "building", watching: "watching", elsewhere: "watching (terminal)", ended: "ended", paused: "paused" };
   /** the background's button: ▶ starts what is paused (or ended), ❚❚ pauses what runs (still chosen) */
   const behind = $derived(profiles?.background ?? null);
-  const running = $derived(behind?.state === "busy" || behind?.state === "watching" || behind?.state === "on-save");
+  const running = $derived(behind?.state === "busy" || behind?.state === "watching");
   // while something runs in the background, its state looked at every second or two (building, watching, ended)
   $effect(() => {
     if (!running && behind?.state !== "elsewhere") return;
@@ -81,7 +82,11 @@
 
   const errors = $derived(status?.errors.length ?? 0);
   const label = $derived(
-    status?.state === "external" ? `Built elsewhere${named}` : labelOf() + (status?.state === "building" ? "" : named),
+    status?.state === "external"
+      ? `Built elsewhere${named}`
+      : status?.state === "kept"
+        ? `Kept by the watch${named}`
+        : labelOf() + (status?.state === "building" ? "" : named),
   );
   function labelOf(): string {
     return !status
@@ -131,15 +136,19 @@
       status = null;
     };
     const behind = async (name: string | null) => (profiles = (await request<Profiles>("set_background", { name })) ?? profiles);
-    const RUNS = { build: "", watch: " (kept running)", save: " (after saves)", external: " (built elsewhere)" };
+    const RUNS = { build: "", watch: " (kept running)", external: " (built elsewhere)" };
     const now = profiles.profiles.filter((p) => p.run === "build" || p.run === "external");
-    const background = profiles.profiles.filter((p) => p.run === "watch" || p.run === "save");
+    const background = profiles.profiles.filter((p) => p.run === "watch");
+    // a Build With profile making the PDF the running watch keeps: not built while it runs
+    const keptBy = (p: Profile) => (p.run === "build" && profiles?.kept && p.pdf === profiles.kept ? " (kept by the watch)" : "");
+    const onSave = async (on: boolean) => (profiles = (await request<Profiles>("set_build_on_save", { on })) ?? profiles);
     const on = profiles.background?.name;
     return [
       PredefinedMenuItem.new({ item: "Separator" }),
       MenuItem.new({ text: "Build With", enabled: false }),
       CheckMenuItem.new({ text: "This Document", checked: !profiles.active, action: () => void choose(null) }),
-      ...now.map((p) => CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}`, checked: profiles?.active === p.name, action: () => void choose(p.name) })),
+      ...now.map((p) => CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}${keptBy(p)}`, checked: profiles?.active === p.name, action: () => void choose(p.name) })),
+      CheckMenuItem.new({ text: "Build After Saves", checked: profiles.on_save, action: () => void onSave(!profiles?.on_save) }),
       ...(background.length
         ? [
             PredefinedMenuItem.new({ item: "Separator" }),
@@ -250,7 +259,7 @@
       onclick={playPause}
       title="{commandOf(behind.name)}: {BACKGROUND[behind.state]}. {behind.state === 'elsewhere' ? 'Started in a terminal: stopped there' : running ? 'A click pauses it (still chosen)' : 'A click starts it'}"
     >
-      {running || behind.state === "elsewhere" ? "●" : "▶"} {behind.name}{behind.file ? `: ${behind.file}` : ""}{behind.state === "on-save" ? " (on save)" : behind.state === "elsewhere" ? " (terminal)" : behind.state === "ended" ? " (ended)" : ""}
+      {running || behind.state === "elsewhere" ? "●" : "▶"} {behind.name}{behind.file ? `: ${behind.file}` : ""}{behind.state === "elsewhere" ? " (terminal)" : behind.state === "ended" ? " (ended)" : ""}
     </button>
   {/if}
   {#if status && status.state !== "building" && (status.state === "failed" || errors)}
@@ -335,7 +344,6 @@
     cursor: pointer;
   }
   .behind.watching,
-  .behind.on-save,
   .behind.elsewhere {
     color: #2f9e57;
     border-color: #2f9e57;

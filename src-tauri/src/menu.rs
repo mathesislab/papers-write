@@ -374,9 +374,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     if !MAC {
         let with = Submenu::with_id(app, "build-with", "Build With", true)?;
         let behind = Submenu::with_id(app, "background", "In the Background", true)?;
-        build.append_items(&[&separator()?, &separator()?, &item("build-profiles", "Build Profiles…", None)?, &item("build-tools", "Build Tools…", None)?])?;
+        let on_save = CheckMenuItem::with_id(app, "build-on-save", "Build After Saves", true, false, None::<&str>)?;
+        build.append_items(&[&separator()?, &separator()?, &on_save, &item("build-profiles", "Build Profiles…", None)?, &item("build-tools", "Build Tools…", None)?])?;
         // the two lists put in (after the first separator) by `profiles::menu_lists` when they have something to list
-        crate::profiles::keep_menu_lists(app, build.clone(), with, behind);
+        crate::profiles::keep_menu_lists(app, build.clone(), with, behind, on_save);
     }
     // the PDF of the window in front (a window of a PDF; the other pages ignore these)
     // macOS: Alex's PDF menu, the zoom's keys in it; elsewhere View has them (and the PDF's own tools)
@@ -515,6 +516,18 @@ fn command(app: &AppHandle, id: &str) {
         "close" => crate::tabs::close_front(app),
         "close-all" => crate::documents::close_all_front(app),
         "build-tools" => crate::settings::show(app, Some("build")),
+        "build-on-save" => {
+            if let Some(page) = documents::front(app) {
+                let label = page.label().to_string();
+                let on = documents::path_of(app, &label)
+                    .and_then(|p| write_core::project::find(&p))
+                    .is_some_and(|root| crate::projects::with_saved(app, |saved| saved.build_on_save.contains(&root)));
+                if let Err(e) = crate::profiles::set_build_on_save(page, !on) {
+                    crate::sheet::tell(app, None, "Build After Saves", e, crate::sheet::Level::Error);
+                }
+                let _ = app.emit_to(EventTarget::webview(&label), "profiles-changed", ());
+            }
+        }
         "build-profiles" => {
             if let Some(page) = documents::front(app)
                 && let Err(e) = crate::profiles::reveal_profiles(page)

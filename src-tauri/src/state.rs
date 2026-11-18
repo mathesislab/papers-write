@@ -36,6 +36,8 @@ pub struct Saved {
     /// what was chosen to run in the background of each project, and the document it was chosen from: not started at
     /// the start, shown paused till asked (the Build button's ▶, the PDF shown beside a text)
     pub background: BTreeMap<PathBuf, (String, PathBuf)>,
+    /// the projects (by folder) whose saves are followed by a build (Build ▸ Build After Saves), as Build With says
+    pub build_on_save: Vec<PathBuf>,
     /// the sidebar of each project, and the last one changed (`sidebars` and `sidebar` in the file)
     #[serde(flatten)]
     pub sidebars: Sidebars,

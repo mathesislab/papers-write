@@ -636,3 +636,55 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
+
+/// A chapter beside another: its file, and its title (its first heading, else its name).
+#[derive(Serialize)]
+pub struct Chapter {
+    path: String,
+    title: String,
+}
+
+/// The chapters before and after the text at `path` in its document (the main document's `chapters:`, the main one
+/// first); none for a text that is not one of them.
+#[derive(Serialize, Default)]
+pub struct Neighbours {
+    previous: Option<Chapter>,
+    next: Option<Chapter>,
+}
+
+#[tauri::command]
+pub fn chapter_neighbours(path: String) -> Neighbours {
+    let path = std::path::PathBuf::from(path);
+    let Some(files) = write_core::refs::document_files(&path) else {
+        return Neighbours::default();
+    };
+    let same = |a: &std::path::Path| a.canonicalize().ok() == path.canonicalize().ok();
+    let Some(at) = files.iter().position(|f| same(f)) else {
+        return Neighbours::default();
+    };
+    let chapter = |i: usize| files.get(i).map(|f| Chapter { path: f.to_string_lossy().into_owned(), title: title_of(f) });
+    Neighbours { previous: at.checked_sub(1).and_then(chapter), next: chapter(at + 1) }
+}
+
+/// A Markdown file's first heading (`# Title {#sec:x}`: Title), else its name without the extension.
+fn title_of(file: &std::path::Path) -> String {
+    let text = std::fs::read_to_string(file).unwrap_or_default();
+    let mut fenced = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+        }
+        if fenced || !line.starts_with('#') {
+            continue;
+        }
+        let title = line.trim_start_matches('#');
+        if !title.starts_with(' ') {
+            continue;
+        }
+        let title = title.split(" {").next().unwrap_or(title).trim();
+        if !title.is_empty() {
+            return title.to_string();
+        }
+    }
+    file.file_stem().unwrap_or_default().to_string_lossy().into_owned()
+}

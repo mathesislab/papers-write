@@ -397,6 +397,39 @@
       else localStorage.removeItem(activeKey(path));
     } catch {}
   }
+  /** The chapters before and after this text in its document, linked at the top and the end of its preview. */
+  type Chapter = { path: string; title: string };
+  let chapters = $state<{ previous: Chapter | null; next: Chapter | null }>({ previous: null, next: null });
+  $effect(() => {
+    const p = path;
+    if (!p) return void (chapters = { previous: null, next: null });
+    void invoke<{ previous: Chapter | null; next: Chapter | null }>("chapter_neighbours", { path: p }).then((c) => path === p && (chapters = c)).catch(() => {});
+  });
+  /** A chapter of the preview's links opened, with its preview as this one's is: beside it, or its tab (in front when
+   *  the click was there). Its page reads the pane kept for it as it loads; one loaded already is told (`CHAPTER`). */
+  const CHAPTER = "chapter-open";
+  function openChapter(file: string, fromTab = false) {
+    try {
+      localStorage.setItem(paneKey(file), "preview");
+      if (inTabs ? fromTab : paneActive) localStorage.setItem(activeKey(file), "1");
+      else localStorage.removeItem(activeKey(file));
+      localStorage.setItem(CHAPTER, `${file}\n${Date.now()}`);
+    } catch {}
+    void invoke("open_document", { path: file }).catch((e) => say(String(e)));
+  }
+  /** This text opened from another chapter's preview while loaded: its preview shown, as that one's was. */
+  function chapterOpened() {
+    let active = false;
+    try {
+      active = localStorage.getItem(activeKey(path ?? "")) === "1";
+    } catch {}
+    if (inTabs) {
+      if (!previewTab) void openPreviewTab().then(() => !active && bringText());
+      return;
+    }
+    if (!previewing) togglePreview(false);
+    if (active) setTimeout(focusPane, 400);
+  }
   /** The side worked in: the pane's or the text's, kept. */
   function setActive(pane: boolean) {
     if (paneActive === pane) return;
@@ -527,6 +560,7 @@
     if (what.kind === "want") void sendPreview();
     else if (what.kind === "shown") setActive(true);
     else if (what.kind === "block") scrollToBlock(what.index ?? 0, true);
+    else if (what.kind === "chapter" && what.text) openChapter(what.text, true);
     else if (what.kind === "pdf") void previewToPdf(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
     else if (what.kind === "source") {
       void invoke("bring_tab", { page: getCurrentWebview().label });
@@ -564,7 +598,10 @@
     }
   }
   $effect(() => {
-    const changed = (e: StorageEvent) => e.key === PANES && (panesMode = readPanes());
+    const changed = (e: StorageEvent) => {
+      if (e.key === PANES) panesMode = readPanes();
+      else if (e.key === CHAPTER && path && e.newValue?.split("\n")[0] === path) chapterOpened();
+    };
     const resized = () => (narrow = window.innerWidth < NARROW);
     window.addEventListener("storage", changed);
     window.addEventListener("resize", resized);
@@ -1258,7 +1295,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
-      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} />
+      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file) => openChapter(file)} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}

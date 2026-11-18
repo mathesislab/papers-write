@@ -244,24 +244,39 @@
   const entries = $derived([...rules, ...[...LATEX].map(([keys, insert]) => ({ keys, insert }))]);
   // ⌘/ in the editor lists the symbols (the menu's Symbols… has the key first, in the app)
   const listKey = Prec.high(keymap.of([{ key: "Mod-/", run: () => (list(), true) }]));
-  /** the headings of the text and the one the cursor is under (kept while someone listens) */
+  /** the headings of the text and the one of what shows at the top of the view (kept while someone listens) */
   let headings: Heading[] = [];
   let here = -1;
+  /** The place at the top of what shows (a little below its edge): the outline marks the heading it is under, as
+   *  one reads, scrolls or types, without a click. */
+  const shownAt = (view: EditorView) => view.lineBlockAtHeight(view.scrollDOM.scrollTop + 24).from;
   const selection = EditorView.updateListener.of((u) => {
     if (u.selectionSet || u.docChanged) selected = selectedWords(u.state);
     findbar = findBar(u.state);
-    if (onoutline && (u.docChanged || u.selectionSet)) {
+    if (onoutline && (u.docChanged || u.selectionSet || u.viewportChanged || u.geometryChanged)) {
       const before = here;
       if (u.docChanged) headings = outlineOf(u.state);
-      here = currentHeading(headings, u.state.selection.main.head);
+      here = currentHeading(headings, shownAt(u.view));
       if (u.docChanged || here !== before) onoutline(headings, here);
     }
+  });
+  /** Scrolled: the heading of what shows now, told (once a frame). */
+  let scrolling = 0;
+  const scrolled = EditorView.domEventHandlers({
+    scroll(_e, view) {
+      if (!onoutline || scrolling) return;
+      scrolling = requestAnimationFrame(() => {
+        scrolling = 0;
+        const now = currentHeading(headings, shownAt(view));
+        if (now !== here) onoutline?.(headings, (here = now));
+      });
+    },
   });
   /** The headings of the text as it is, told (when someone listens). */
   function readHeadings() {
     if (!onoutline || !editor) return;
     headings = outlineOf(editor.state);
-    here = currentHeading(headings, editor.state.selection.main.head);
+    here = currentHeading(headings, shownAt(editor));
     onoutline(headings, here);
   }
   /** A heading chosen in the outline: the cursor there, its line near the top. */
@@ -357,6 +372,7 @@
         extensions: [
           ...extensions,
           selection,
+          scrolled,
           found,
           flashing,
           clicks,

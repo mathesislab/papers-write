@@ -1,6 +1,6 @@
 <script lang="ts">
-  // The outline as a tree that opens around where one is: the top-level headings always there, the heading of the
-  // cursor (`current`) with the path to it opened, then, while the list stays within a budget (what fits in the
+  // The outline as a tree that opens around where one is: the top-level headings always there, the heading of what
+  // shows (`current`: the text's view, as one reads or scrolls) with the path to it opened, then, while the list stays within a budget (what fits in the
   // sidebar, at most MOST lines), the headings around it opened too; the rest folded (▸). It follows the text: as the
   // cursor goes to another heading, the tree opens around it again. A click on ▸/▾ opens or folds by hand (till the
   // cursor goes elsewhere), on a title goes there. Keys, as the file tree's: Up and Down, Right opens (or goes in),

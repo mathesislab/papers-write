@@ -101,6 +101,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            preview::document_outline,
+            preview::heading_place,
             settings::settings,
             settings::set_settings,
             settings::tools_found,

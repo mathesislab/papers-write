@@ -6,7 +6,8 @@
 //! ```toml
 //! command = "make synopsis"
 //! pdf = "build/synopsis.pdf"
-//! run = "build"     # Build runs it; "watch": started and kept running; "external": never run, its PDF followed
+//! run = "build"     # Build runs it; "watch": started and kept running (Build again: stopped); "save": run after the
+//!                   # project's files are saved (Build turns that on and off); "external": never run, its PDF followed
 //! ```
 
 use std::fs;
@@ -26,8 +27,12 @@ pub enum Run {
     /// Build runs the command, and waits for it
     #[default]
     Build,
-    /// Build starts the command (`make watch`, `texmark --watch`) and leaves it running till the app quits
+    /// Build starts the command (`make watch`, `texmark --watch`) and leaves it running till Build again or the app
+    /// quits; the same command running already in the project's folder (started in a terminal) is followed instead
     Watch,
+    /// Build turns on (and again off) running the command after the project's files are saved, once they have been
+    /// quiet a few seconds (autosave), for tools without a watch of their own
+    Save,
     /// the command is run elsewhere (a terminal): Build only shows the PDF
     External,
 }
@@ -93,13 +98,14 @@ mod tests {
             ("synopsis.toml", "command = \"make synopsis\"\npdf = \"build/synopsis.pdf\"\n"),
             ("full.toml", "command = \"make full\"\npdf = \"build-full/thesis.pdf\"\nrun = \"watch\"\n"),
             ("terminal.toml", "pdf = \"build/synopsis.pdf\"\nrun = \"external\"\n"),
+            ("quick.toml", "command = \"make synopsis-fast\"\nrun = \"save\"\n"),
             ("broken.toml", "pdf = \"x.pdf\"\n"),
             ("notes.txt", "not a profile"),
         ]);
         let (profiles, wrong) = list(&root);
         let names: Vec<(&str, Run)> = profiles.iter().map(|p| (p.name.as_str(), p.run)).collect();
-        assert_eq!(names, [("full", Run::Watch), ("synopsis", Run::Build), ("terminal", Run::External)]);
-        assert_eq!(profiles[1].pdf.as_deref(), Some(Path::new("build/synopsis.pdf")));
+        assert_eq!(names, [("full", Run::Watch), ("quick", Run::Save), ("synopsis", Run::Build), ("terminal", Run::External)]);
+        assert_eq!(profiles[2].pdf.as_deref(), Some(Path::new("build/synopsis.pdf")));
         assert_eq!(wrong.len(), 1);
         assert!(wrong[0].contains("broken.toml") && wrong[0].contains("no command"), "{wrong:?}");
         let _ = fs::remove_dir_all(&root);

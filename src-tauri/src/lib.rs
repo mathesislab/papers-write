@@ -123,6 +123,7 @@ pub fn run() {
             panetabs::preview_tab,
             panetabs::preview_tab_of,
             panetabs::tab_in_front,
+            panetabs::pdf_tab_back,
             panetabs::relay,
             panetabs::bring_tab,
             panetabs::page_path,

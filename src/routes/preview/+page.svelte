@@ -34,6 +34,8 @@
         }),
         listen<number>("preview-block", (e) => (block = e.payload)),
         listen("preview-flash", () => queueMicrotask(() => preview?.flash())),
+        // View ▸ Show Preview (⇧⌘P) with the preview in front: back to its text, as a toggle
+        listen("preview", () => void invoke("bring_tab", { page: of })),
         // in front: the preview's side is the one worked in (kept by the text's page)
         listen<boolean>("tab-shown", (e) => e.payload && void tell({ kind: "shown" })),
       ];

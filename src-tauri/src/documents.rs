@@ -317,9 +317,15 @@ pub async fn save_untitled(
     window: Webview,
     text: String,
 ) -> Result<Option<String>, String> {
-    let Some(file) = app
-        .dialog()
-        .file()
+    // in the folder of the tab's project (the window's), as Open… starts in it; else the system's choice (the home)
+    let start = crate::tabs::project_of_page(&app, window.label())
+        .or_else(|| crate::tabs::window_of(&app, window.label()).and_then(|w| crate::tabs::project_of_window(&app, &w)));
+    let dialog = app.dialog().file();
+    let dialog = match start {
+        Some(folder) => dialog.set_directory(folder),
+        None => dialog,
+    };
+    let Some(file) = dialog
         .set_title("Save")
         .set_file_name("Untitled.md")
         .blocking_save_file()

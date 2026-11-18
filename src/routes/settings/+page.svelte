@@ -49,6 +49,9 @@
   ];
 
   let settings = $state<Settings | null>(null);
+  /** the speech tools found, for Read Aloud */
+  let speakers = $state<{ name: string; command: string }[]>([]);
+  void invoke<{ name: string; command: string }[]>("speakers_found").then((s) => (speakers = s)).catch(() => {});
   let tab = $state<Tab>("editor");
   /** where each tool is found as usual: the path, or null; undefined until asked */
   let found = $state<Record<Tool, string | null> | undefined>();
@@ -377,6 +380,16 @@
           </span>
           <input class="text path" bind:value={settings.read_aloud} onchange={save} placeholder={"bard --text {text}"} autocomplete="off" spellcheck="false" aria-label="Read Aloud command" />
         </label>
+        {#if speakers.length}
+          <div class="row">
+            <span class="grow"><span class="label">Found on this computer</span><span class="hint">A click puts its command above</span></span>
+            <span class="speakers">
+              {#each speakers as s (s.name)}
+                <button onclick={() => settings && ((settings.read_aloud = s.command), save())} title={s.command}>{s.name}</button>
+              {/each}
+            </span>
+          </div>
+        {/if}
       </section>
     </div>
 
@@ -480,6 +493,12 @@
 {/if}
 
 <style>
+  .speakers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
+  }
   .number {
     width: 5em;
   }

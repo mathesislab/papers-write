@@ -298,10 +298,17 @@ pub fn toggle_project_bar(app: &AppHandle) {
     put(app, settings);
 }
 
+/// The project bar's pin: pinned (always shown), or sliding in on hover.
+#[tauri::command]
+pub fn pin_project_bar(app: AppHandle) {
+    toggle_project_bar(&app);
+}
+
 /// The check mark of View ▸ Show Project Bar on Hover, as the settings say.
 fn sync_menu(app: &AppHandle, settings: &Settings) {
     if let Some(item) = app.menu().and_then(|m| m.get("project-bar")).and_then(|k| k.as_check_menuitem().cloned()) {
-        let _ = item.set_checked(settings.project_bar == ProjectBar::Hover);
+        // macOS: Show Project Bar on Hover; elsewhere Pin the Project Bar (the other way round)
+        let _ = item.set_checked((settings.project_bar == ProjectBar::Hover) == cfg!(target_os = "macos"));
     }
 }
 

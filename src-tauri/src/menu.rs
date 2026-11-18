@@ -264,12 +264,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                 &item("sidebar", "Show Files", Some(if MAC { "Alt+CmdOrCtrl+S" } else { "Ctrl+Alt+O" }))?,
                 &item("outline", "Show Outline", Some(if MAC { "Alt+CmdOrCtrl+O" } else { "Ctrl+Alt+H" }))?,
                 // the project bar hidden at the window's left edge till the pointer comes there (Settings ▸ Window)
+                // the bar pinned (always shown), or sliding in on hover: the bar's own pin does the same
                 &CheckMenuItem::with_id(
                     app,
                     "project-bar",
-                    "Show Project Bar on Hover",
+                    "Pin the Project Bar",
                     true,
-                    crate::settings::get().project_bar == crate::settings::ProjectBar::Hover,
+                    crate::settings::get().project_bar != crate::settings::ProjectBar::Hover,
                     None::<&str>,
                 )?,
                 &separator()?,

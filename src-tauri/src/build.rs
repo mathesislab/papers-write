@@ -851,10 +851,29 @@ pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> 
         },
     };
     let Some((profile, root)) = crate::profiles::active(&app, &file) else {
+        // the document's own PDF kept up to date by a watch in the background (texmark watch): shown, not built again
+        if let Some(root) = project::find(&file)
+            && let Some(kept) = crate::profiles::kept_pdf(&app, &root)
+        {
+            let own = project::build_dir_of(&file).join(format!("{}.pdf", file.file_stem().unwrap_or_default().to_string_lossy()));
+            if root.join(&kept) == own {
+                if show && own.is_file() {
+                    let _ = documents::open_file(&app, &own);
+                }
+                tell(&app, window.label(), Status {
+                    what: "build",
+                    state: "kept",
+                    pdf: Some(s(&own)),
+                    message: Some("kept up to date by the watch in the background".into()),
+                    ..Default::default()
+                });
+                return Ok(());
+            }
+        }
         request(&app, &window, file, Job::Build { show });
         return Ok(());
     };
-    let profile = profile.for_document(&root, &file)?;
+    let profile = profile.for_document_with(&root, &file, &crate::profiles::tools())?;
     let pdf = profile.pdf.as_ref().map(|p| root.join(p));
     let show_pdf = |pdf: &Option<PathBuf>| {
         if show && let Some(pdf) = pdf.as_ref().filter(|p| p.is_file()) {

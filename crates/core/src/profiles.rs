@@ -12,8 +12,10 @@
 //!
 //! The command and the PDF may name the document they are run for (the one in front; for a profile run in the
 //! background, the one it was chosen from): `{file}` (its path from the project's folder), `{stem}` (its name without
-//! the extension), `{dir}` (its folder from the project's), and in the command `{pdf}` (the `pdf` said, filled in
-//! likewise). In the command they are quoted for the shell as needed:
+//! the extension), `{dir}` (its folder from the project's), `{build}` (the project's build folder, from its folder:
+//! `build_dir` of `write.toml`, else `build`), and in the command `{pdf}` (the `pdf` said, filled in likewise) and
+//! `{texmark}` (the texmark the app found: the app's PATH is not a terminal's). In the command they are quoted for the
+//! shell as needed:
 //!
 //! ```toml
 //! command = "texmark {file} --pdf -o {pdf}"
@@ -56,6 +58,9 @@ pub struct Profile {
     pub pdf: Option<PathBuf>,
     #[serde(default)]
     pub run: Run,
+    /// one the app offers itself (texmark found), not a file of the project
+    #[serde(default, skip_deserializing)]
+    pub builtin: bool,
 }
 
 /// The profile of the file `path`, named after it; an error says what is wrong with it.
@@ -73,19 +78,30 @@ impl Profile {
     /// Whether it names the document it is run for (`{file}`, `{stem}`, `{dir}`).
     pub fn per_document(&self) -> bool {
         let pdf = self.pdf.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-        ["{file}", "{stem}", "{dir}"].iter().any(|t| self.command.contains(t) || pdf.contains(t))
+        ["{file}", "{stem}", "{dir}", "{build}"].iter().any(|t| self.command.contains(t) || pdf.contains(t))
     }
 
     /// The profile for the document `file` of the project at `root`: its templates filled in.
     pub fn for_document(&self, root: &Path, file: &Path) -> Result<Profile, String> {
+        self.for_document_with(root, file, &[])
+    }
+
+    /// `for_document`, with more templates (`{texmark}`: the tool found), quoted in the command.
+    pub fn for_document_with(&self, root: &Path, file: &Path, more: &[(&str, String)]) -> Result<Profile, String> {
         let rel = file.strip_prefix(root).unwrap_or(file);
         let slash = |p: &Path| p.to_string_lossy().replace('\\', "/");
         let file_s = slash(rel);
         let stem = rel.file_stem().unwrap_or_default().to_string_lossy().into_owned();
         let dir = rel.parent().map(slash).filter(|d| !d.is_empty()).unwrap_or_else(|| ".".into());
+        let build_dir = crate::project::build_dir_of(file);
+        let build = slash(build_dir.strip_prefix(root).unwrap_or(&build_dir));
         let fill = |text: &str, quote: bool| {
             let q = |s: &str| if quote { shell_quote(s) } else { s.to_string() };
-            text.replace("{file}", &q(&file_s)).replace("{stem}", &q(&stem)).replace("{dir}", &q(&dir))
+            let mut text = text.replace("{file}", &q(&file_s)).replace("{stem}", &q(&stem)).replace("{dir}", &q(&dir)).replace("{build}", &q(&build));
+            for (name, value) in more {
+                text = text.replace(&format!("{{{name}}}"), &q(value));
+            }
+            text
         };
         let pdf = self.pdf.as_ref().map(|p| PathBuf::from(fill(&p.to_string_lossy(), false)));
         let mut command = fill(&self.command, true);
@@ -95,7 +111,7 @@ impl Profile {
             };
             command = command.replace("{pdf}", &shell_quote(&slash(pdf)));
         }
-        Ok(Profile { name: self.name.clone(), command, pdf, run: self.run })
+        Ok(Profile { name: self.name.clone(), command, pdf, run: self.run, builtin: self.builtin })
     }
 }
 
@@ -166,6 +182,7 @@ mod tests {
             command: "texmark {file} --pdf -o {pdf} # {stem} in {dir}".into(),
             pdf: Some(PathBuf::from("build/{stem}.pdf")),
             run: Run::Build,
+            builtin: false,
         };
         assert!(p.per_document());
         let root = Path::new("/home/me/thesis");

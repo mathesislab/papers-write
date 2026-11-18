@@ -50,8 +50,7 @@
   type Chapter = { path: string; title: string };
 
   /** The ▾ in the corner: Follows the Cursor, Panes ▸, Settings ▸ Editor. */
-  async function settingsMenu(e: MouseEvent) {
-    const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  async function settingsMenu() {
     const now = await invoke<{ preview_follow: boolean }>("settings").catch(() => null);
     const items = await Promise.all([
       CheckMenuItem.new({
@@ -78,7 +77,8 @@
       PredefinedMenuItem.new({ item: "Separator" }),
       MenuItem.new({ text: "Settings…", action: () => void invoke("show_settings", { section: "editor" }) }),
     ]);
-    await (await Menu.new({ items })).popup(new LogicalPosition(at.left, at.top));
+    // at the pointer, by the arrow
+    await popupReleased(await Menu.new({ items }));
   }
   /** the chapters whose previews were made ahead */
   const prepared = new Set<string>();

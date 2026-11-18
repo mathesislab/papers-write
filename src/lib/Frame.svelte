@@ -256,10 +256,18 @@
     onmove={(root, to) => void invoke("move_in_bar", { root, to }).then(loadBar).catch((e) => onproblem(String(e)))}
     onadd={() => invoke("choose_project")} addTitle={keys("Open Project… (⇧⌘O)")} />
 {/snippet}
+{#snippet pin()}
+  <!-- the bar pinned (always shown: filled) or sliding in on hover (outlined); View ▸ Pin the Project Bar -->
+  <button class="pin" class:on={barMode === "shown"} onclick={() => void invoke("pin_project_bar")} title={barMode === "shown" ? "Unpin: the bar slides in when the pointer is at the left edge" : "Pin the project bar"} aria-label="Pin the project bar">
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill={barMode === "shown" ? "currentColor" : "none"}>
+      <path d="M6 1.8h4l-.6 4.2 2.4 2.2v1.2H4.2V8.2L6.6 6z" /><path d="M8 9.4v4.8" fill="none" />
+    </svg>
+  </button>
+{/snippet}
 {#snippet tiles()}
   {#if projects.current && projects.tiles.length}
     {#if barMode === "shown"}
-      {@render projectBar()}
+      <div class="pinned">{@render projectBar()}{@render pin()}</div>
     {:else if barMode === "hover"}
       <!-- a strip at the left edge in the project's colour; the bar slides in over the page while the pointer is on
            it (as the Ubuntu dock), and away when it leaves or a project is chosen. PDFKit's view, above the page,
@@ -268,7 +276,7 @@
       <div class="hover-bar" class:open={barOpen} bind:this={hoverBar} style:--strip={cssOf(projects.current.colour) ?? "var(--line)"} onmouseenter={barNear} onmouseleave={barAway}>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="strip" onclick={() => (barOpen = true)} title="Projects"></div>
-        <div class="slide" bind:this={slide}>{@render projectBar()}</div>
+        <div class="slide" bind:this={slide}><div class="pinned">{@render projectBar()}{@render pin()}</div></div>
       </div>
     {/if}
   {/if}
@@ -303,6 +311,32 @@
 {/if}
 
 <style>
+  /* the bar, its pin at its foot */
+  .pinned {
+    position: relative;
+    height: 100%;
+  }
+  .pin {
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    transform: translateX(-50%);
+    padding: 3px;
+    line-height: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    opacity: 0.55;
+    cursor: pointer;
+  }
+  .pin:hover,
+  .pin.on {
+    opacity: 1;
+  }
+  .pin:hover {
+    background: var(--chip, rgba(128, 128, 128, 0.15));
+  }
   .hover-bar {
     position: relative;
     flex: none;

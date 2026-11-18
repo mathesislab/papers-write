@@ -78,6 +78,28 @@ pub struct Profiles {
     folder: Option<String>,
 }
 
+/// The profiles of the project at `root` (its files), and, with texmark found, the app's own that no file of the
+/// project replaces: *texmark watch*, the document in front built by texmark on each change of its files, into the
+/// PDF Build of the document makes (`{build}/{stem}.pdf`). The files that are not profiles, with what is wrong.
+pub fn all(root: &Path) -> (Vec<Profile>, Vec<String>) {
+    let (mut list, wrong) = profiles::list(root);
+    if crate::build::found_tool("texmark").is_ok() && !list.iter().any(|p| p.name == "texmark watch") {
+        list.push(Profile {
+            name: "texmark watch".into(),
+            command: "{texmark} {file} -d {build} --watch --progressive".into(),
+            pdf: Some(PathBuf::from("{build}/{stem}.pdf")),
+            run: Run::Watch,
+            builtin: true,
+        });
+    }
+    (list, wrong)
+}
+
+/// The templates of the tools the app found: `{texmark}`.
+pub fn tools() -> Vec<(&'static str, String)> {
+    crate::build::found_tool("texmark").ok().map(|t| ("texmark", t.to_string_lossy().into_owned())).into_iter().collect()
+}
+
 /// The name of the profile chosen for `source`, else last in its project at `root`, else the project's default.
 fn chosen(app: &AppHandle, source: &Path, root: &Path) -> Option<String> {
     let kept = projects::with_saved(app, |saved| saved.profiles.get(source).or_else(|| saved.profiles.get(root)).cloned());
@@ -88,7 +110,7 @@ fn chosen(app: &AppHandle, source: &Path, root: &Path) -> Option<String> {
 pub fn active(app: &AppHandle, source: &Path) -> Option<(Profile, PathBuf)> {
     let root = project::find(source)?;
     let name = chosen(app, source, &root)?;
-    let (all, _) = profiles::list(&root);
+    let (all, _) = all(&root);
     all.into_iter().find(|p| p.name == name && builds_now(p)).map(|p| (p, root))
 }
 
@@ -101,7 +123,7 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
     let Some(root) = project::find(source) else {
         return Profiles { profiles: vec![], active: None, background: None, kept: None, on_save: false, wrong: vec![], folder: None };
     };
-    let (profiles, wrong) = profiles::list(&root);
+    let (profiles, wrong) = all(&root);
     let active = chosen(app, source, &root).filter(|n| profiles.iter().any(|p| &p.name == n && builds_now(p)));
     let per_document = |name: &str| profiles.iter().any(|p| p.name == name && p.per_document());
     let background = app.state::<Watches>().0.lock().unwrap().get_mut(&root).map(|(name, how, file)| Shown {
@@ -144,8 +166,8 @@ pub fn kept_pdf(app: &AppHandle, root: &Path) -> Option<PathBuf> {
         };
         live.then(|| (name.clone(), source.clone()))?
     };
-    let (all, _) = profiles::list(root);
-    all.into_iter().find(|p| p.name == name)?.for_document(root, &source).ok()?.pdf
+    let (all, _) = all(root);
+    all.into_iter().find(|p| p.name == name)?.for_document_with(root, &source, &tools()).ok()?.pdf
 }
 
 /// Build ▸ Build After Saves for the page's project, on or off.
@@ -236,9 +258,9 @@ fn start_background(app: &AppHandle, root: &Path, name: Option<String>, source: 
     let root = root.to_path_buf();
     let source = source.to_path_buf();
     if let Some(name) = name {
-        let (all, _) = profiles::list(&root);
+        let (all, _) = all(&root);
         let profile = all.into_iter().find(|p| p.name == name).ok_or_else(|| format!("{name}: no such profile"))?;
-        let profile = profile.for_document(&root, &source)?;
+        let profile = profile.for_document_with(&root, &source, &tools())?;
         let how = match profile.run {
             Run::Watch => match running_elsewhere(&root, &profile.command) {
                 Some(pid) => Background::Elsewhere(pid),

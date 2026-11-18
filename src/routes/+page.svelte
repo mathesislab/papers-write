@@ -465,19 +465,22 @@
     if (!previewing) togglePreview(false);
     if (active) setTimeout(focusPane, 400);
   }
-  /** The foot's Panes ▾: the three forms of View ▸ Panes. */
-  async function panesMenu(e: MouseEvent) {
-    const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const items = await Promise.all(
-      (
+  /** The foot's Panes ▾: what the pane shows (the preview, the PDF: kept for this text), then the three forms of
+   *  View ▸ Panes. At the pointer, by the arrow. */
+  async function panesMenu() {
+    const items = await Promise.all([
+      ...(markdown ? [CheckMenuItem.new({ text: "Preview", checked: previewing || !!previewTab, action: () => togglePreview() })] : []),
+      ...(path ? [CheckMenuItem.new({ text: "PDF", checked: pdfBeside, action: () => togglePdf() })] : []),
+      PredefinedMenuItem.new({ item: "Separator" }),
+      ...(
         [
           ["side", "Beside the Text"],
           ["tabs", "In Tabs of Their Own"],
           ["auto", "In Tabs on a Narrow Window"],
         ] as const
       ).map(([mode, text]) => CheckMenuItem.new({ text, checked: panesMode === mode, action: () => setPanes(mode) })),
-    );
-    await (await Menu.new({ items })).popup(new LogicalPosition(at.left, at.top));
+    ]);
+    await popupReleased(await Menu.new({ items }));
   }
   /** The side worked in: the pane's or the text's, kept. */
   function setActive(pane: boolean) {

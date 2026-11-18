@@ -67,6 +67,9 @@ fn label_table(app: &AppHandle, page: &str, files: Vec<PathBuf>) -> Option<PathB
         table.making = true;
         let (app, page, file) = (app.clone(), page.to_string(), table.file.clone());
         std::thread::spawn(move || {
+            // once the files are still a moment (an autosave every few seconds while one types: one pass in a pause)
+            quiet(&files);
+            let stamp = write_core::refs::files_stamp(&files);
             let made = make_table(&files, &file);
             let mut tables = TABLES.lock().unwrap();
             if let Some(table) = tables.get_mut(&main) {
@@ -82,6 +85,22 @@ fn label_table(app: &AppHandle, page: &str, files: Vec<PathBuf>) -> Option<PathB
         });
     }
     table.file.is_file().then(|| table.file.clone())
+}
+
+/// How long the files of a document are left unchanged before their table is made again.
+const QUIET: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Back once none of `files` changed for `QUIET` (at most a minute: a file always changing does not hold it back).
+fn quiet(files: &[PathBuf]) {
+    let start = std::time::Instant::now();
+    loop {
+        let newest = files.iter().filter_map(|f| std::fs::metadata(f).ok()?.modified().ok()).max();
+        let still = newest.and_then(|t| t.elapsed().ok()).unwrap_or(QUIET);
+        if still >= QUIET || start.elapsed() > std::time::Duration::from_secs(60) {
+            return;
+        }
+        std::thread::sleep(QUIET - still);
+    }
 }
 
 /// The table of the labels of the document `files` make written to `file` (the filter's PAPERS_WRITE_LABELS_OUT);

@@ -519,7 +519,7 @@ fn show_after_a_while(app: &AppHandle, page: &str) {
 
 /// The pages made empty at the start loaded, one at a time, each once the one before is drawn (or a few seconds
 /// passed): first the tab in front of a window, then those in front of its other projects, then the others, a tab
-/// chosen meanwhile coming next. Nothing is saved till they all are (a quit meanwhile keeps the tabs as saved).
+/// chosen meanwhile coming next.
 fn load_later(app: &AppHandle) {
     let handle = app.clone();
     std::thread::spawn(move || {
@@ -561,8 +561,6 @@ fn load_later(app: &AppHandle) {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
-        state.restoring.store(false, Ordering::SeqCst);
-        save(app);
     });
 }
 
@@ -1160,7 +1158,11 @@ pub fn restore(app: &AppHandle) -> bool {
         let _ = show_project(app, first, Target::Window(window));
     }
     state.deferring.store(false, Ordering::SeqCst);
-    // the pages made empty loaded now, one at a time; saving waits for them
+    // every tab is there with its file, its page loading or not: saved from now on (a quit before the pages are all
+    // loaded keeps what was done meanwhile)
+    state.restoring.store(false, Ordering::SeqCst);
+    save(app);
+    // the pages made empty loaded now, one at a time
     load_later(app);
     any_made
 }

@@ -502,6 +502,9 @@ pub fn sidebar_shown(app: AppHandle, shown: bool, outline: bool) {
 /// View ▸ Show Preview and Show PDF saying Hide when the page in front shows them.
 #[tauri::command]
 pub fn view_shown(app: AppHandle, preview: bool, pdf: bool, panes: String) {
+    if crate::projects::with_saved(&app, |saved| saved.panes.clone()) != panes {
+        crate::projects::with_saved(&app, |saved| saved.panes = panes.clone());
+    }
     for (id, shown, name) in [("preview", preview, "Preview"), ("pdf-beside", pdf, "PDF")] {
         if let Some(item) = item_of(&app, id) {
             let _ = item.set_text(format!("{} {name}", if shown { "Hide" } else { "Show" }));

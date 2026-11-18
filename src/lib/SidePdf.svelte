@@ -122,6 +122,8 @@
 
   /** Find… with the PDF in front: its field, with the PDF's selection. */
   export const focusFind = () => tools?.focusFind();
+  /** The keys to the PDF (its side was the one worked in). */
+  export const focus = () => view?.focus();
   /** Find Next and Find Previous with the PDF in front. */
   export const findAgain = (backwards: boolean) => tools?.findAgain(backwards);
   /** Use Selection for Find with the PDF in front. */

@@ -81,6 +81,9 @@ fn label_table(app: &AppHandle, page: &str, files: Vec<PathBuf>) -> Option<PathB
         table.making = true;
         let (app, page, file) = (app.clone(), page.to_string(), table.file.clone());
         std::thread::spawn(move || {
+            // once the files are still a moment (an autosave every few seconds while one types: one pass in a pause)
+            quiet(&files);
+            let stamp = write_core::refs::files_stamp(&files);
             let made = make_table(&files, &file);
             let mut tables = TABLES.lock().unwrap();
             if let Some(table) = tables.get_mut(&main) {
@@ -98,6 +101,22 @@ fn label_table(app: &AppHandle, page: &str, files: Vec<PathBuf>) -> Option<PathB
     table.file.is_file().then(|| table.file.clone())
 }
 
+/// How long the files of a document are left unchanged before their table is made again.
+const QUIET: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Back once none of `files` changed for `QUIET` (at most a minute: a file always changing does not hold it back).
+fn quiet(files: &[PathBuf]) {
+    let start = std::time::Instant::now();
+    loop {
+        let newest = files.iter().filter_map(|f| std::fs::metadata(f).ok()?.modified().ok()).max();
+        let still = newest.and_then(|t| t.elapsed().ok()).unwrap_or(QUIET);
+        if still >= QUIET || start.elapsed() > std::time::Duration::from_secs(60) {
+            return;
+        }
+        std::thread::sleep(QUIET - still);
+    }
+}
+
 /// The table of the labels of the document `files` make written to `file` (the filter's PAPERS_WRITE_LABELS_OUT);
 /// whether it was.
 fn make_table(files: &[PathBuf], file: &Path) -> bool {
@@ -106,10 +125,12 @@ fn make_table(files: &[PathBuf], file: &Path) -> bool {
     };
     let dir = files.first().and_then(|m| m.parent()).map(Path::to_path_buf).unwrap_or_else(home);
     let part = file.with_extension("tsv.part");
+    let headings_part = file.with_extension("headings.part");
     let Ok(mut child) = Command::new(pandoc)
         .args(["-f", "markdown", "-t", "json"])
         .arg(format!("--lua-filter={}", filter.display()))
         .env("PAPERS_WRITE_LABELS_OUT", &part)
+        .env("PAPERS_WRITE_HEADINGS_OUT", &headings_part)
         .current_dir(&dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -122,7 +143,76 @@ fn make_table(files: &[PathBuf], file: &Path) -> bool {
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(whole.as_bytes());
     }
-    child.wait().is_ok_and(|s| s.success()) && std::fs::rename(&part, file).is_ok()
+    child.wait().is_ok_and(|s| s.success()) && std::fs::rename(&headings_part, headings_of(file)).is_ok() && std::fs::rename(&part, file).is_ok()
+}
+
+/// Where the headings of a table's document are kept, beside its labels.
+fn headings_of(table: &Path) -> PathBuf {
+    table.with_extension("headings.tsv")
+}
+
+/// A heading of a whole document: the file it is in (by its place in `files`), its level, number (none: unnumbered,
+/// or the document numbers no sections) and text.
+#[derive(Serialize)]
+pub struct OutlineHeading {
+    file: usize,
+    level: u8,
+    number: String,
+    title: String,
+}
+
+/// The outline of the whole document the asking text is part of (a thesis or book: its main document and chapters):
+/// its files and their headings, as the last made table has them (made again aside when they changed: the page is
+/// told, `preview-labels`). None for a text of no such document, or before a table was made.
+#[derive(Serialize)]
+pub struct WholeOutline {
+    files: Vec<String>,
+    headings: Vec<OutlineHeading>,
+}
+
+#[tauri::command]
+pub fn document_outline(window: Webview) -> Option<WholeOutline> {
+    let path = documents::path_of(window.app_handle(), window.label())?;
+    let files = write_core::refs::document_files(&path)?;
+    let table = label_table(window.app_handle(), window.label(), files.clone())?;
+    let text = std::fs::read_to_string(headings_of(&table)).ok()?;
+    let headings = text
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.splitn(4, '\t');
+            Some(OutlineHeading { file: f.next()?.parse().ok()?, level: f.next()?.parse().ok()?, number: f.next()?.to_string(), title: f.next()?.to_string() })
+        })
+        .collect();
+    Some(WholeOutline { files: files.iter().map(|f| f.to_string_lossy().into_owned()).collect(), headings })
+}
+
+/// Where the `nth` heading (from 0) of the text `title` is in the Markdown file `path`, by its line's offset (UTF-16): for a
+/// heading of another file of the outline to be gone to. Its `#`s and attributes (`{#sec:x}`) left out; fenced code
+/// passed over.
+#[tauri::command]
+pub fn heading_place(path: String, title: String, nth: usize) -> Option<usize> {
+    let text = std::fs::read_to_string(&path).ok()?;
+    let want = title.trim();
+    let (mut at, mut fenced, mut seen) = (0usize, false, 0usize);
+    for line in text.split_inclusive('\n') {
+        let t = line.trim_end();
+        if t.trim_start().starts_with("```") || t.trim_start().starts_with("~~~") {
+            fenced = !fenced;
+        } else if !fenced && t.starts_with('#') {
+            let body = t.trim_start_matches('#').trim();
+            let body = body.rfind('{').filter(|_| body.ends_with('}')).map_or(body, |i| body[..i].trim_end());
+            let plain: String = body.chars().filter(|c| !matches!(c, '*' | '_' | '`')).collect();
+            if plain.trim() == want || body == want {
+                if seen == nth {
+                    // as the editor counts (UTF-16), as the project's search gives its places
+                    return Some(text[..at].encode_utf16().count());
+                }
+                seen += 1;
+            }
+        }
+        at += line.len();
+    }
+    None
 }
 /// the largest image embedded
 const LARGEST: u64 = 5 * 1024 * 1024;

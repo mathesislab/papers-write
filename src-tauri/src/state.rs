@@ -134,7 +134,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("papers-write-state-{}", std::process::id()));
         let mut saved = Saved::default();
         saved.opened(Path::new("/p"));
-        saved.layouts.insert("/p".into(), Layout { files: vec!["/p/a.md".into(), "/p/b.md".into()], front: Some("/p/b.md".into()) });
+        saved.layouts.insert("/p".into(), Layout { files: vec!["/p/a.md".into(), "/p/b.md".into()], front: Some("/p/b.md".into()), ..Default::default() });
         saved.windows.push(SavedWindow { projects: vec!["/p".into()] });
         saved.save(&dir);
         assert_eq!(Saved::load(&dir), saved);

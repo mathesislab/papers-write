@@ -55,7 +55,23 @@ pub async fn project_file_list(window: tauri::Webview) -> Vec<search::Listed> {
     let Some(root) = crate::tabs::project_of_page(window.app_handle(), window.label()) else {
         return Vec::new();
     };
-    tauri::async_runtime::spawn_blocking(move || search::openable(&root, 50_000)).await.unwrap_or_default()
+    // the files open in tabs, first, whether or not the walk leaves them out
+    let open: Vec<PathBuf> = crate::tabs::pages_of_project(window.app_handle(), &root).iter().filter_map(|p| crate::documents::path_of(window.app_handle(), p)).collect();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut listed = search::openable(&root, 50_000);
+        for path in open {
+            match listed.iter_mut().find(|l| l.path == path) {
+                Some(l) => l.open = true,
+                None => {
+                    let relative = path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().into_owned();
+                    listed.push(search::Listed { path, relative, modified: 0, open: true });
+                }
+            }
+        }
+        listed
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// The matches of a query in the files of the project at `root`.

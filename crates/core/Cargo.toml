@@ -25,5 +25,8 @@ serde_json = "1"
 # a project searched: its files walked, the text matched
 regex = "1"
 walkdir = "2"
+# what Go to File and Find in Project leave out: a .gitignore read as git does, and patterns (exclude.rs)
+ignore = "0.4"
+globset = "0.4"
 # a .review file is a zip (as the updater's, in the lock already)
 zip = { version = "9", default-features = false, features = ["deflate"] }

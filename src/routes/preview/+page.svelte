@@ -92,7 +92,7 @@
       onpdf={(text, word, around) => void tell({ kind: "pdf", text, word, around })}
       previous={chapters.previous}
       next={chapters.next}
-      onchapter={(file) => void tell({ kind: "chapter", text: file })}
+      onchapter={(file, atEnd) => void tell({ kind: "chapter", text: file, index: atEnd ? 1 : 0 })}
       onscrolled={(index) => void tell({ kind: "scrolled", index })}
       panes={{ mode: panesMode(), onpanes: (mode) => void tell({ kind: "panes", text: mode }) }}
     />

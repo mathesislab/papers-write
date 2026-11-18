@@ -36,7 +36,7 @@
   import { gotoLine, selectNextOccurrence } from "@codemirror/search";
   import GoToFile from "$lib/GoToFile.svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { onMount, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
@@ -286,9 +286,10 @@
     if (!place) return;
     const end = view.state.doc.length;
     const at = (n: number) => Math.max(0, Math.min(n, end));
+    // a top below 0: at the end (opened from the next chapter's preview, going up)
     view.dispatch({
       selection: { anchor: at(place.anchor), head: at(place.head) },
-      effects: EditorView.scrollIntoView(at(place.top), { y: "start" }),
+      effects: place.top < 0 ? EditorView.scrollIntoView(end, { y: "end" }) : EditorView.scrollIntoView(at(place.top), { y: "start" }),
     });
   }
 
@@ -436,8 +437,11 @@
   /** A chapter of the preview's links opened, with its preview as this one's is: beside it, or its tab (in front when
    *  the click was there). Its page reads the pane kept for it as it loads; one loaded already is told (`CHAPTER`). */
   const CHAPTER = "chapter-open";
-  function openChapter(file: string, fromTab = false) {
+  function openChapter(file: string, fromTab = false, atEnd = false) {
     try {
+      // where it opens: its start going down, its end going up
+      const place = atEnd ? { anchor: 1e15, head: 1e15, top: -1 } : { anchor: 0, head: 0, top: 0 };
+      localStorage.setItem(placeKey(file), JSON.stringify(place));
       localStorage.setItem(paneKey(file), "preview");
       if (inTabs ? fromTab : paneActive) localStorage.setItem(activeKey(file), "1");
       else localStorage.removeItem(activeKey(file));
@@ -451,12 +455,27 @@
     try {
       active = localStorage.getItem(activeKey(path ?? "")) === "1";
     } catch {}
+    restorePlace();
     if (inTabs) {
       if (!previewTab) void openPreviewTab().then(() => !active && bringText());
       return;
     }
     if (!previewing) togglePreview(false);
     if (active) setTimeout(focusPane, 400);
+  }
+  /** The foot's Panes ▾: the three forms of View ▸ Panes. */
+  async function panesMenu(e: MouseEvent) {
+    const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const items = await Promise.all(
+      (
+        [
+          ["side", "Beside the Text"],
+          ["tabs", "In Tabs of Their Own"],
+          ["auto", "In Tabs on a Narrow Window"],
+        ] as const
+      ).map(([mode, text]) => CheckMenuItem.new({ text, checked: panesMode === mode, action: () => setPanes(mode) })),
+    );
+    await (await Menu.new({ items })).popup(new LogicalPosition(at.left, at.top));
   }
   /** The side worked in: the pane's or the text's, kept. */
   function setActive(pane: boolean) {
@@ -596,7 +615,7 @@
     }
     else if (what.kind === "shown") setActive(true);
     else if (what.kind === "block") scrollToBlock(what.index ?? 0, true);
-    else if (what.kind === "chapter" && what.text) openChapter(what.text, true);
+    else if (what.kind === "chapter" && what.text) openChapter(what.text, true, what.index === 1);
     else if (what.kind === "pdf") void previewToPdf(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
     else if (what.kind === "source") {
       void invoke("bring_tab", { page: getCurrentWebview().label });
@@ -648,7 +667,10 @@
   });
 
   function togglePdf(keep = true) {
-    if (inTabs) return void (keep && pdfTab());
+    if (inTabs) {
+      if (keep) pdfTab();
+      return;
+    }
     if (!path) return say("Save the document first, to show its PDF");
     pdfBeside = !pdfBeside;
     if (pdfBeside) [previewing, panel] = [false, false];
@@ -1318,7 +1340,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
-      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file) => openChapter(file)} panes={{ mode: panesMode, onpanes: setPanes }} />
+      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file, atEnd) => openChapter(file, false, atEnd)} panes={{ mode: panesMode, onpanes: setPanes }} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}
@@ -1415,6 +1437,12 @@
   <!-- the foot of the window: the build, what was just done or went wrong, the repository -->
   <footer>
     <Build bind:this={builds} can={markdown || latex} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
+    <!-- View ▸ Panes, a mode of the window, at its foot -->
+    {#if markdown || latex || path}
+      <button class="panes-mode" onclick={panesMenu} title="The preview and the PDF: beside the text, or in tabs of their own">
+        Panes: {panesMode === "side" ? "beside" : panesMode === "tabs" ? "tabs" : "auto"} ▾
+      </button>
+    {/if}
     {#if error || problem || session.problem}
       {@const said = problem || error || session.problem}
       <span class="said error" title={said}>{said}</span>
@@ -1425,6 +1453,18 @@
 </Frame>
 
 <style>
+  .panes-mode {
+    flex: none;
+    font: inherit;
+    font-size: 11.5px;
+    margin-left: 6px;
+    padding: 1px 8px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
+  }
   /* not a box: the panes and the foot are the frame's; what is placed absolutely is placed in its content */
   .body {
     display: contents;

@@ -25,7 +25,7 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use crate::documents;
 
 /// What a run gives the page.
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Preview {
     pub html: String,
     /// what pandoc said that went wrong; the html is what could be made of it
@@ -221,6 +221,12 @@ pub const SUPERSEDED: &str = "superseded";
 /// The preview of `text`, as the document of this window reads it.
 #[tauri::command]
 pub async fn preview(window: Webview, text: String) -> Result<Preview, String> {
+    // made ahead for this very text (a chapter beside the one read: `prepare_preview`)
+    if let Some(path) = documents::path_of(window.app_handle(), window.label())
+        && let Some(made) = READY.lock().unwrap().get(&path).filter(|(hash, _)| *hash == hash_of(&text)).map(|(_, p)| p.clone())
+    {
+        return Ok(made);
+    }
     let runs = window.state::<Runs>();
     let generation = runs.0.lock().unwrap().entry(window.label().to_string()).or_default().clone();
     let mine = generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -687,4 +693,49 @@ fn title_of(file: &std::path::Path) -> String {
         }
     }
     file.file_stem().unwrap_or_default().to_string_lossy().into_owned()
+}
+
+/// Previews made ahead, by file: the text's hash they were made of, and the preview. The chapters before and after
+/// the one read, so that going there shows its preview at once.
+static READY: std::sync::LazyLock<Mutex<HashMap<PathBuf, (u64, Preview)>>> = std::sync::LazyLock::new(Default::default);
+/// The most kept.
+const READY_MOST: usize = 6;
+
+fn hash_of(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    h.finish()
+}
+
+/// The preview of the file at `path` made ahead (the chapter linked before or after the one read), unless made already
+/// of its text as it is on disk.
+#[tauri::command]
+pub async fn prepare_preview(window: Webview, path: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let hash = hash_of(&text);
+    if READY.lock().unwrap().get(&path).is_some_and(|(h, _)| *h == hash) {
+        return Ok(());
+    }
+    let (app, label) = (window.app_handle().clone(), window.label().to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = path.parent().map(Path::to_path_buf).unwrap_or_else(home);
+        let bibs = write_core::refs::main_bibliography(&path, &text);
+        let labels = write_core::refs::document_files(&path).and_then(|files| label_table(&app, &label, files));
+        // a run of its own: nothing supersedes it
+        let generation = AtomicU64::new(1);
+        let made = render(&text, &dir, true, &bibs, labels.as_deref(), Turn { generation: &generation, mine: 1 })?;
+        let mut ready = READY.lock().unwrap();
+        if ready.len() >= READY_MOST && !ready.contains_key(&path) {
+            let first = ready.keys().next().cloned();
+            if let Some(first) = first {
+                ready.remove(&first);
+            }
+        }
+        ready.insert(path, (hash, made));
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

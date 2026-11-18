@@ -36,6 +36,7 @@
   import { gotoLine, selectNextOccurrence } from "@codemirror/search";
   import GoToFile from "$lib/GoToFile.svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { emit } from "@tauri-apps/api/event";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { onMount, untrack } from "svelte";
@@ -363,7 +364,15 @@
     if (!path) return say("Save the document first, to show its PDF");
     pdfBeside = !pdfBeside;
     if (pdfBeside) [previewing, panel] = [false, false];
+    if (pdfBeside) playBackground();
     if (keep) keepPane();
+  }
+  /** The PDF shown: what was chosen to run in the background of the project (paused since the start) started, so
+   *  that the PDF keeps up with the text. */
+  function playBackground() {
+    void invoke("background_play", { play: true })
+      .then(() => emit("profiles-changed"))
+      .catch(() => {});
   }
 
   let previewPane = $state<Preview>();

@@ -72,6 +72,8 @@ impl Host for Write {
 
     fn focused(&self, app: &AppHandle, page: &str) {
         crate::documents::focused(app, page);
+        // Build ▸ Build With and In the Background, for the project of this tab (outside macOS)
+        crate::profiles::menu_lists(app);
     }
 
     fn closed(&self, app: &AppHandle, page: &str) {

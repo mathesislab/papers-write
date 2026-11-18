@@ -853,10 +853,23 @@ pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> 
             let _ = documents::open_file(&app, pdf);
         }
     };
+    // the same PDF kept up to date by the watch running in the background: not built again (its command would clash
+    // with the watch's, texmark refusing a build folder a watch uses), the PDF shown
+    if profile.run == Run::Build && profile.pdf.is_some() && crate::profiles::kept_pdf(&app, &root) == profile.pdf {
+        show_pdf(&pdf);
+        tell(&app, window.label(), Status {
+            what: "build",
+            state: "kept",
+            pdf: pdf.map(|p| s(&p)),
+            message: Some(format!("{}: kept up to date by the watch in the background", profile.name)),
+            ..Default::default()
+        });
+        return Ok(());
+    }
     match profile.run {
         Run::Build => request(&app, &window, root.clone(), Job::Profile { profile, root, show }),
         // a background profile (`profiles::active` gives none)
-        Run::Watch | Run::Save => return Err(format!("{}: chosen under In the background, not built", profile.name)),
+        Run::Watch => return Err(format!("{}: chosen under In the background, not built", profile.name)),
         Run::External => {
             show_pdf(&pdf);
             tell(&app, window.label(), Status {
@@ -869,14 +882,6 @@ pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> 
         }
     }
     Ok(())
-}
-
-/// A `save` profile's command run (`profiles.rs`: in the background), its status told to the page `label`; one at a
-/// time per project, a request during a run making one more after it.
-pub fn run_profile_for(app: &AppHandle, label: &str, profile: Profile, root: PathBuf) {
-    if let Some(window) = app.get_webview(label) {
-        request(app, &window, root.clone(), Job::Profile { profile, root, show: false });
-    }
 }
 
 /// A build profile's command run in its project's folder, waited for: the PDF it says, when the command made it now.

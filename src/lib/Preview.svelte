@@ -61,11 +61,19 @@
     if (!doc?.body || !win) return;
     doc.querySelectorAll(".pw-chapter").forEach((n) => n.remove());
     const long = doc.body.scrollHeight > win.innerHeight * 1.5;
+    // the arrow, then the words (left out on a narrow pane: the arrow alone, the words in the tip)
     const link = (text: string, title: string, data: Record<string, string>) => {
       const a = doc.createElement("a");
       a.href = "#";
-      a.textContent = text;
-      a.title = title;
+      const [arrow, words] = text.startsWith("↑") ? ["↑", text.slice(1)] : ["↓", text.slice(0, -1)];
+      const w = doc.createElement("span");
+      w.className = "words";
+      w.textContent = words;
+      const r = doc.createElement("span");
+      r.textContent = arrow;
+      if (text.startsWith("↑")) a.append(r, w);
+      else a.append(w, r);
+      a.title = `${title}: ${words.trim()}`;
       Object.assign(a.dataset, data);
       return a;
     };
@@ -124,6 +132,11 @@
     .pw-chapter { display: flex; justify-content: space-between; gap: 1em; font: .85em/1.4 system-ui, sans-serif; margin: 0 0 2em; }
     .pw-chapter.next { margin: 3em 0 0; }
     .pw-chapter a:only-child { margin-left: auto; }
+    @media (max-width: 26em) { .pw-chapter .words { display: none; } .pw-chapter a { font-size: 1.3em; } }
+    .pw-pull { position: fixed; left: 0; right: 0; z-index: 9; display: flex; flex-direction: column; align-items: center;
+      gap: 4px; pointer-events: none; font: .8em/1.3 system-ui, sans-serif; color: var(--muted); }
+    .pw-pull.down { bottom: 0; flex-direction: column-reverse; } .pw-pull.up { top: 0; }
+    .pw-pull i { display: block; height: 3px; align-self: stretch; background: var(--link); transform-origin: left; }
     .pw-chapter.previous a:only-child[data-chapter] { margin-left: 0; }
     .pw-chapter a { color: var(--muted); }
     .pw-chapter a:hover { color: var(--link); }
@@ -209,6 +222,51 @@
     const doc = frame?.contentDocument;
     if (doc?.body) void showPdfImages(doc.body);
     chapterLinks();
+    // scrolled on past the end (or the start) with insistence: a bar fills, and when full the next chapter opens (the
+    // previous, at its end); a pause empties it
+    if (doc && frame?.contentWindow) {
+      const win = frame.contentWindow;
+      const FULL = 700;
+      let pull = 0;
+      let way: "down" | "up" | null = null;
+      let rest: ReturnType<typeof setTimeout> | undefined;
+      let bar: HTMLElement | null = null;
+      const clear = () => {
+        pull = 0;
+        way = null;
+        bar?.remove();
+        bar = null;
+      };
+      doc.addEventListener(
+        "wheel",
+        (e) => {
+          const dy = e.deltaY * (e.deltaMode === 1 ? 16 : 1);
+          const atEnd = win.scrollY + win.innerHeight >= doc.documentElement.scrollHeight - 2;
+          const atStart = win.scrollY <= 0;
+          const now = dy > 0 && atEnd && next ? "down" : dy < 0 && atStart && previous ? "up" : null;
+          if (!now || (way && way !== now)) return clear();
+          way = now;
+          pull += Math.abs(dy);
+          const chapter = (now === "down" ? next : previous)!;
+          if (!bar) {
+            bar = doc.createElement("div");
+            bar.className = `pw-pull ${now}`;
+            bar.innerHTML = "<i></i><span></span>";
+            doc.documentElement.append(bar);
+          }
+          bar.querySelector("span")!.textContent = `Keep scrolling for ${chapter.title}`;
+          (bar.querySelector("i") as HTMLElement).style.transform = `scaleX(${Math.min(1, pull / FULL)})`;
+          clearTimeout(rest);
+          rest = setTimeout(clear, 450);
+          if (pull >= FULL) {
+            const end = now === "up";
+            clear();
+            onchapter?.(chapter.path, end);
+          }
+        },
+        { passive: true },
+      );
+    }
     // the block at the top of what shows, told as it changes (once a frame)
     let atTop = -1;
     let pending = 0;

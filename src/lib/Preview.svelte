@@ -7,7 +7,7 @@
 
   import { followButtons, popupReleased } from "papers-write/project";
   import { readAloudItems } from "$lib/readAloud";
-  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { showPdfImages } from "$lib/pdfImage";
   import { keys } from "papers-write/editor";
@@ -22,6 +22,8 @@
     previous = null,
     next = null,
     onchapter,
+    onscrolled,
+    panes,
   }: {
     html: string;
     error?: string;
@@ -38,6 +40,10 @@
     next?: Chapter | null;
     /** a click on one of them: that chapter opened, its preview shown as this one is */
     onchapter?: (path: string) => void;
+    /** scrolled (by hand or not): the index of the top-level block at the top of what shows */
+    onscrolled?: (index: number) => void;
+    /** View ▸ Panes, in the right-click menu too: the form chosen, and the choice */
+    panes?: { mode: "side" | "tabs" | "auto"; onpanes: (mode: "side" | "tabs" | "auto") => void };
   } = $props();
 
   type Chapter = { path: string; title: string };
@@ -187,6 +193,19 @@
     const doc = frame?.contentDocument;
     if (doc?.body) void showPdfImages(doc.body);
     chapterLinks();
+    // the block at the top of what shows, told as it changes (once a frame)
+    let atTop = -1;
+    let pending = 0;
+    frame?.contentWindow?.addEventListener("scroll", () => {
+      if (!onscrolled || pending) return;
+      pending = requestAnimationFrame(() => {
+        pending = 0;
+        const top = (frame?.contentWindow?.scrollY ?? 0) + 24;
+        const all = doc?.body ? blocks(doc.body) : [];
+        const index = all.findIndex((el) => el.offsetTop + el.offsetHeight > top);
+        if (index >= 0 && index !== atTop) onscrolled?.((atTop = index));
+      });
+    });
     if (doc) {
       followButtons(doc);
       // the keys typed in the frame given to the page too (its own keys: ⌃Tab, ⌃+, ⌃ let go), which a frame's keep
@@ -249,6 +268,23 @@
           ...(onpdf ? [MenuItem.new({ text: "Show in PDF", action: () => onpdf(at.text, at.word, at.around) })] : []),
           PredefinedMenuItem.new({ item: "Separator" }),
           PredefinedMenuItem.new({ item: "Copy" }),
+          ...(panes
+            ? [
+                PredefinedMenuItem.new({ item: "Separator" }),
+                Submenu.new({
+                  text: "Panes",
+                  items: await Promise.all(
+                    (
+                      [
+                        ["side", "Beside the Text"],
+                        ["tabs", "In Tabs of Their Own"],
+                        ["auto", "In Tabs on a Narrow Window"],
+                      ] as const
+                    ).map(([mode, text]) => CheckMenuItem.new({ text, checked: panes.mode === mode, action: () => panes.onpanes(mode) })),
+                  ),
+                }),
+              ]
+            : []),
           ...reading,
         ]);
         // at the pointer: the frame's own place added to where the click is in it

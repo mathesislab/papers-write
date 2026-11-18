@@ -72,6 +72,7 @@
     type FindBar,
     type FindCommand,
     type Heading,
+    currentHeading,
     type ProjectQuery,
     type Format,
     type FileRead,
@@ -370,6 +371,34 @@
     }
   }
 
+  /** The text scrolled to a block of its preview's tab as that one scrolls (the text behind it, unseen: Ctrl+Tab
+   *  finds it there), the cursor left where it is; the preview tab's outline told the heading of that place. */
+  function followPreviewTab(index: number) {
+    const view = editor?.view();
+    if (!view) return;
+    const tree = ensureSyntaxTree(view.state, view.state.doc.length, 50);
+    if (!tree) return;
+    let i = -1;
+    for (let n = tree.topNode.firstChild; n; n = n.nextSibling) {
+      if (HIDDEN_BLOCKS.has(n.name) || ++i < index) continue;
+      view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: 48 }) });
+      shownHeading = currentHeading(headings, n.from);
+      void sendOutline();
+      return;
+    }
+  }
+  /** the heading of what the preview's tab shows (its outline's mark) */
+  let shownHeading = -1;
+  /** The text's outline, to its preview's tab: its sidebar shows it as the text's does. */
+  async function sendOutline() {
+    if (!previewTab) return;
+    await invoke("relay", { to: previewTab, event: "preview-outline", payload: { headings, here: shownHeading >= 0 ? shownHeading : here } }).catch(() => false);
+  }
+  $effect(() => {
+    void headings;
+    if (previewTab) void sendOutline();
+  });
+
   /** The cursor's moves, told a moment later. */
   const cursor = EditorView.updateListener.of((u) => {
     // where the text is read, kept (the view moved, or the cursor)
@@ -556,7 +585,15 @@
   /** What the preview's tab tells: it wants what pandoc made, a click on a block, Go to Source, Show PDF. */
   function fromPreviewTab(e: { payload: { kind: string; index?: number; text?: string; word?: string; around?: { before: string[]; after: string[] } } }) {
     const what = e.payload;
-    if (what.kind === "want") void sendPreview();
+    if (what.kind === "want") void sendPreview().then(sendOutline);
+    else if (what.kind === "scrolled") followPreviewTab(what.index ?? 0);
+    else if (what.kind === "heading") {
+      const h = headings.find((x) => x.from === what.index);
+      if (h) editor?.goToHeading(h);
+    } else if (what.kind === "panes" && what.text) {
+      setPanes(what.text as Panes);
+      convertPanes();
+    }
     else if (what.kind === "shown") setActive(true);
     else if (what.kind === "block") scrollToBlock(what.index ?? 0, true);
     else if (what.kind === "chapter" && what.text) openChapter(what.text, true);
@@ -1281,7 +1318,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
-      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file) => openChapter(file)} />
+      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file) => openChapter(file)} panes={{ mode: panesMode, onpanes: setPanes }} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}

@@ -365,7 +365,6 @@
           criticSlot.of(critic ? criticOf() : []),
           figuresSlot.of(figures ? inlineFigures(figures) : []),
           marksTold,
-          figuresSlot.of(figures ? inlineFigures(figures) : []),
         ],
       });
     if (critic && !critical) {

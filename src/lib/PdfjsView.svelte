@@ -303,7 +303,7 @@
     const selected = window.getSelection()?.toString().trim() ?? "";
     const reading = await readAloudItems(selected || fromHere(span), selected ? "Read Aloud" : "Read Aloud from Here");
     const items = await Promise.all([
-            MenuItem.new({ text: `Go to Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word, around) }),
+      MenuItem.new({ text: `Go to Source (${mac ? "⌘" : "Ctrl"}-click)`, action: () => text && onsource?.(text, at, word, around) }),
       ...(menuItem ? [MenuItem.new(menuItem)] : []),
       PredefinedMenuItem.new({ item: "Separator" }),
       PredefinedMenuItem.new({ item: "Copy" }),

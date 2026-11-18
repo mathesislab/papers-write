@@ -56,17 +56,23 @@
   type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "save" | "external" };
   /** what runs in the background of the project: "watching" (started here), "elsewhere" (the same command started in
    *  a terminal, followed), "ended" (its command exited), "on-save" (run after the saves) */
-  type Background = { name: string; file: string | null; state: "watching" | "elsewhere" | "ended" | "on-save" | "paused" };
+  type Background = { name: string; file: string | null; state: "busy" | "watching" | "elsewhere" | "ended" | "on-save" | "paused" };
   type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; wrong: string[]; folder: string | null };
   let profiles = $state<Profiles | null>(null);
   const loadProfiles = async () => (profiles = await invoke<Profiles>("build_profiles").catch(() => null));
   /** the active profile's name, said after what the button says */
   const named = $derived(profiles?.active ? ` · ${profiles.active}` : "");
   /** the background, said after it */
-  const BACKGROUND = { watching: "watching", elsewhere: "watching (terminal)", ended: "ended", "on-save": "on save", paused: "paused" };
+  const BACKGROUND = { busy: "building", watching: "watching", elsewhere: "watching (terminal)", ended: "ended", "on-save": "on save", paused: "paused" };
   /** the background's button: ▶ starts what is paused (or ended), ❚❚ pauses what runs (still chosen) */
   const behind = $derived(profiles?.background ?? null);
-  const running = $derived(behind?.state === "watching" || behind?.state === "on-save");
+  const running = $derived(behind?.state === "busy" || behind?.state === "watching" || behind?.state === "on-save");
+  // while something runs in the background, its state looked at every second or two (building, watching, ended)
+  $effect(() => {
+    if (!running && behind?.state !== "elsewhere") return;
+    const timer = setInterval(() => void loadProfiles(), 1500);
+    return () => clearInterval(timer);
+  });
   async function playPause() {
     if (!behind || behind.state === "elsewhere") return;
     profiles = (await request<Profiles>("background_play", { play: !running })) ?? profiles;
@@ -333,6 +339,16 @@
   .behind.elsewhere {
     color: #2f9e57;
     border-color: #2f9e57;
+  }
+  .behind.busy {
+    color: #d08a0a;
+    border-color: #d08a0a;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.55;
+    }
   }
   .behind.paused,
   .behind.ended {

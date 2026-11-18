@@ -54,7 +54,8 @@ pub struct Shown {
     name: String,
     /// the document it runs for, when its command names it (`{file}`)
     file: Option<String>,
-    /// "watching" (started here), "elsewhere" (followed), "ended" (its command exited), "on-save", "paused" (chosen,
+    /// "busy" (started here, building now: its log written a moment ago and not yet back to watching), "watching"
+    /// (started here), "elsewhere" (followed), "ended" (its command exited), "on-save", "paused" (chosen,
     /// not started: the app started since, or paused by hand)
     state: &'static str,
 }
@@ -102,6 +103,7 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
         name: name.clone(),
         state: match how {
             Background::Started(child) => match child.try_wait() {
+                Ok(None) if busy(&profiles::dir_of(&root).join(format!("{name}.log"))) => "busy",
                 Ok(None) => "watching",
                 _ => "ended",
             },
@@ -426,4 +428,17 @@ pub fn menu_lists(app: &AppHandle) {
         }
         lists.shown = want;
     });
+}
+
+/// Whether a watch is building now, from its log: written in the last seconds, its last line not one of waiting
+/// (texmark's "watching for next change", or any tool's "watching"/"waiting").
+fn busy(log: &Path) -> bool {
+    let recent = std::fs::metadata(log).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs_f64() < 4.0);
+    if !recent {
+        return false;
+    }
+    let text = std::fs::read(log).unwrap_or_default();
+    let tail = String::from_utf8_lossy(&text[text.len().saturating_sub(400)..]).to_lowercase();
+    let last = tail.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("");
+    !(last.contains("watching") || last.contains("waiting"))
 }

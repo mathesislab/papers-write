@@ -588,6 +588,7 @@
   /** The PDF in its tab (in tabs), at `show` when given. */
   function pdfTab(show: Record<string, unknown> | null = null) {
     void invoke("pdf_tab_show", { show }).catch((e) => say(String(e)));
+    playBackground();
   }
   /** What the preview's tab tells: it wants what pandoc made, a click on a block, Go to Source, Show PDF. */
   function fromPreviewTab(e: { payload: { kind: string; index?: number; text?: string; word?: string; around?: { before: string[]; after: string[] } } }) {
@@ -656,7 +657,7 @@
 
   function togglePdf(keep = true) {
     if (inTabs) {
-      if (keep) (pdfTab(), playBackground());
+      if (keep) pdfTab();
       return;
     }
     if (!path) return say("Save the document first, to show its PDF");

@@ -297,34 +297,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
             &separator()?,
-            // ⇧⌘[ ⇧⌘] as macOS's apps have them; Ctrl+PageUp and Ctrl+PageDown elsewhere, as browsers and editors do
-            &item("previous-tab", "Show Previous Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+[" } else { "Ctrl+PageUp" }))?,
-            &item("next-tab", "Show Next Tab", Some(if cfg!(target_os = "macos") { "Shift+CmdOrCtrl+]" } else { "Ctrl+PageDown" }))?,
-            &item("move-tab-left", "Move Tab Left", Some("Shift+CmdOrCtrl+PageUp"))?,
-            &item("move-tab-right", "Move Tab Right", Some("Shift+CmdOrCtrl+PageDown"))?,
-            // as Sublime and VS Code: the tab in front before (⌃ held, ⌃Tab again: the one before that), the tabs
-            // visited (as a browser's Back and Forward), a tab by its place
-            &item("recent-tab", "Switch to Recent Tab", Some("Ctrl+Tab"))?,
-            &item("recent-tab-back", "Switch to Recent Tab Backwards", Some("Shift+Ctrl+Tab"))?,
-            &item("tab-back", "Back to Previous Tab", if MAC { None } else { Some("Alt+Left") })?,
-            &item("tab-forward", "Forward to Next Tab", if MAC { None } else { Some("Alt+Right") })?,
-            &Submenu::with_items(
-                app,
-                "Tab",
-                true,
-                &(1..=9)
-                    .map(|n| {
-                        let name = if n == 9 { "Last Tab".to_string() } else { format!("Tab {n}") };
-                        let key = format!("{}+{n}", if MAC { "Cmd" } else { "Alt" });
-                        MenuItem::with_id(app, format!("tab-{n}"), name, true, Some(key.as_str()))
-                    })
-                    .collect::<tauri::Result<Vec<_>>>()?
-                    .iter()
-                    .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
-                    .collect::<Vec<_>>(),
-            )?,
         ],
     )?;
+    // the tabs' items, as each app has them (papers-tabs)
+    for item in crate::tabs::menu::items(app)? {
+        window.append(&item)?;
+    }
     // macOS adds its own items to this menu: Show Tab Bar, Merge All Windows, the list of the windows
     #[cfg(target_os = "macos")]
     window.set_as_windows_menu_for_nsapp()?;
@@ -348,6 +326,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
     let id = event.id().as_ref();
+    if crate::tabs::menu::handle(app, id) {
+        return;
+    }
     match id {
         "new" => {
             if let Err(e) = documents::make(app, None) {
@@ -374,15 +355,6 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "check-updates" => crate::settings::show(app, Some("updates")),
         "quit" => documents::quit(app),
         "close" => crate::tabs::close_front(app),
-        "previous-tab" => crate::tabs::step(app, -1),
-        "next-tab" => crate::tabs::step(app, 1),
-        "move-tab-left" => crate::tabs::shift(app, -1),
-        "move-tab-right" => crate::tabs::shift(app, 1),
-        "recent-tab" => crate::tabs::recent(app, 1),
-        "recent-tab-back" => crate::tabs::recent(app, -1),
-        "tab-back" => crate::tabs::history(app, true),
-        "tab-forward" => crate::tabs::history(app, false),
-        id if id.starts_with("tab-") && id[4..].parse::<usize>().is_ok() => crate::tabs::nth(app, id[4..].parse().unwrap_or(1)),
         // the page writes the document, then asks for the build
         "save" | "build" | "build-show" | "marked-up" => {
             if let Some(window) = documents::front(app) {

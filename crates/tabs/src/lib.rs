@@ -19,8 +19,10 @@
 //! says it is drawn (`page_ready`, `ready()` of `papers-write/project`), the page before staying in view till then.
 //!
 //! What the pages are is the app's: it gives a `Host` (`Tabs::new`), which makes them, names them, says what file
-//! each shows and keeps what is saved; and it registers the commands of `commands`.
+//! each shows and keeps what is saved; it registers the commands of `commands`, and puts the items of `menu` in its
+//! Window menu.
 
+pub mod menu;
 mod model;
 
 use std::collections::{HashMap, HashSet};

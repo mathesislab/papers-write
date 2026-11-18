@@ -190,6 +190,7 @@
       MenuItem.new({ text: "Open in New Window", action: () => void invoke("open_project_in_new_window", { root }).catch((e) => onproblem(String(e))) }),
       MenuItem.new({ text: OPEN_FOLDER, action: () => void invoke("reveal", { path: root }).catch((e) => onproblem(String(e))) }),
       MenuItem.new({ text: "Project Info…", action: () => (carding = root) }),
+      MenuItem.new({ text: "Close All Tabs", action: () => void invoke("close_project_tabs", { root }) }),
       MenuItem.new({ text: "Remove from Bar", action: () => void invoke("remove_from_bar", { root }) }),
     ]);
     await popupReleased(await Menu.new({ items }));

@@ -18,6 +18,7 @@
   import { mac } from "papers-write/editor";
   import Frame from "$lib/Frame.svelte";
   import "$lib/theme.css";
+  import { printPdf } from "$lib/print";
 
   let path = $state<string | null | undefined>();
   let view = $state<PdfViewer>();
@@ -134,7 +135,10 @@
     const unlisten = [
       listen("show-source", () => void showAsked()),
       // View ▸ Show PDF with this PDF in front (shown from a text, panes in tabs): back to the text, as a toggle
-      listen("pdf-beside", () => void invoke("pdf_tab_back").catch(() => false)), listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
+      listen("pdf-beside", () => void invoke("pdf_tab_back").catch(() => false)),
+      // File ▸ Print…: the PDF's pages
+      listen("print", () => void (path ? printPdf(path).catch((e) => say(`Print: ${e}`)) : undefined)),
+      listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
     return () => {
       clearTimeout(timer);
       clearTimeout(noteTimer);

@@ -11,6 +11,7 @@
   import Frame from "$lib/Frame.svelte";
   import Preview from "$lib/Preview.svelte";
   import "$lib/theme.css";
+  import { printHtml } from "$lib/print";
 
   /** the page of the text this previews */
   const of = new URLSearchParams(location.search).get("of") ?? "";
@@ -36,6 +37,8 @@
         listen("preview-flash", () => queueMicrotask(() => preview?.flash())),
         // View ▸ Show Preview (⇧⌘P) with the preview in front: back to its text, as a toggle
         listen("preview", () => void invoke("bring_tab", { page: of })),
+        // File ▸ Print…: the preview as it shows
+        listen("print", () => void printHtml(html).catch(() => {})),
         // in front: the preview's side is the one worked in (kept by the text's page)
         listen<boolean>("tab-shown", (e) => e.payload && void tell({ kind: "shown" })),
       ];

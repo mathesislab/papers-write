@@ -163,6 +163,8 @@ pub fn run() {
             files::read_text,
             files::read_pdf,
             files::write_text,
+            documents::close_project_tabs,
+            documents::print_page,
             preview::preview,
             hover::render_math,
             hover::image_data,

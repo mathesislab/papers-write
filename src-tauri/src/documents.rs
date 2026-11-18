@@ -357,7 +357,6 @@ fn quit_message(n: usize) -> String {
 /// The app quits (⌘Q, the menu bar icon, the Dock icon). With text in an untitled tab that was never saved it
 /// asks once first: Quit and discard, or Cancel.
 pub fn quit(app: &AppHandle) {
-    eprintln!("[papers-write] quit asked");
     if !confirm_quit(app) {
         crate::tabs::quitting(app);
         app.exit(0);
@@ -484,7 +483,6 @@ pub fn closing(window: &Window, api: &CloseRequestApi) {
 
 /// Whether the window is the last window of tabs, outside macOS (where the app stays in the Dock without one).
 fn is_last(app: &AppHandle, window: &str) -> bool {
-    eprintln!("[papers-write] window {window} closing; windows: {:?}", crate::tabs::windows(app));
     !cfg!(target_os = "macos") && crate::tabs::windows(app) == [window]
 }
 

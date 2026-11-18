@@ -548,7 +548,6 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
         // meanwhile rather than the page being drawn (`reveal` shows it)
         let _ = page.hide();
     }
-    eprintln!("[papers-write {}] page {label} added{}", stamp(), if later { " (loaded later)" } else { "" });
     if !later {
         show_after_a_while(app, label);
     }
@@ -558,21 +557,11 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
     Ok(page)
 }
 
-/// The time of day to the millisecond (UTC), for the log of the start (dev build).
-pub fn stamp() -> String {
-    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-    let s = ms / 1000;
-    format!("{:02}:{:02}:{:02}.{:03}", s / 3600 % 24, s / 60 % 60, s % 60, ms % 1000)
-}
-
 /// A page that never says it is drawn shown all the same, after a while.
 fn show_after_a_while(app: &AppHandle, page: &str) {
     let (handle, waited) = (app.clone(), page.to_string());
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(2));
-        if !handle.state::<Tabs>().ready.lock().unwrap().contains(&waited) {
-            eprintln!("[papers-write {}] page {waited} not drawn after 2 s: shown all the same", stamp());
-        }
         ready(&handle, &waited);
     });
 }
@@ -609,7 +598,6 @@ fn load_later(app: &AppHandle) {
             let (Some(page), Some(base)) = (app.get_webview(&label), base.as_ref()) else { continue };
             let address = if url == "index.html" { Ok(base.clone()) } else { base.join(&url) };
             let Ok(address) = address else { continue };
-            eprintln!("[papers-write {}] page {label} loading", stamp());
             if page.navigate(address).is_err() {
                 continue;
             }
@@ -848,14 +836,12 @@ pub fn recent(app: &AppHandle, by: isize) {
     }
     let target = {
         let mut cycling = state.cycling.lock().unwrap();
-        let from = cycling.as_ref().map(|(_, i)| *i);
         let at = match cycling.as_ref() {
             Some((w, i)) if *w == window => *i as isize,
             _ => 0,
         };
         let next = (at + by).rem_euclid(recent.len() as isize) as usize;
         *cycling = Some((window.clone(), next));
-        eprintln!("[papers-write] recent tab: {recent:?}, from {from:?} by {by}: {}", recent[next]);
         recent[next].clone()
     };
     select(app, &target);
@@ -1443,7 +1429,6 @@ pub mod commands {
     /// The asking page is drawn: it may be shown (`ready`).
     #[tauri::command]
     pub fn page_ready(page: Webview) {
-        eprintln!("[papers-write {}] page {} drawn", super::stamp(), page.label());
         super::ready(page.app_handle(), page.label());
     }
 

@@ -172,8 +172,14 @@ pub fn background_play(window: Webview, play: bool) -> Result<Profiles, String> 
     let app = window.app_handle();
     let source = documents::path_of(app, window.label()).ok_or("Save the document first")?;
     let root = project::find(&source).ok_or("Not in a project")?;
-    let running = app.state::<Watches>().0.lock().unwrap().contains_key(&root);
+    // running: started and not ended (an ended command is started again)
+    let running = app.state::<Watches>().0.lock().unwrap().get_mut(&root).is_some_and(|(_, how, _)| match how {
+        Background::Started(child) => matches!(child.try_wait(), Ok(None)),
+        Background::Elsewhere(pid) => alive(*pid),
+        Background::OnSave(_) => true,
+    });
     if play && !running {
+        stop(app, &root);
         if let Some((name, from)) = projects::with_saved(app, |saved| saved.background.get(&root).cloned()) {
             start_background(app, &root, Some(name), if from.exists() { &from } else { &source })?;
         }

@@ -131,6 +131,7 @@ pub fn run() {
             projects::project_list,
             preview::document_outline,
             preview::chapter_neighbours,
+            preview::prepare_preview,
             preview::heading_place,
             settings::settings,
             readaloud::read_aloud,

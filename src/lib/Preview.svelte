@@ -7,6 +7,7 @@
 
   import { followButtons, popupReleased } from "papers-write/project";
   import { readAloudItems } from "$lib/readAloud";
+  import { invoke } from "@tauri-apps/api/core";
   import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { showPdfImages } from "$lib/pdfImage";
@@ -47,6 +48,8 @@
   } = $props();
 
   type Chapter = { path: string; title: string };
+  /** the chapters whose previews were made ahead */
+  const prepared = new Set<string>();
 
   let frame: HTMLIFrameElement;
 
@@ -91,6 +94,13 @@
       ...(long ? [link("↑ To the top", "The start of this text", { jump: "top" })] : []),
       ...(next ? [link(`${next.title} ↓`, "The next chapter, at its start", { chapter: next.path })] : []),
     ];
+    // the chapters around made ahead (once each while this preview shows), for their previews to show at once
+    for (const c of [next, previous]) {
+      if (c && !prepared.has(c.path)) {
+        prepared.add(c.path);
+        void invoke("prepare_preview", { path: c.path }).catch(() => prepared.delete(c.path));
+      }
+    }
     if (top.length) doc.body.prepend(nav("previous", top));
     if (end.length) doc.body.append(nav("next", end));
   }

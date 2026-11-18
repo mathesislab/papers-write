@@ -200,7 +200,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* the room left, and no more: cut short rather than pushing the PDF's name to a line of its own */
   .status {
+    flex: 1 1 0;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

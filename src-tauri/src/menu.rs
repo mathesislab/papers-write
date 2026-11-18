@@ -187,6 +187,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     )?;
     // macOS: Alex's View, as it was (the Panes submenu added); elsewhere, grouped (as Linux's apps have them), with
     // the zoom's keys, which the PDF menu has on macOS
+    // View ▸ Panes as last chosen (the pages correct it as they load)
+    let panes_now = match crate::projects::with_saved(app, |saved| saved.panes.clone()).as_str() {
+        "" => "side".to_string(),
+        other => other.to_string(),
+    };
     let view = if MAC {
         Submenu::with_items(
             app,
@@ -202,9 +207,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                     "Panes",
                     true,
                     &[
-                        &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, true, None::<&str>)?,
-                        &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, false, None::<&str>)?,
-                        &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, false, None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, panes_now == "side", None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, panes_now == "tabs", None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, panes_now == "auto", None::<&str>)?,
                     ],
                 )?,
                 &item("sidebar", "Show Files", Some("Alt+CmdOrCtrl+S"))?,
@@ -248,9 +253,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                     "Panes",
                     true,
                     &[
-                        &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, true, None::<&str>)?,
-                        &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, false, None::<&str>)?,
-                        &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, false, None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, panes_now == "side", None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, panes_now == "tabs", None::<&str>)?,
+                        &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, panes_now == "auto", None::<&str>)?,
                     ],
                 )?,
                 &separator()?,
@@ -573,9 +578,16 @@ fn command(app: &AppHandle, id: &str) {
         "zoom-window-out" => crate::settings::step_zoom(app, -1.0),
         "zoom-window-reset" => crate::settings::step_zoom(app, 0.0),
         "panes-side" | "panes-tabs" | "panes-auto" => {
-            if let Some(window) = documents::front(app) {
-                let _ = app.emit_to(EventTarget::webview(window.label()), "panes", id.trim_start_matches("panes-"));
+            // one of the three, whatever tab is in front (a PDF's too): the marks at once (GTK ticks the one clicked by
+            // itself), kept, and every page told (the texts change their panes' form)
+            let mode = id.trim_start_matches("panes-").to_string();
+            for other in ["side", "tabs", "auto"] {
+                if let Some(item) = app.menu().and_then(|m| m.get(&format!("panes-{other}"))).and_then(|k| k.as_check_menuitem().cloned()) {
+                    let _ = item.set_checked(other == mode);
+                }
             }
+            crate::projects::with_saved(app, |saved| saved.panes = mode.clone());
+            let _ = app.emit("panes", mode);
         }
         "appearance-system" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::System),
         "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),

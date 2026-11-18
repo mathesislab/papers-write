@@ -3,9 +3,12 @@
   // the left, the project's sidebar (shown or not, its width dragged at its right edge: ProjectSidebar, the same in all
   // the project's tabs), and the tab's own content under the strip of tabs (`lead` at its left, `top` at its right).
   // Whether a tab shows a text or a PDF, nothing around its content moves as the tabs change. A thin bar in a colour at
-  // the top when asked (`colour`; a right-click on it is the app's, `oncolourmenu`).
+  // the top when asked (`colour`; a right-click on it is the app's, `oncolourmenu`). The keys of Switch to Recent Tab
+  // the menu cannot have (papers-tabs's menu; the app registers its commands `recent_tab` and `recent_done`).
 
+  import { invoke } from "@tauri-apps/api/core";
   import type { Snippet } from "svelte";
+  import { mac } from "../editor/platform";
   import type { ProjectSidebar } from "./sidebar.svelte";
   import type { TabItem } from "./TabStrip.svelte";
   import Tabs from "./Tabs.svelte";
@@ -65,7 +68,23 @@
     edge.addEventListener("pointermove", move);
     edge.addEventListener("pointerup", stop);
   }
+
+  /** ⌃ let go: Switch to Recent Tab (⌃Tab) over, the tab it came to the most recent. */
+  function ctrlUp(e: KeyboardEvent) {
+    if (e.key === "Control") invoke("recent_done").catch(() => {});
+  }
+
+  /** ⌃Tab and ⌃⇧Tab outside macOS: GTK takes no Tab as a menu's key (the menu only shows it), so the page says them.
+   *  On macOS the menu's key does it, the PDF in front (PDFKit's, which has the keys) included, and only once. */
+  function ctrlTab(e: KeyboardEvent) {
+    if (!mac && e.key === "Tab" && e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      invoke("recent_tab", { by: e.shiftKey ? -1 : 1 }).catch(() => {});
+    }
+  }
 </script>
+
+<svelte:window onkeyup={ctrlUp} onkeydowncapture={ctrlTab} />
 
 <!-- the project's colour, at the top, to tell its windows apart among others -->
 {#if colour}<div class="colour" style:background={colour} title={colourTitle} oncontextmenu={oncolourmenu} role="presentation"></div>{/if}

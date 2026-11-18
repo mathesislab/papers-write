@@ -85,6 +85,10 @@ impl Host for Write {
 
     fn open_companion(&self, app: &AppHandle, beside: &str, kind: &str) -> Result<String, String> {
         match kind {
+            // beside the text (View ▸ Panes): the text's page shows it there as it loads
+            "preview" if matches!(crate::projects::with_saved(app, |saved| saved.panes.clone()).as_str(), "" | "side") => {
+                Err("the preview is beside the text".into())
+            }
             "preview" => crate::panetabs::open_preview(app, beside),
             _ => Err(format!("no tab of kind {kind}")),
         }

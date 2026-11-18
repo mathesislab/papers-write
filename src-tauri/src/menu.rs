@@ -448,7 +448,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[&item("check-updates", "Check for Updates…", None)?, &separator()?, &PredefinedMenuItem::about(app, Some("About Papers Write"), None)?],
     )?;
-    Menu::with_items(app, &[&file, &edit, &format, &view, &go, &review, &git, &build, &window, &help])
+    // no Window menu: its Minimize and Maximize are the title bar's buttons, the tabs' items are in Go
+    let _ = window;
+    Menu::with_items(app, &[&file, &edit, &format, &view, &go, &review, &git, &build, &help])
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
@@ -612,6 +614,9 @@ pub fn sidebar_shown(app: AppHandle, shown: bool, outline: bool) {
 /// View ▸ Show Preview and Show PDF saying Hide when the page in front shows them.
 #[tauri::command]
 pub fn view_shown(app: AppHandle, preview: bool, pdf: bool, panes: String) {
+    if crate::projects::with_saved(&app, |saved| saved.panes.clone()) != panes {
+        crate::projects::with_saved(&app, |saved| saved.panes = panes.clone());
+    }
     for (id, shown, name) in [("preview", preview, "Preview"), ("pdf-beside", pdf, "PDF")] {
         if let Some(item) = item_of(&app, id) {
             let _ = item.set_text(format!("{} {name}", if shown { "Hide" } else { "Show" }));

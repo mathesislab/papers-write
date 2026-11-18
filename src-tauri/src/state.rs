@@ -30,6 +30,9 @@ pub struct Saved {
     /// the build profile chosen for each source file, and the last chosen for each project (by its folder); empty:
     /// none, Build builds the document in front
     pub profiles: BTreeMap<PathBuf, String>,
+    /// View ▸ Panes as the pages last said it ("side", "tabs", "auto"; empty: side): preview tabs are made again at
+    /// the start only in tabs, before any page can say
+    pub panes: String,
     /// the sidebar of each project, and the last one changed (`sidebars` and `sidebar` in the file)
     #[serde(flatten)]
     pub sidebars: Sidebars,

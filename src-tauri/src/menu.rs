@@ -376,7 +376,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         let with = Submenu::with_id(app, "build-with", "Build With", true)?;
         let behind = Submenu::with_id(app, "background", "In the Background", true)?;
         let on_save = CheckMenuItem::with_id(app, "build-on-save", "Build After Saves", true, false, None::<&str>)?;
-        build.append_items(&[&separator()?, &separator()?, &on_save, &item("build-profiles", "Build Profiles…", None)?, &item("build-tools", "Build Tools…", None)?])?;
+        build.append_items(&[&separator()?, &separator()?, &on_save, &item("build-log", "Show Build Log", None)?, &item("build-profiles", "Build Profiles…", None)?, &item("build-tools", "Build Tools…", None)?])?;
         // the two lists put in (after the first separator) by `profiles::menu_lists` when they have something to list
         crate::profiles::keep_menu_lists(app, build.clone(), with, behind, on_save);
     }
@@ -527,6 +527,18 @@ fn command(app: &AppHandle, id: &str) {
                     crate::sheet::tell(app, None, "Build After Saves", e, crate::sheet::Level::Error);
                 }
                 let _ = app.emit_to(EventTarget::webview(&label), "profiles-changed", ());
+            }
+        }
+        // the background's log (or the last Build's LaTeX log) in a tab of its own
+        "build-log" => {
+            let source = documents::front(app).and_then(|page| documents::path_of(app, page.label()));
+            let log = source.as_deref().and_then(|s| crate::profiles::build_log(app, s));
+            let opened = match log {
+                Some(log) => documents::open_file(app, &log),
+                None => Err("No build log yet: nothing was built for this document, and nothing runs in the background of its project".into()),
+            };
+            if let Err(e) = opened {
+                crate::sheet::tell(app, None, "Show Build Log", e, crate::sheet::Level::Error);
             }
         }
         "build-profiles" => {

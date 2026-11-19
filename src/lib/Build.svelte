@@ -57,17 +57,17 @@
   type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "external" };
   /** what runs in the background of the project: "watching" (started here), "elsewhere" (the same command started in
    *  a terminal, followed), "ended" (its command exited), "paused" (chosen, not started), "busy" (building now) */
-  type Background = { name: string; file: string | null; state: "busy" | "watching" | "elsewhere" | "ended" | "paused" };
+  type Background = { name: string; file: string | null; state: "busy" | "watching" | "failed" | "elsewhere" | "ended" | "paused"; log: string | null };
   type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; kept: string | null; on_save: boolean; wrong: string[]; folder: string | null };
   let profiles = $state<Profiles | null>(null);
   const loadProfiles = async () => (profiles = await invoke<Profiles>("build_profiles").catch(() => null));
   /** the active profile's name, said after what the button says */
   const named = $derived((profiles?.active ? ` · ${profiles.active}` : "") + (profiles?.on_save ? " · after saves" : ""));
   /** the background, said after it */
-  const BACKGROUND = { busy: "building", watching: "watching", elsewhere: "watching (terminal)", ended: "ended", paused: "paused" };
+  const BACKGROUND = { busy: "building", watching: "watching", failed: "its last build failed", elsewhere: "watching (terminal)", ended: "ended", paused: "paused" };
   /** the background's button: ▶ starts what is paused (or ended), ❚❚ pauses what runs (still chosen) */
   const behind = $derived(profiles?.background ?? null);
-  const running = $derived(behind?.state === "busy" || behind?.state === "watching");
+  const running = $derived(behind?.state === "busy" || behind?.state === "watching" || behind?.state === "failed");
   // while something runs in the background, its state looked at every second or two (building, watching, ended)
   $effect(() => {
     if (!running && behind?.state !== "elsewhere") return;
@@ -76,6 +76,8 @@
   });
   async function playPause() {
     if (!behind || behind.state === "elsewhere") return;
+    // its last build failed: its log in a tab (the menu's In the Background pauses it)
+    if (behind.state === "failed" && behind.log) return void request("open_document", { path: behind.log });
     profiles = (await request<Profiles>("background_play", { play: !running })) ?? profiles;
   }
   const commandOf = (name: string) => profiles?.profiles.find((p) => p.name === name)?.command ?? name;
@@ -257,9 +259,9 @@
     <button
       class="behind {behind.state}"
       onclick={playPause}
-      title="{commandOf(behind.name)}: {BACKGROUND[behind.state]}. {behind.state === 'elsewhere' ? 'Started in a terminal: stopped there' : running ? 'A click pauses it (still chosen)' : 'A click starts it'}"
+      title="{commandOf(behind.name)}: {BACKGROUND[behind.state]}. {behind.state === 'elsewhere' ? 'Started in a terminal: stopped there' : behind.state === 'failed' ? 'A click shows its log' : running ? 'A click pauses it (still chosen)' : 'A click starts it'}"
     >
-      {running || behind.state === "elsewhere" ? "●" : "▶"} {behind.name}{behind.file ? `: ${behind.file}` : ""}{behind.state === "elsewhere" ? " (terminal)" : behind.state === "ended" ? " (ended)" : ""}
+      {running || behind.state === "elsewhere" ? "●" : "▶"} {behind.name}{behind.file ? `: ${behind.file}` : ""}{behind.state === "elsewhere" ? " (terminal)" : behind.state === "ended" ? " (ended)" : behind.state === "failed" ? " (failed)" : ""}
     </button>
   {/if}
   {#if status && status.state !== "building" && (status.state === "failed" || errors)}
@@ -347,6 +349,10 @@
   .behind.elsewhere {
     color: #2f9e57;
     border-color: #2f9e57;
+  }
+  .behind.failed {
+    color: var(--error, #c4321f);
+    border-color: var(--error, #c4321f);
   }
   .behind.busy {
     color: #d08a0a;

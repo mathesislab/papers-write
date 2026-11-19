@@ -57,8 +57,11 @@ pub struct Shown {
     file: Option<String>,
     /// "busy" (started here, building now: its log written a moment ago and not yet back to watching), "watching"
     /// (started here), "elsewhere" (followed), "ended" (its command exited), "paused" (chosen,
-    /// not started: the app started since, or paused by hand)
+    /// not started: the app started since, or paused by hand), "failed" (started here, watching, its last build
+    /// failed: its log says so)
     state: &'static str,
+    /// its log (started here: the command's output), when there is one
+    log: Option<String>,
 }
 
 /// The profiles of the page's project, the one active, and what is wrong with the files that are not profiles.
@@ -126,18 +129,23 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
     let (profiles, wrong) = all(&root);
     let active = chosen(app, source, &root).filter(|n| profiles.iter().any(|p| &p.name == n && builds_now(p)));
     let per_document = |name: &str| profiles.iter().any(|p| p.name == name && p.per_document());
-    let background = app.state::<Watches>().0.lock().unwrap().get_mut(&root).map(|(name, how, file)| Shown {
-        file: per_document(name).then(|| file.file_name().unwrap_or_default().to_string_lossy().into_owned()),
-        name: name.clone(),
-        state: match how {
-            Background::Started(child) => match child.try_wait() {
-                Ok(None) if busy(&profiles::dir_of(&root).join(format!("{name}.log"))) => "busy",
-                Ok(None) => "watching",
-                _ => "ended",
+    let background = app.state::<Watches>().0.lock().unwrap().get_mut(&root).map(|(name, how, file)| {
+        let log = log_of(&root, name);
+        Shown {
+            file: per_document(name).then(|| file.file_name().unwrap_or_default().to_string_lossy().into_owned()),
+            name: name.clone(),
+            state: match how {
+                Background::Started(child) => match child.try_wait() {
+                    Ok(None) if busy(&log) => "busy",
+                    Ok(None) if failed(&log) => "failed",
+                    Ok(None) => "watching",
+                    _ => "ended",
+                },
+                Background::Elsewhere(pid) if alive(*pid) => "elsewhere",
+                Background::Elsewhere(_) => "ended",
             },
-            Background::Elsewhere(pid) if alive(*pid) => "elsewhere",
-            Background::Elsewhere(_) => "ended",
-        },
+            log: (matches!(how, Background::Started(_)) && log.exists()).then(|| log.to_string_lossy().into_owned()),
+        }
     });
     let kept = kept_pdf(app, &root);
     let on_save = projects::with_saved(app, |saved| saved.build_on_save.contains(&root));
@@ -146,6 +154,7 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
         let shown = profiles.iter().find(|p| p.name == name)?;
         Some(Shown {
             file: shown.per_document().then(|| file.file_name().unwrap_or_default().to_string_lossy().into_owned()),
+            log: Some(log_of(&root, &name)).filter(|l| l.exists()).map(|l| l.to_string_lossy().into_owned()),
             name,
             state: "paused",
         })
@@ -338,7 +347,7 @@ pub fn shell(command: &str, root: &Path) -> Command {
 
 /// The `watch` profile's command started in `root`.
 fn start(root: &Path, profile: &Profile) -> Result<Child, String> {
-    let log_path = profiles::dir_of(root).join(format!("{}.log", profile.name));
+    let log_path = log_of(root, &profile.name);
     let log = File::create(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
     let mut cmd = shell(&profile.command, root);
     cmd.stdout(log.try_clone().map_err(|e| e.to_string())?).stderr(log);
@@ -398,6 +407,19 @@ fn alive(pid: u32) -> bool {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_last_build_of_a_watch_is_failed_when_its_log_says_so() {
+        let ok = "texmark: build OK; watching for next change.\n";
+        let bad = "! Undefined control sequence.\n!  ==> Fatal error occurred, no output PDF file produced!\ntexmark: build FAILED; watching for next change.\n";
+        assert!(!last_build_failed(ok));
+        assert!(last_build_failed(&format!("{ok}{bad}")));
+        // an earlier failure, then a build that went well
+        assert!(!last_build_failed(&format!("{bad}texmark: PDF written\n{ok}")));
+        // building now, after a failure: the failure is still the last build's
+        assert!(last_build_failed(&format!("{ok}{bad}texmark: change in main.md\n")));
+        assert!(!last_build_failed(""));
+    }
 
     #[test]
     fn a_command_running_in_the_projects_folder_is_found_and_not_one_elsewhere() {
@@ -499,6 +521,48 @@ pub fn menu_lists(app: &AppHandle) {
         }
         lists.shown = want;
     });
+}
+
+/// The log of the background profile `name` of the project at `root`: its command's output.
+fn log_of(root: &Path, name: &str) -> PathBuf {
+    profiles::dir_of(root).join(format!("{name}.log"))
+}
+
+/// Whether the last build of a watch failed, from its log: what it wrote since its last wait but one (its last build)
+/// says so (texmark's "build FAILED", LaTeX's "Fatal error", "no output PDF", a Python traceback, `error:`).
+fn failed(log: &Path) -> bool {
+    let text = std::fs::read(log).unwrap_or_default();
+    last_build_failed(&String::from_utf8_lossy(&text[text.len().saturating_sub(20_000)..]))
+}
+
+fn last_build_failed(log: &str) -> bool {
+    let waits = |l: &str| {
+        let l = l.to_lowercase();
+        l.contains("watching") || l.contains("waiting")
+    };
+    let lines: Vec<&str> = log.lines().filter(|l| !l.trim().is_empty()).collect();
+    // the last build: the lines before the last wait, after the wait before it
+    let end = lines.iter().rposition(|l| waits(l)).unwrap_or(lines.len());
+    let start = lines[..end].iter().rposition(|l| waits(l)).map_or(0, |i| i + 1);
+    lines[start..(end + 1).min(lines.len())].iter().any(|l| {
+        let l = l.to_lowercase();
+        ["failed", "fatal error", "no output pdf", "traceback (most recent call last)", "error:"].iter().any(|m| l.contains(m))
+    })
+}
+
+/// The log Build ▸ Show Build Log opens for the document `source`: its project's background's (chosen or running),
+/// else the LaTeX log of its last Build.
+pub fn build_log(app: &AppHandle, source: &Path) -> Option<PathBuf> {
+    let root = project::find(source);
+    let behind = root.as_ref().and_then(|root| {
+        let name = app.state::<Watches>().0.lock().unwrap().get(root).map(|(n, _, _)| n.clone());
+        let name = name.or_else(|| projects::with_saved(app, |saved| saved.background.get(root).map(|(n, _)| n.clone())))?;
+        Some(log_of(root, &name)).filter(|l| l.exists())
+    });
+    behind.or_else(|| {
+        let stem = source.file_stem()?.to_string_lossy().into_owned();
+        Some(project::build_dir_of(source).join(format!("{stem}.log"))).filter(|l| l.exists())
+    })
 }
 
 /// Whether a watch is building now, from its log: written in the last seconds, its last line not one of waiting

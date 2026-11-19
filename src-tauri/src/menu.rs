@@ -438,6 +438,21 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
     }
 }
 
+/// A menu a page made, shown at `x`, `y` (logical, in its window; none: at the pointer) until it closes. In place of
+/// Tauri's own popup (`plugin:menu|popup`), which holds the page's table of menus while the menu shows: a menu call of
+/// the page meanwhile (an item made, a menu shown) waits for the table on the main thread, which the menu shown needs
+/// to close, and the app is frozen. Here the menu is taken from the table, the table let go, and the menu shown.
+#[tauri::command]
+pub async fn popup_menu(webview: tauri::Webview, window: tauri::Window, rid: tauri::ResourceId, x: Option<f64>, y: Option<f64>) -> Result<(), String> {
+    use tauri::menu::ContextMenu;
+    let menu = webview.resources_table().get::<Menu<Wry>>(rid).map_err(|e| e.to_string())?;
+    match (x, y) {
+        (Some(x), Some(y)) => menu.popup_at(window, tauri::LogicalPosition::new(x, y)),
+        _ => menu.popup(window),
+    }
+    .map_err(|e| e.to_string())
+}
+
 /// An item of the menu bar, in whichever menu it is.
 fn item_of(app: &AppHandle, id: &str) -> Option<MenuItem<Wry>> {
     let menu = app.menu()?;

@@ -12,4 +12,4 @@ export type { Colour, Kind, Node } from "./types";
 export { ProjectSidebar, type SidebarState } from "./sidebar.svelte";
 export { part, ready } from "./ready";
 export { default as ProjectFrame } from "./ProjectFrame.svelte";
-export { followButtons, popupReleased } from "./contextMenu";
+export { followButtons, popupReleased, showMenu } from "./contextMenu";

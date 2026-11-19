@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { showMenu } from "papers-write/project";
   // The builds of a document, over its editor: Build (⇧⌘B), Build and Show PDF (⌥⇧⌘B) and Marked-up PDF… of the Build
   // menu come to `run`. The document is written first (`flush`), then the backend runs texmark or Quarto (and for the marked-up
   // PDF latexdiff and latexmk; for a .tex document latexmk, and latexdiff) and tells only the status: `build-status`, shown in the foot of the window, where it stays: a split button
@@ -101,7 +102,7 @@
       ...(pdf ? [MenuItem.new({ text: "Show PDF", action: () => void request("open_document", { path: pdf }) })] : []),
       ...(await profileItems()),
     ]);
-    await (await Menu.new({ items })).popup(new LogicalPosition(at.left, at.top));
+    await showMenu(await Menu.new({ items }), new LogicalPosition(at.left, at.top));
   }
 
   /** The build profiles in the ▾: none (the document in front, by texmark, Quarto or latexmk) or one of the project's,

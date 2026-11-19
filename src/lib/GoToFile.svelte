@@ -17,15 +17,19 @@
     onheading,
     online,
     onclose,
+    start = "",
   }: {
     /** the headings of the text in front (none: not a Markdown or LaTeX text) */
     headings: Heading[];
     onheading: (heading: Heading) => void;
     online: (line: number) => void;
     onclose: () => void;
+    /** what the field starts with: `:` for Go to Line (Ctrl+G) */
+    start?: string;
   } = $props();
 
-  let query = $state("");
+  // svelte-ignore state_referenced_locally
+  let query = $state(start);
   let files = $state.raw<Listed[]>([]);
   let loading = $state(true);
   let at = $state(0);
@@ -86,6 +90,7 @@
 
   onMount(() => {
     field?.focus();
+    field?.setSelectionRange(query.length, query.length);
     invoke<Listed[]>("project_file_list")
       .then((found) => (files = found))
       .catch((e) => (error = String(e)))

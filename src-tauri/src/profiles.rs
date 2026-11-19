@@ -309,6 +309,10 @@ pub fn reveal_profiles(window: Webview) -> Result<(), String> {
     if cfg!(target_os = "macos") {
         crate::build::reveal(dir.to_string_lossy().into_owned())
     } else {
+        #[cfg(target_os = "linux")]
+        if crate::build::shown_in_files(&dir, true).is_ok() {
+            return Ok(());
+        }
         tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|e| format!("{}: {e}", dir.display()))
     }
 }

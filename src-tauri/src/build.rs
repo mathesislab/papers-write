@@ -970,7 +970,43 @@ pub async fn earlier_file(app: AppHandle, window: Webview) -> Result<Option<Stri
 /// The file shown in Finder.
 #[tauri::command]
 pub fn reveal(path: String) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    if shown_in_files(Path::new(&path), false).is_ok() {
+        return Ok(());
+    }
     tauri_plugin_opener::reveal_item_in_dir(&path).map_err(|e| format!("{path}: {e}"))
+}
+
+/// The file (`folder`: the folder itself, opened) shown by the file manager, its window brought forward even when it
+/// is open already: the file managers' D-Bus interface (Nautilus, Dolphin, Nemo…) given the activation token GTK
+/// makes for the window in front (GNOME on Wayland raises no window opened without one). On the main thread (GTK's).
+#[cfg(target_os = "linux")]
+pub fn shown_in_files(path: &Path, folder: bool) -> Result<(), String> {
+    use gtk::prelude::*;
+    use gtk::{gdk, gio};
+    let uri = gio::File::for_path(path).uri().to_string();
+    let token = gdk::Display::default()
+        .and_then(|display| {
+            let context = display.app_launch_context()?;
+            let manager = gio::AppInfo::default_for_type("inode/directory", false)?;
+            context.startup_notify_id(&manager, &[])
+        })
+        .map(|t| t.to_string())
+        .unwrap_or_default();
+    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).map_err(|e| e.to_string())?;
+    bus.call_sync(
+        Some("org.freedesktop.FileManager1"),
+        "/org/freedesktop/FileManager1",
+        "org.freedesktop.FileManager1",
+        if folder { "ShowFolders" } else { "ShowItems" },
+        Some(&(vec![uri], token).to_variant()),
+        None,
+        gio::DBusCallFlags::NONE,
+        5000,
+        gio::Cancellable::NONE,
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 /// A file opened in a tab (the LaTeX log as text).

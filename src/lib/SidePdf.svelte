@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { showMenu } from "papers-write/project";
   // The PDF beside a text (View ▸ Show PDF): the one chosen for this source file, else the one found (`side_pdf`:
   // `<build>/<name>.pdf`), in a pane of the text's page, read again at the same page when it changes on disk
   // (`pdf-changed`: a build, a watch process). Its header says which PDF and changes it (the project's PDFs, the most
@@ -70,7 +71,7 @@
       await MenuItem.new({ text: "Other…", action: () => void other() }),
       await MenuItem.new({ text: "The One Built from This File", action: () => void choose(null) }),
     ];
-    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+    await showMenu(await Menu.new({ items }), new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
 
   /** Words looked for in the PDF and shown there; false when they are not in it. */

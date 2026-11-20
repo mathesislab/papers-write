@@ -105,7 +105,7 @@
       {@render top?.()}
     </div>
     <!-- not positioned: what the page places absolutely is placed in `main` -->
-    <div class="content">{@render children()}</div>
+    <div class="content" data-page-content>{@render children()}</div>
   </main>
 </div>
 

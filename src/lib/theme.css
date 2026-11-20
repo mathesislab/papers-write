@@ -106,3 +106,9 @@ kbd {
 :root.zen [data-zen="foot"]:not(:has(.error)) {
   display: none !important;
 }
+
+/* another tab chosen, its page still being drawn: this one, shown meanwhile, dimmed (Tabs.svelte) */
+:root.switching [data-page-content] {
+  opacity: 0.45;
+  transition: opacity 0.1s;
+}

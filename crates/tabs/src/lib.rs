@@ -343,6 +343,9 @@ pub struct Tab {
     path: Option<String>,
     /// changes not saved
     edited: bool,
+    /// the tab in front of its set: brought there, its page shown at once if drawn, else once it is (the page shown
+    /// meanwhile says so: its strip marks the tab chosen)
+    front: bool,
 }
 
 fn host(app: &AppHandle) -> &dyn Host {
@@ -1481,15 +1484,17 @@ pub mod commands {
     #[tauri::command]
     pub fn tab_strip(page: Webview) -> Vec<Tab> {
         let app = page.app_handle();
-        let pages = with_tabs(app, |w| {
-            w.values().find_map(|win| win.set_of(page.label()).map(|i| win.sets[i].pages.clone())).unwrap_or_default()
-        });
+        let (pages, front) = with_tabs(app, |w| {
+            w.values().find_map(|win| win.set_of(page.label()).map(|i| (win.sets[i].pages.clone(), win.sets[i].front.clone())))
+        })
+        .unwrap_or_default();
         pages
             .into_iter()
             .map(|label| Tab {
                 title: title_of(app, &label),
                 path: host(app).path(app, &label).map(|p| p.display().to_string()),
                 edited: host(app).edited(app, &label),
+                front: front.as_deref() == Some(label.as_str()),
                 label,
             })
             .collect()

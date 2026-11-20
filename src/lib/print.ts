@@ -73,8 +73,13 @@ export async function printText(text: string) {
   await invoke("print_page");
 }
 
-/** The PDF at `path` printed: its pages drawn at 2× (about 150 dpi on A4), one per sheet. */
+/** The PDF at `path` printed: the file itself (outside macOS), else its pages drawn at 2× (about 150 dpi on A4), one
+ *  per sheet. */
 export async function printPdf(path: string) {
+  // outside macOS: the file itself sent to the printer from GTK's dialog (printpdf.rs), its text kept; pictures of
+  // its pages, as below, only for a printer that takes no PDF
+  const printed = await invoke<"sent" | "cancelled" | "unsupported">("print_pdf", { path });
+  if (printed !== "unsupported") return;
   const data = await invoke<ArrayBuffer>("read_pdf", { path });
   const task = getDocument({ data: new Uint8Array(data) });
   const pdf = await task.promise;

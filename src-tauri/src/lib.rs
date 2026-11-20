@@ -29,6 +29,7 @@ mod tabs;
 mod undo;
 mod trash;
 mod update;
+mod printpdf;
 mod watch;
 mod zen;
 
@@ -267,6 +268,7 @@ pub fn run() {
             menu::sidebar_shown,
             menu::popup_menu,
             zen::distraction_free_of,
+            printpdf::print_pdf,
             zen::leave_distraction_free,
             sidepdf::side_pdf,
             profiles::build_profiles,

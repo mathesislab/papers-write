@@ -438,7 +438,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
     }
 }
 
-/// A menu a page made, shown at `x`, `y` (logical, in its window; none: at the pointer) until it closes. In place of
+/// A menu a page made, shown at `x`, `y` (logical, in its window) until it closes. In place of
 /// Tauri's own popup (`plugin:menu|popup`), which holds the page's table of menus while the menu shows: a menu call of
 /// the page meanwhile (an item made, a menu shown) waits for the table on the main thread, which the menu shown needs
 /// to close, and the app is frozen. Here the menu is taken from the table, the table let go, and the menu shown.
@@ -446,11 +446,9 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
 pub async fn popup_menu(webview: tauri::Webview, window: tauri::Window, rid: tauri::ResourceId, x: Option<f64>, y: Option<f64>) -> Result<(), String> {
     use tauri::menu::ContextMenu;
     let menu = webview.resources_table().get::<Menu<Wry>>(rid).map_err(|e| e.to_string())?;
-    match (x, y) {
-        (Some(x), Some(y)) => menu.popup_at(window, tauri::LogicalPosition::new(x, y)),
-        _ => menu.popup(window),
-    }
-    .map_err(|e| e.to_string())
+    // never "at the pointer" (muda's `popup`): that menu is put on the screen's root window, which Wayland has no
+    // popups on, and the menu never shown holds the pointer and the keys
+    menu.popup_at(window, tauri::LogicalPosition::new(x.unwrap_or(0.0), y.unwrap_or(0.0))).map_err(|e| e.to_string())
 }
 
 /// An item of the menu bar, in whichever menu it is.

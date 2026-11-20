@@ -53,3 +53,11 @@ test("the places matched in pieces, to show them in bold", () => {
   ]);
   assert.deepEqual(pieces("abc", []), [{ text: "abc", on: false }]);
 });
+
+test("a file open in a tab before a better match that is not", () => {
+  const items = [
+    { relative: "notes/intro-draft.md", modified: 1, open: true },
+    { relative: "intro.md", modified: 0, open: false },
+  ];
+  assert.equal(rank(items, "intro", 10)[0].item.relative, "notes/intro-draft.md");
+});

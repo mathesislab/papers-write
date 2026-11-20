@@ -70,7 +70,8 @@ export function rank<T extends { relative: string; modified: number; open?: bool
   return items
     .map((item) => ({ item, ...scorePath(query, item.relative) }))
     .filter((m) => m.score > 0)
-    .sort((a, b) => b.score - a.score || b.item.modified - a.item.modified)
+    // the files open in tabs before all others (Go to File is mostly going to a tab), then the best matched
+    .sort((a, b) => Number(!!b.item.open) - Number(!!a.item.open) || b.score - a.score || b.item.modified - a.item.modified)
     .slice(0, most)
     .map(({ item, at }) => ({ item, at }));
 }

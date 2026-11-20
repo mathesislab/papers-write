@@ -24,6 +24,7 @@
     next = null,
     onchapter,
     onscrolled,
+    inTab = false,
     panes,
   }: {
     html: string;
@@ -43,21 +44,28 @@
     onchapter?: (path: string, atEnd: boolean) => void;
     /** scrolled (by hand or not): the index of the top-level block at the top of what shows */
     onscrolled?: (index: number) => void;
+    /** the preview in a tab of its own (it then always follows the view) */
+    inTab?: boolean;
     /** View ▸ Panes, in the right-click menu too: the form chosen, and the choice */
     panes?: { mode: "side" | "tabs" | "auto"; onpanes: (mode: "side" | "tabs" | "auto") => void };
   } = $props();
 
   type Chapter = { path: string; title: string };
 
-  /** The ▾ in the corner: Follows the Cursor, Panes ▸, Settings ▸ Editor. */
+  /** The ▾ in the corner: Follows the Cursor or the View (beside the text), Panes ▸, Settings ▸ Editor. */
   async function settingsMenu() {
-    const now = await invoke<{ preview_follow: boolean }>("settings").catch(() => null);
+    const now = await invoke<{ preview_follows: "cursor" | "view" }>("settings").catch(() => null);
     const items = await Promise.all([
-      CheckMenuItem.new({
-        text: "Follows the Cursor",
-        checked: now?.preview_follow ?? true,
-        action: () => void invoke("set_preview_follow", { on: !(now?.preview_follow ?? true) }),
-      }),
+      // in a tab of its own the preview always follows the view
+      ...(!inTab
+        ? (["cursor", "view"] as const).map((how) =>
+            CheckMenuItem.new({
+              text: how === "cursor" ? "Follows the Cursor" : "Follows the View",
+              checked: (now?.preview_follows ?? "cursor") === how,
+              action: () => void invoke("set_preview_follows", { how }),
+            }),
+          )
+        : []),
       ...(panes
         ? [
             Submenu.new({
@@ -316,7 +324,9 @@
       if (!onscrolled || pending) return;
       pending = requestAnimationFrame(() => {
         pending = 0;
-        const top = (frame?.contentWindow?.scrollY ?? 0) + 24;
+        // the margin a block is shown at (`block`: 48 px below the top), and the text's (+page: TOP_MARGIN): a block
+        // put at the top is the one told, or the preview and a text following each other would creep upwards
+        const top = (frame?.contentWindow?.scrollY ?? 0) + 49;
         const all = doc?.body ? blocks(doc.body) : [];
         const index = all.findIndex((el) => el.offsetTop + el.offsetHeight > top);
         if (index >= 0 && index !== atTop) onscrolled?.((atTop = index));

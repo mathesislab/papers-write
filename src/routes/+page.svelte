@@ -343,11 +343,18 @@
   /** The top-level blocks of the text that pandoc shows, before and including the cursor's: front matter, link
    *  definitions, comments and raw LaTeX environments are not in its HTML. */
   const HIDDEN_BLOCKS = new Set(["FrontMatter", "LinkReference", "CommentBlock", "LatexEnvironment"]);
+  /** a block scrolled to (from the preview) starts this far below the top of the text's view */
+  const TOP_MARGIN = 48;
+  /** the preview follows the view, not the cursor: in a tab of its own always (Ctrl+Tab finds both at the same
+   *  place), beside the text as the settings say (and the text then follows the preview) */
+  const byView = () => !!previewTab || follows === "view";
   function follow() {
     const view = editor?.view();
-    if ((!previewing && !previewTab) || !view || !follows) return;
+    if ((!previewing && !previewTab) || !view) return;
     const { state } = view;
-    const head = state.selection.main.head;
+    // by the view: the block at the top of what the text shows (as `followPreviewTab` puts a block there, its start
+    // `TOP_MARGIN` below the top); else the cursor's
+    const head = byView() ? view.lineBlockAtHeight(view.scrollDOM.scrollTop + TOP_MARGIN + 1).from : state.selection.main.head;
     const tree = ensureSyntaxTree(state, state.doc.length, 50);
     if (!tree) return;
     let index = -1;
@@ -385,7 +392,7 @@
     let i = -1;
     for (let n = tree.topNode.firstChild; n; n = n.nextSibling) {
       if (HIDDEN_BLOCKS.has(n.name) || ++i < index) continue;
-      view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: 48 }) });
+      view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: TOP_MARGIN }) });
       shownHeading = currentHeading(headings, n.from);
       void sendOutline();
       return;
@@ -407,9 +414,18 @@
   const cursor = EditorView.updateListener.of((u) => {
     // where the text is read, kept (the view moved, or the cursor)
     if (u.selectionSet || u.viewportChanged || u.geometryChanged) keepPlace();
-    if (!u.selectionSet && !u.docChanged) return;
+    if (!(byView() ? u.docChanged : u.selectionSet || u.docChanged)) return;
     clearTimeout(following);
     following = setTimeout(follow, 150);
+  });
+  /** The text scrolled: the preview following the view told a moment later (a scroll within what CodeMirror has
+   *  drawn is no update of the view). */
+  const scrolled = EditorView.domEventObservers({
+    scroll() {
+      if (!byView()) return;
+      clearTimeout(following);
+      following = setTimeout(follow, 150);
+    },
   });
 
   /** The pane beside a file (the preview, the PDF, or none), kept per file for when it opens again (localStorage: the
@@ -1119,7 +1135,7 @@
   let prefs = $state<EditorPrefs>(PREFS);
   let symbols = $state<[string, string][]>([]);
   let colour = $state<number | null>(null);
-  let follows = true;
+  let follows = $state<"cursor" | "view">("cursor");
   /** the system's spelling on the prose (Settings ▸ Editor) */
   let spelling = $state(true);
   /** the file written as it is typed; off: only when saved, a draft kept meanwhile (Settings ▸ Editor) */
@@ -1141,11 +1157,11 @@
     symbols = s.symbols;
     colour = s.review_colour;
     initials = s.review_initials;
-    follows = s.preview_follow;
+    follows = s.preview_follows;
     const now = `${s.review_name}\n${s.review_email}`;
     if (who && who !== now) session.identity();
     who = now;
-    if (follows) follow();
+    follow();
   }
 
   const userColour = $derived.by(() => {
@@ -1353,7 +1369,7 @@
         spelling={spelling ? speller : undefined}
         onoutline={markdown || latex ? (h, i) => ([headings, here] = [h, i]) : undefined}
         autofocus
-        extensions={[cursor]}
+        extensions={[cursor, scrolled]}
         review={inText ? undefined : session.handlers}
         critic={inText ? { initials } : undefined}
         onmarks={(m) => (marks = m)}
@@ -1370,7 +1386,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
-      <Preview bind:this={previewPane} {html} error={said} {block} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file, atEnd) => openChapter(file, false, atEnd)} panes={{ mode: panesMode, onpanes: setPanes }} />
+      <Preview bind:this={previewPane} {html} error={said} {block} onscrolled={follows === "view" ? followPreviewTab : undefined} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file, atEnd) => openChapter(file, false, atEnd)} panes={{ mode: panesMode, onpanes: setPanes }} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}

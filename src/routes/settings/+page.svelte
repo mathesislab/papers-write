@@ -222,10 +222,13 @@
         </label>
         <label class="row">
           <span>
-            <span class="label">Preview follows the cursor</span>
-            <span class="hint">The preview scrolled to the block the cursor is in</span>
+            <span class="label">Preview follows</span>
+            <span class="hint">The block the cursor is in, or what the text shows (the text then follows the preview too). A preview in a tab of its own always follows what the text shows</span>
           </span>
-          <input type="checkbox" class="switch" bind:checked={settings.preview_follow} onchange={save} />
+          <select bind:value={settings.preview_follows} onchange={save}>
+            <option value="cursor">The Cursor</option>
+            <option value="view">The View</option>
+          </select>
         </label>
       </section>
 

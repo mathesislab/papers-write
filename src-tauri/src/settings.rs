@@ -11,6 +11,16 @@ use tauri_plugin_dialog::DialogExt;
 
 const FILE: &str = "settings.json";
 
+/// What the preview beside the text shows (in a tab of its own it always follows the view): the block the cursor is
+/// in, or the block at the top of the text's view (and the text follows the preview as it is scrolled).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PreviewFollows {
+    #[default]
+    Cursor,
+    View,
+}
+
 /// The font of the editors.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -96,8 +106,8 @@ pub struct Settings {
     /// the user's colour among the review's authors, 1 to 6; none: from the name, as everyone's
     pub review_colour: Option<u8>,
 
-    /// the preview scrolled to the block the cursor is in
-    pub preview_follow: bool,
+    /// the preview scrolled to the block the cursor is in, or to what the text shows
+    pub preview_follows: PreviewFollows,
 
     /// the tools, each the file to run; empty: found as usual (PATH and the folders the app looks in)
     pub texmark_path: String,
@@ -149,7 +159,7 @@ impl Default for Settings {
             review_email: String::new(),
             review_initials: String::new(),
             review_colour: None,
-            preview_follow: true,
+            preview_follows: PreviewFollows::Cursor,
             texmark_path: String::new(),
             quarto_path: String::new(),
             latexmk_path: String::new(),
@@ -401,11 +411,11 @@ pub fn step_zoom(app: &AppHandle, by: f64) {
     put(app, settings);
 }
 
-/// The preview following the cursor or not (the preview's ▾).
+/// The preview following the cursor or the view (the preview's ▾).
 #[tauri::command]
-pub fn set_preview_follow(app: AppHandle, on: bool) {
+pub fn set_preview_follows(app: AppHandle, how: PreviewFollows) {
     let mut settings = get();
-    settings.preview_follow = on;
+    settings.preview_follows = how;
     put(&app, settings);
 }
 
@@ -502,7 +512,7 @@ mod tests {
         assert_eq!((s.editor_font, s.editor_size, s.indent), (EditorFont::System, 13.5, Indent::Two));
         assert!(s.readable_width && !s.line_numbers && s.spelling && s.symbols.is_empty());
         assert!((s.review_name.as_str(), s.review_email.as_str(), s.review_colour) == ("", "", None));
-        assert!(s.preview_follow && s.tabs && !s.project_colour_bar);
+        assert!(s.preview_follows == PreviewFollows::Cursor && s.tabs && !s.project_colour_bar);
         assert!(["texmark", "quarto", "latexmk", "pandoc"].iter().all(|t| s.tool(t).is_none()));
         // a file with nothing in it is the defaults
         assert_eq!(serde_json::from_str::<Settings>("{}").unwrap(), s);
@@ -511,7 +521,7 @@ mod tests {
     #[test]
     fn a_missing_key_keeps_its_default() {
         let s: Settings = serde_json::from_str(r#"{"tabs": false, "indent": "tab"}"#).unwrap();
-        assert!(!s.tabs && s.preview_follow);
+        assert!(!s.tabs && s.preview_follows == PreviewFollows::Cursor);
         assert_eq!(s.indent, Indent::Tab);
     }
 
@@ -544,7 +554,7 @@ mod tests {
             review_email: "a@example.org".into(),
             review_initials: "AR".into(),
             review_colour: Some(3),
-            preview_follow: false,
+            preview_follows: PreviewFollows::View,
             texmark_path: "/opt/bin/texmark".into(),
             quarto_path: "/opt/bin/quarto".into(),
             latexmk_path: "/opt/bin/latexmk".into(),

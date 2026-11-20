@@ -14,7 +14,9 @@
   import PdfTools from "$lib/PdfTools.svelte";
   import { sectionAt, type OutlineItem, type PdfViewer, type Spot } from "$lib/pdf";
   import { listen } from "$lib/events";
-  import { part, ready } from "papers-write/project";
+  import { part, ready, showMenu } from "papers-write/project";
+  import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { mac } from "papers-write/editor";
   import Frame from "$lib/Frame.svelte";
   import Build from "$lib/Build.svelte";
@@ -46,6 +48,20 @@
   /** what was just done or went wrong, for a moment */
   let note = $state("");
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** The PDF's name clicked: the project's other PDFs and the one built from the text, the text's PDF from then on
+   *  (as the PDF beside the text chooses it), brought forward in its tab. */
+  async function changeMenu(e: MouseEvent) {
+    const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const offered = await invoke<{ path: string; name: string }[]>("pdf_tab_offered").catch(() => []);
+    const choose = (pdf: string | null) => void invoke("pdf_tab_choose", { pdf }).catch((e) => say(String(e)));
+    const items = await Promise.all([
+      ...offered.filter((o) => o.path !== path).slice(0, 15).map((o) => MenuItem.new({ text: o.name, action: () => choose(o.path) })),
+      PredefinedMenuItem.new({ item: "Separator" }),
+      MenuItem.new({ text: "The One Built from the Text", action: () => choose(null) }),
+    ]);
+    await showMenu(await Menu.new({ items }), new LogicalPosition(anchor.left, anchor.bottom + 2));
+  }
 
   /** A place of a text to show here (Show in PDF with the panes in tabs: panetabs.rs), once the PDF is read: from the
    *  build's map, else by the words of its line. */
@@ -159,7 +175,7 @@
   onfocus={() => view?.focus()}
 >
   <PdfTools bind:this={tools} {view} {current} {count} {outline}>
-    {#snippet lead()}<span class="name" class:said={note} title={note || path || ""}>{note || name}</span>{/snippet}
+    {#snippet lead()}<button class="name" class:said={note} title={note || path || ""} onclick={changeMenu}>{note || name} ▾</button>{/snippet}
   </PdfTools>
   <div class="viewer">
     {#if path}
@@ -202,12 +218,25 @@
     border-top: 1px solid var(--line);
     background: var(--sidebar);
   }
+  /* the PDF's name, a click on it offering the others */
   .name {
-    flex: 1;
+    flex: 0 1 auto;
+    min-width: 0;
+    margin-right: auto;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--muted);
+    font: inherit;
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: 5px;
+    padding: 1px 6px;
+    cursor: pointer;
+  }
+  .name:hover {
+    background: var(--hover, rgba(0, 0, 0, 0.06));
   }
   .name.said {
     color: var(--fg);

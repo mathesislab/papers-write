@@ -26,7 +26,7 @@ export type Settings = {
   review_initials: string;
   /** 1 to 6, or null: from the name */
   review_colour: number | null;
-  preview_follow: boolean;
+  preview_follows: "cursor" | "view";
   texmark_path: string;
   quarto_path: string;
   latexmk_path: string;

@@ -97,6 +97,7 @@
       next={chapters.next}
       onchapter={(file, atEnd) => void tell({ kind: "chapter", text: file, index: atEnd ? 1 : 0 })}
       onscrolled={(index) => void tell({ kind: "scrolled", index })}
+      inTab
       panes={{ mode: panesMode(), onpanes: (mode) => void tell({ kind: "panes", text: mode }) }}
     />
   </div>

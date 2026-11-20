@@ -79,6 +79,45 @@ pub fn pdf_tab_back(window: Webview) -> bool {
     }
 }
 
+/// The PDFs a PDF's tab offers in its place (its project's, the most recently written first).
+#[tauri::command]
+pub fn pdf_tab_offered(window: Webview) -> Vec<crate::sidepdf::Offered> {
+    let app = window.app_handle();
+    documents::path_of(app, window.label()).map(|pdf| crate::sidepdf::offered_for(&pdf)).unwrap_or_default()
+}
+
+/// A PDF chosen in a PDF's tab (none: the one built from the text): the PDF of the text it was shown from from now
+/// on, as the PDF beside the text chooses it, and its tab brought forward (opened if need be). Without such a text,
+/// the PDF chosen opened.
+#[tauri::command]
+pub fn pdf_tab_choose(window: Webview, pdf: Option<String>) -> Result<(), String> {
+    let app = window.app_handle();
+    let shown = documents::path_of(app, window.label()).ok_or("No PDF in this tab")?;
+    let text = app.state::<PaneTabs>().shown_from.lock().unwrap().get(shown.to_string_lossy().as_ref()).cloned();
+    let source = text.as_deref().filter(|t| app.get_webview(t).is_some()).and_then(|t| documents::path_of(app, t));
+    let chosen = match (&source, pdf) {
+        (Some(source), pdf) => {
+            crate::projects::with_saved(app, |saved| match &pdf {
+                Some(pdf) => saved.pdfs.insert(source.clone(), pdf.into()),
+                None => saved.pdfs.remove(source),
+            });
+            crate::sidepdf::pdf_of(app, source).ok_or("No PDF built from this text yet: Build first")?
+        }
+        (None, Some(pdf)) => pdf.into(),
+        (None, None) => return Err("This PDF was not shown from a text".into()),
+    };
+    if let Some(text) = text {
+        app.state::<PaneTabs>().shown_from.lock().unwrap().insert(chosen.to_string_lossy().into_owned(), text);
+    }
+    match crate::tabs::page_of(app, &chosen) {
+        Some(page) => {
+            crate::tabs::select(app, &page);
+            Ok(())
+        }
+        None => documents::open_file(app, &chosen),
+    }
+}
+
 /// The place a PDF's tab is to show, once (none: nothing asked).
 #[tauri::command]
 pub fn take_show_source(window: Webview) -> Option<ShowSource> {

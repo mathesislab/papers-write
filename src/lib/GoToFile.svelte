@@ -126,7 +126,7 @@
     <ul bind:this={list}>
       {#each rows as row, i (row.kind === "file" ? row.file.path : row.kind === "heading" ? `@${row.heading.from}` : ":")}
         <li class:on={i === at}>
-          <button onclick={() => go(row)} onmouseenter={() => (at = i)}>
+          <button onclick={() => go(row)} onmousemove={() => (at = i)}>
             {#if row.kind === "file"}
               {@const p = split(row.file.relative)}
               <span class="name">{#each pieces(p.name, row.at, p.cut) as piece, k (k)}{#if piece.on}<b>{piece.text}</b>{:else}{piece.text}{/if}{/each}</span>

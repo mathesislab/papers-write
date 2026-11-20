@@ -77,11 +77,12 @@
     tabindex="-1"
     onclick={(e) => e.stopPropagation()}
     onfocusout={(e) => leaving(e)}>
+    <!-- the line under the pointer chosen as the pointer moves (not as the list appears under it) -->
     <input bind:this={field} bind:value={query} onkeydown={keys} placeholder="Switch to a project" spellcheck="false" autocomplete="off" />
     <ul>
       {#each shown as { project: p, inName, inRoot }, i (p.root)}
         <li class:on={i === at}>
-          <button onclick={() => go(i)} onmouseenter={() => (at = i)}>
+          <button onclick={() => go(i)} onmousemove={() => (at = i)}>
             <span class="dot" style:background={cssOf(p.colour) ?? "var(--line)"}></span>
             <span class="name">{#each pieces(p.name, inName) as piece, k (k)}{#if piece.on}<b>{piece.text}</b>{:else}{piece.text}{/if}{/each}</span>
             {#if p.current}<span class="here">this window</span>{/if}
@@ -90,7 +91,7 @@
         </li>
       {/each}
       <li class:on={at === shown.length}>
-        <button class="other" onclick={() => go(shown.length)} onmouseenter={() => (at = shown.length)}>Open Another Project…</button>
+        <button class="other" onclick={() => go(shown.length)} onmousemove={() => (at = shown.length)}>Open Another Project…</button>
       </li>
     </ul>
   </div>

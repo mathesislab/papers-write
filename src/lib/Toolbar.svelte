@@ -193,6 +193,7 @@
 <!-- a press on a button leaves the keys and the selection with the text -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
+  data-zen="hide"
   class="toolbar"
   role="toolbar"
   aria-label="Text"

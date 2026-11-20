@@ -30,6 +30,7 @@ mod undo;
 mod trash;
 mod update;
 mod watch;
+mod zen;
 
 use tauri::{AppHandle, DragDropEvent, Manager, RunEvent, State, WebviewEvent, WindowEvent};
 use update::{Available, Installed, Updates};
@@ -100,7 +101,10 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => documents::closing(window, api),
             WindowEvent::Focused(true) => tabs::window_focused(window.app_handle(), window.label()),
-            WindowEvent::Destroyed => tabs::window_closed(window.app_handle(), window.label()),
+            WindowEvent::Destroyed => {
+                zen::closed(window.label());
+                tabs::window_closed(window.app_handle(), window.label())
+            }
             // the system's appearance changed: the windows' background, as Settings ▸ Window ▸ Appearance System has it
             WindowEvent::ThemeChanged(_) => tabs::repaint(window.app_handle()),
             // files dropped on a window open in tabs of their own
@@ -262,6 +266,7 @@ pub fn run() {
             menu::view_shown,
             menu::sidebar_shown,
             menu::popup_menu,
+            zen::distraction_free_of,
             sidepdf::side_pdf,
             profiles::build_profiles,
             profiles::set_build_profile,

@@ -1481,8 +1481,9 @@
     onfocus={() => editor?.focus()}
     onlog={(did) => log.push({ did })}
   />
-  <!-- the foot of the window: the build, what was just done or went wrong, the repository -->
-  <footer>
+  <!-- the foot of the window: the build, what was just done or went wrong, the repository (in Distraction Free:
+       only while something went wrong) -->
+  <footer data-zen="foot">
     <Build bind:this={builds} can={markdown || latex} flush={() => editor?.flush()} onfocus={() => editor?.focus()} ongoto={(line) => editor?.goToLine(line)} />
     <!-- View ▸ Panes, a mode of the window, at its foot -->
     {#if markdown || latex || path}

@@ -200,7 +200,7 @@
   <!-- the foot, as a text's: the project's build (Build With, Build After Saves) and what runs in the background, so
        that a PDF in a tab of its own shows it too -->
   {#if path}
-    <footer>
+    <footer data-zen="foot">
       <Build can={true} flush={() => {}} onfocus={() => view?.focus()} />
     </footer>
   {/if}

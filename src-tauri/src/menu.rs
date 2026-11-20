@@ -273,6 +273,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                     crate::settings::get().project_bar != crate::settings::ProjectBar::Hover,
                     None::<&str>,
                 )?,
+                // as Sublime's: the window over the whole screen; and with only the text (no menu bar, tabs, bars, foot)
+                &item("full-screen", "Full Screen", Some("F11"))?,
+                &item("distraction-free", "Distraction Free", Some("Shift+F11"))?,
                 &separator()?,
                 // the keys of zooming, whatever the tab: a text's window zoomed, a PDF's pages (the PDF menu's, without
                 // keys); ⌃+ itself where + is a key of its own (Italian, German…) is the page's (`zoom_key`); in the menu
@@ -517,6 +520,8 @@ fn command(app: &AppHandle, id: &str) {
         "close" => crate::tabs::close_front(app),
         "close-all" => crate::documents::close_all_front(app),
         "build-tools" => crate::settings::show(app, Some("build")),
+        "full-screen" => crate::zen::full_screen(app),
+        "distraction-free" => crate::zen::distraction_free(app),
         "build-on-save" => {
             if let Some(page) = documents::front(app) {
                 let label = page.label().to_string();

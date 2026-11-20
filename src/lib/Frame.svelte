@@ -28,6 +28,7 @@
   import { listen } from "$lib/events";
   import { watchSettings } from "$lib/settings";
   import { over } from "$lib/overlay.svelte";
+  import { followDistractionFree } from "$lib/zen";
 
   /** Switch Project (⌃⌘P) shown */
   let switching = $state(false);
@@ -236,6 +237,7 @@
       listen("switch-project", () => (switching = true)),
       listen("outline", toggleOutline),
       listen("sidebar", toggleFiles),
+      followDistractionFree(),
     ];
     return () => {
       stops.forEach((stop) => stop());
@@ -267,13 +269,13 @@
 {#snippet tiles()}
   {#if projects.current && projects.tiles.length}
     {#if barMode === "shown"}
-      <div class="pinned">{@render projectBar()}{@render pin()}</div>
+      <div class="pinned" data-zen="hide">{@render projectBar()}{@render pin()}</div>
     {:else if barMode === "hover"}
       <!-- a strip at the left edge in the project's colour; the bar slides in over the page while the pointer is on
            it (as the Ubuntu dock), and away when it leaves or a project is chosen. PDFKit's view, above the page,
            makes way for it (`over`) -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="hover-bar" class:open={barOpen} bind:this={hoverBar} style:--strip={cssOf(projects.current.colour) ?? "var(--line)"} onmouseenter={barNear} onmouseleave={barAway}>
+      <div class="hover-bar" data-zen="hide" class:open={barOpen} bind:this={hoverBar} style:--strip={cssOf(projects.current.colour) ?? "var(--line)"} onmouseenter={barNear} onmouseleave={barAway}>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="strip" onclick={() => (barOpen = true)} title="Projects"></div>
         <div class="slide" bind:this={slide}><div class="pinned">{@render projectBar()}{@render pin()}</div></div>

@@ -87,18 +87,19 @@
 <svelte:window onkeyup={ctrlUp} onkeydowncapture={ctrlTab} />
 
 <!-- the project's colour, at the top, to tell its windows apart among others -->
-{#if colour}<div class="colour" style:background={colour} title={colourTitle} oncontextmenu={oncolourmenu} role="presentation"></div>{/if}
+{#if colour}<div class="colour" data-zen="hide" style:background={colour} title={colourTitle} oncontextmenu={oncolourmenu} role="presentation"></div>{/if}
+<!-- View ▸ Distraction Free (zen.ts) hides what says `data-zen="hide"` -->
 <div class="frame" class:coloured={colour}>
   {@render bar?.()}
   {#if side.shown && sidebar}
-    <div class="side" style:width="{side.width}px">
+    <div class="side" data-zen="hide" style:width="{side.width}px">
       {@render sidebar()}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="edge" onpointerdown={resize}></div>
     </div>
   {/if}
   <main>
-    <div class="top" style:margin-top="{offset}px">
+    <div class="top" data-zen="hide" style:margin-top="{offset}px">
       {@render lead?.()}
       <div class="tabs"><Tabs {least} {extra} /></div>
       {@render top?.()}

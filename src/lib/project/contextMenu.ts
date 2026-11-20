@@ -9,11 +9,16 @@ import type { LogicalPosition } from "@tauri-apps/api/dpi";
 
 let held = false;
 let waiting: (() => void)[] = [];
+/** where the pointer last pressed, in the page (a frame's press moved by the frame's place) */
+let pressed: { x: number; y: number } | null = null;
 
-/** The right button followed in `target` (the page, and a frame of it: the preview). */
+/** The right button followed in `target` (the page, and a frame of it: the preview), and where each press is. */
 export function followButtons(target: Document | Window) {
   target.addEventListener("mousedown", (e) => {
-    if ((e as MouseEvent).button === 2) held = true;
+    const m = e as MouseEvent;
+    const frame = (m.view as Window | null)?.frameElement?.getBoundingClientRect();
+    pressed = { x: m.clientX + (frame?.left ?? 0), y: m.clientY + (frame?.top ?? 0) };
+    if (m.button === 2) held = true;
   });
   target.addEventListener("mouseup", (e) => {
     if ((e as MouseEvent).button !== 2) return;
@@ -43,5 +48,9 @@ export async function popupReleased(menu: Menu, at?: LogicalPosition) {
  *  holds the page's menus while the menu shows, and a menu call of the page meanwhile froze the app (Linux). */
 export async function showMenu(menu: Menu, at?: LogicalPosition) {
   if (MAC) return menu.popup(at);
-  await invoke("popup_menu", { rid: menu.rid, x: at?.x ?? null, y: at?.y ?? null });
+  // always at a place in the window: a menu "at the pointer" is put on the screen's root window, which Wayland has no
+  // popups on; GTK takes the pointer and the keys for it all the same, and the menu never shown is never closed (the
+  // app's windows dead to clicks and keys)
+  const place = at ?? pressed ?? { x: 0, y: 0 };
+  await invoke("popup_menu", { rid: menu.rid, x: place.x, y: place.y });
 }

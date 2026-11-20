@@ -17,15 +17,19 @@
     onheading,
     online,
     onclose,
+    start = "",
   }: {
     /** the headings of the text in front (none: not a Markdown or LaTeX text) */
     headings: Heading[];
     onheading: (heading: Heading) => void;
     online: (line: number) => void;
     onclose: () => void;
+    /** what the field starts with: `:` for Go to Line (Ctrl+G) */
+    start?: string;
   } = $props();
 
-  let query = $state("");
+  // svelte-ignore state_referenced_locally
+  let query = $state(start);
   let files = $state.raw<Listed[]>([]);
   let loading = $state(true);
   let at = $state(0);
@@ -86,17 +90,30 @@
 
   onMount(() => {
     field?.focus();
+    field?.setSelectionRange(query.length, query.length);
     invoke<Listed[]>("project_file_list")
       .then((found) => (files = found))
       .catch((e) => (error = String(e)))
       .finally(() => (loading = false));
   });
+  /** The focus gone to another place of the page (the text): closed, never shown with the cursor elsewhere (the
+   *  window left for another app, it stays). */
+  function leaving(e: FocusEvent) {
+    const to = e.relatedTarget as Node | null;
+    if (to && !(e.currentTarget as HTMLElement).contains(to)) onclose();
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="veil" onclick={onclose} {@attach overPage}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <div class="sheet" role="dialog" aria-label="Go to File" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+  <div
+    class="sheet"
+    role="dialog"
+    aria-label="Go to File"
+    tabindex="-1"
+    onclick={(e) => e.stopPropagation()}
+    onfocusout={(e) => leaving(e)}>
     <input
       bind:this={field}
       bind:value={query}
@@ -109,7 +126,7 @@
     <ul bind:this={list}>
       {#each rows as row, i (row.kind === "file" ? row.file.path : row.kind === "heading" ? `@${row.heading.from}` : ":")}
         <li class:on={i === at}>
-          <button onclick={() => go(row)} onmouseenter={() => (at = i)}>
+          <button onclick={() => go(row)} onmousemove={() => (at = i)}>
             {#if row.kind === "file"}
               {@const p = split(row.file.relative)}
               <span class="name">{#each pieces(p.name, row.at, p.cut) as piece, k (k)}{#if piece.on}<b>{piece.text}</b>{:else}{piece.text}{/if}{/each}</span>

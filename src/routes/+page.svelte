@@ -33,7 +33,7 @@
 
   import { readAloudItems, spokenOf } from "$lib/readAloud";
   import { toggleComment } from "@codemirror/commands";
-  import { gotoLine, selectNextOccurrence } from "@codemirror/search";
+  import { selectNextOccurrence } from "@codemirror/search";
   import GoToFile from "$lib/GoToFile.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
@@ -178,7 +178,8 @@
   /** the headings of the document and the one the cursor is under, for the outline */
   let headings = $state.raw<Heading[]>([]);
   /** Go to File (⌘P) shown */
-  let goingToFile = $state(false);
+  /** Go to File's field open, with what it starts with (`:` for Go to Line) */
+  let goingToFile = $state<string | null>(null);
   let here = $state(-1);
   const session = new ReviewSession({ text: () => current(), editor: () => editor, say: (what) => say(what), log: (e) => log.push(e), colours: (m) => setColours(withOwn(m)) });
   /** the review panel at the right: shown (the preview is not while it is) */
@@ -680,12 +681,14 @@
     if (what === "check") check();
     else if (what === "references") listing = true;
     else if (what === "symbols") editor.list();
-    else if (what === "go-to-line" || what === "select-next" || what === "toggle-comment") {
+    // Go to Line as Sublime's: Go to File's field with `:` typed
+    else if (what === "go-to-line") goingToFile = ":";
+    else if (what === "select-next" || what === "toggle-comment") {
       const view = editor.view();
       if (!view) return;
-      // the editor's own commands (CodeMirror's): the line asked, the next place of the selection added, a comment
-      // of the text's language (<!-- --> in Markdown, % in LaTeX)
-      ({ "go-to-line": gotoLine, "select-next": selectNextOccurrence, "toggle-comment": toggleComment })[what](view);
+      // the editor's own commands (CodeMirror's): the next place of the selection added, a comment of the text's
+      // language (<!-- --> in Markdown, % in LaTeX)
+      ({ "select-next": selectNextOccurrence, "toggle-comment": toggleComment })[what](view);
       view.focus();
     } else (what === "redo" ? editor.redo : editor.undo)();
   }
@@ -866,7 +869,7 @@
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", () => togglePreview()),
       listen("pdf-beside", () => togglePdf()),
-      listen("go-to-file", () => (goingToFile = true)),
+      listen("go-to-file", () => (goingToFile = "")),
       listen<{ query: ProjectQuery; with: string }>("replace-all", (e) => editor?.replaceAll(e.payload.query, e.payload.with)),
       listen<{ at: number; end: number; mark: boolean }>("go-to", (e) => goTo(e.payload)),
       listen("cite-key", () => listing && refs?.cite("pandoc")),
@@ -1011,12 +1014,13 @@
     </div>
   {/if}
   </div>
-  {#if goingToFile}
+  {#if goingToFile !== null}
     <GoToFile
+      start={goingToFile}
       headings={markdown || latex ? headings : []}
       onheading={(h) => editor?.goToHeading(h)}
       online={(n) => editor?.goToLine(n)}
-      onclose={() => ((goingToFile = false), editor?.focus())}
+      onclose={() => ((goingToFile = null), editor?.focus())}
     />
   {/if}
   {#if listing}

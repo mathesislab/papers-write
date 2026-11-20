@@ -59,12 +59,24 @@
     field?.focus();
     invoke<Offered[]>("project_list").then((found) => (projects = found));
   });
+  /** The focus gone to another place of the page (the text): closed, never shown with the cursor elsewhere (the
+   *  window left for another app, it stays). */
+  function leaving(e: FocusEvent) {
+    const to = e.relatedTarget as Node | null;
+    if (to && !(e.currentTarget as HTMLElement).contains(to)) onclose();
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="veil" onclick={onclose} {@attach overPage}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <div class="sheet" role="dialog" aria-label="Switch Project" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+  <div
+    class="sheet"
+    role="dialog"
+    aria-label="Switch Project"
+    tabindex="-1"
+    onclick={(e) => e.stopPropagation()}
+    onfocusout={(e) => leaving(e)}>
     <input bind:this={field} bind:value={query} onkeydown={keys} placeholder="Switch to a project" spellcheck="false" autocomplete="off" />
     <ul>
       {#each shown as { project: p, inName, inRoot }, i (p.root)}

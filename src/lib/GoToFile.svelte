@@ -96,12 +96,24 @@
       .catch((e) => (error = String(e)))
       .finally(() => (loading = false));
   });
+  /** The focus gone to another place of the page (the text): closed, never shown with the cursor elsewhere (the
+   *  window left for another app, it stays). */
+  function leaving(e: FocusEvent) {
+    const to = e.relatedTarget as Node | null;
+    if (to && !(e.currentTarget as HTMLElement).contains(to)) onclose();
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="veil" onclick={onclose} {@attach overPage}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <div class="sheet" role="dialog" aria-label="Go to File" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+  <div
+    class="sheet"
+    role="dialog"
+    aria-label="Go to File"
+    tabindex="-1"
+    onclick={(e) => e.stopPropagation()}
+    onfocusout={(e) => leaving(e)}>
     <input
       bind:this={field}
       bind:value={query}

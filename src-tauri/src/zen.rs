@@ -42,9 +42,50 @@ fn set_zen(app: &AppHandle, window: &tauri::Window, on: bool) {
             set.remove(&label);
         }
     }
+    if on {
+        // GTK activates the key of a menu's item only while the item can be seen: with the menu bar hidden, every
+        // key of the menu (Ctrl+P, Ctrl+S, Shift+F11 itself) would do nothing
+        #[cfg(target_os = "linux")]
+        keys_while_hidden(window);
+    }
     let _ = if on { window.hide_menu() } else { window.show_menu() };
     let _ = window.set_fullscreen(on);
     let _ = app.emit("distraction-free", (label, on));
+}
+
+/// Every item of the window's menu bar told it may be activated by its key while the bar is hidden (GTK's
+/// `can-activate-accel`, which says no for an item not shown); once per item.
+#[cfg(target_os = "linux")]
+fn keys_while_hidden(window: &tauri::Window) {
+    use gtk::prelude::*;
+    fn allow(shell: &gtk::MenuShell) {
+        for child in shell.children() {
+            let Ok(item) = child.downcast::<gtk::MenuItem>() else { continue };
+            // SAFETY: a marker of our own on the item, read back as the same type
+            if unsafe { item.data::<bool>("papers-write-keys") }.is_none() {
+                unsafe { item.set_data("papers-write-keys", true) };
+                item.connect_can_activate_accel(|_, _| true);
+            }
+            if let Some(menu) = item.submenu().and_then(|m| m.downcast::<gtk::MenuShell>().ok()) {
+                allow(&menu);
+            }
+        }
+    }
+    let Ok(vbox) = window.default_vbox() else { return };
+    for child in vbox.children() {
+        if let Ok(bar) = child.downcast::<gtk::MenuBar>() {
+            allow(bar.upcast_ref());
+        }
+    }
+}
+
+/// Distraction Free left by the page's keys (F11, Shift+F11, Esc: zen.ts), whether or not the menu's keys work.
+#[tauri::command]
+pub fn leave_distraction_free(app: AppHandle, webview: Webview) {
+    let window = webview.window();
+    if is_zen(window.label()) {
+        set_zen(&app, &window, false);
+    }
 }
 
 /// The window of the tab in front.

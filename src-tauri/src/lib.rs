@@ -267,6 +267,7 @@ pub fn run() {
             menu::sidebar_shown,
             menu::popup_menu,
             zen::distraction_free_of,
+            zen::leave_distraction_free,
             sidepdf::side_pdf,
             profiles::build_profiles,
             profiles::set_build_profile,

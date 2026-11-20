@@ -433,10 +433,10 @@
         </label>
         <label class="row">
           <span>
-            <span class="label">Load every tab's page at start</span>
-            <span class="hint">Off: all tabs are back, but only the one in front of each window is loaded; the others load when first shown</span>
+            <span class="label">Tabs loaded at start</span>
+            <span class="hint">In each window, the tab in front and then the most recently shown (0: all). All tabs are back; the others load when first shown</span>
           </span>
-          <input type="checkbox" class="switch" bind:checked={settings.load_all_tabs} onchange={save} />
+          <input class="text number" type="number" min="0" max="100" bind:value={settings.tabs_at_start} onchange={save} />
         </label>
         <label class="row">
           <span>

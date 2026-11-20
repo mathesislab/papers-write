@@ -472,55 +472,62 @@ pub fn keep_menu_lists(
 pub fn menu_lists(app: &AppHandle) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
-        let app = &handle;
-        let Some(state) = app.try_state::<Mutex<Option<MenuLists>>>() else { return };
-        let mut slot = state.lock().unwrap();
-        let Some(lists) = slot.as_mut() else { return };
-        let shown = documents::front(app).and_then(|page| documents::path_of(app, page.label())).map(|source| profiles_of(app, &source));
-        let p = shown.as_ref().filter(|p| p.folder.is_some());
-        let want = (p.is_some(), p.is_some_and(|p| p.profiles.iter().any(|q| !builds_now(q))));
-        let _ = lists.on_save.set_enabled(p.is_some());
-        let _ = lists.on_save.set_checked(p.is_some_and(|p| p.on_save));
-        for (sub, background) in [(&lists.with, false), (&lists.behind, true)] {
-            for item in sub.items().unwrap_or_default() {
-                let _ = sub.remove(&item);
-            }
-            let Some(p) = p else { continue };
-            let on = if background { p.background.as_ref().map(|b| b.name.clone()) } else { p.active.clone() };
-            let mut items = vec![(String::new(), if background { "Nothing" } else { "This Document" }.to_string())];
-            for profile in p.profiles.iter().filter(|q| builds_now(q) != background) {
-                let kept = !background && p.kept.is_some() && p.kept == profile.pdf;
-                let how = match profile.run {
-                    Run::Watch => " (kept running)",
-                    Run::External => " (built elsewhere)",
-                    Run::Build if kept => " (kept by the watch)",
-                    Run::Build => "",
-                };
-                items.push((profile.name.clone(), format!("{}{how}", profile.name)));
-            }
-            let id = if background { "background" } else { "build-with" };
-            for (name, text) in items {
-                let checked = on.as_deref().unwrap_or("") == name;
-                if let Ok(item) = tauri::menu::CheckMenuItem::with_id(app, format!("{id}:{name}"), text, true, checked, None::<&str>) {
-                    let _ = sub.append(&item);
-                }
-            }
+        let took = std::time::Instant::now();
+        refresh_menu_lists(&handle);
+        if took.elapsed() > std::time::Duration::from_millis(20) {
+            eprintln!("[papers-write {}] Build menu lists made in {:?}", papers_tabs::stamp(), took.elapsed());
         }
-        // in the menu after Marked-up PDF and its separator (position 5), as they have something to list
-        if lists.shown.1 && !want.1 {
-            let _ = lists.build.remove(&lists.behind);
-        }
-        if lists.shown.0 && !want.0 {
-            let _ = lists.build.remove(&lists.with);
-        }
-        if want.0 && !lists.shown.0 {
-            let _ = lists.build.insert(&lists.with, 5);
-        }
-        if want.1 && !lists.shown.1 {
-            let _ = lists.build.insert(&lists.behind, if want.0 { 6 } else { 5 });
-        }
-        lists.shown = want;
     });
+}
+
+fn refresh_menu_lists(app: &AppHandle) {
+    let Some(state) = app.try_state::<Mutex<Option<MenuLists>>>() else { return };
+    let mut slot = state.lock().unwrap();
+    let Some(lists) = slot.as_mut() else { return };
+    let shown = documents::front(app).and_then(|page| documents::path_of(app, page.label())).map(|source| profiles_of(app, &source));
+    let p = shown.as_ref().filter(|p| p.folder.is_some());
+    let want = (p.is_some(), p.is_some_and(|p| p.profiles.iter().any(|q| !builds_now(q))));
+    let _ = lists.on_save.set_enabled(p.is_some());
+    let _ = lists.on_save.set_checked(p.is_some_and(|p| p.on_save));
+    for (sub, background) in [(&lists.with, false), (&lists.behind, true)] {
+        for item in sub.items().unwrap_or_default() {
+            let _ = sub.remove(&item);
+        }
+        let Some(p) = p else { continue };
+        let on = if background { p.background.as_ref().map(|b| b.name.clone()) } else { p.active.clone() };
+        let mut items = vec![(String::new(), if background { "Nothing" } else { "This Document" }.to_string())];
+        for profile in p.profiles.iter().filter(|q| builds_now(q) != background) {
+            let kept = !background && p.kept.is_some() && p.kept == profile.pdf;
+            let how = match profile.run {
+                Run::Watch => " (kept running)",
+                Run::External => " (built elsewhere)",
+                Run::Build if kept => " (kept by the watch)",
+                Run::Build => "",
+            };
+            items.push((profile.name.clone(), format!("{}{how}", profile.name)));
+        }
+        let id = if background { "background" } else { "build-with" };
+        for (name, text) in items {
+            let checked = on.as_deref().unwrap_or("") == name;
+            if let Ok(item) = tauri::menu::CheckMenuItem::with_id(app, format!("{id}:{name}"), text, true, checked, None::<&str>) {
+                let _ = sub.append(&item);
+            }
+        }
+    }
+    // in the menu after Marked-up PDF and its separator (position 5), as they have something to list
+    if lists.shown.1 && !want.1 {
+        let _ = lists.build.remove(&lists.behind);
+    }
+    if lists.shown.0 && !want.0 {
+        let _ = lists.build.remove(&lists.with);
+    }
+    if want.0 && !lists.shown.0 {
+        let _ = lists.build.insert(&lists.with, 5);
+    }
+    if want.1 && !lists.shown.1 {
+        let _ = lists.build.insert(&lists.behind, if want.0 { 6 } else { 5 });
+    }
+    lists.shown = want;
 }
 
 /// The log of the background profile `name` of the project at `root`: its command's output.

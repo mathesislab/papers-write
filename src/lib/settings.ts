@@ -45,7 +45,7 @@ export type Settings = {
   unload_after: number;
   loaded_tabs: number;
   tabs_memory: number;
-  load_all_tabs: boolean;
+  tabs_at_start: number;
   /** the project bar: always shown, shown on hover at the window's left edge, or hidden */
   project_bar: "shown" | "hover" | "hidden";
   /** look for updates at start and twice a day; they are installed only when asked */

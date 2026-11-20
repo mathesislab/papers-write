@@ -124,8 +124,9 @@ pub struct Settings {
     /// the most memory the app takes (GB; 0: no limit), its pages' processes with it: beyond, the least recently
     /// shown tabs are unloaded too (Linux)
     pub tabs_memory: u32,
-    /// every tab loaded at the start, one at a time; else only the tab in front, the others as they are shown
-    pub load_all_tabs: bool,
+    /// the tabs of each window loaded at the start: the one in front, then the most recently shown (0: all); the
+    /// others as they are shown
+    pub tabs_at_start: u32,
 }
 
 impl Default for Settings {
@@ -161,7 +162,7 @@ impl Default for Settings {
             unload_after: 60,
             loaded_tabs: 20,
             tabs_memory: 5,
-            load_all_tabs: false,
+            tabs_at_start: 1,
         }
     }
 }
@@ -556,7 +557,7 @@ mod tests {
             unload_after: 30,
             loaded_tabs: 6,
             tabs_memory: 3,
-            load_all_tabs: true,
+            tabs_at_start: 3,
         };
         settings.save(&dir);
         assert_eq!(Settings::load(&dir), settings);

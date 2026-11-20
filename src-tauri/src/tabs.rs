@@ -85,8 +85,9 @@ impl Host for Write {
         })
     }
 
-    fn load_all_at_start(&self, _app: &AppHandle) -> bool {
-        crate::settings::get().load_all_tabs
+    fn loaded_at_start(&self, _app: &AppHandle) -> Option<usize> {
+        let n = crate::settings::get().tabs_at_start;
+        (n > 0).then_some(n as usize)
     }
 
     fn companion_kind(&self, _app: &AppHandle, page: &str) -> Option<String> {

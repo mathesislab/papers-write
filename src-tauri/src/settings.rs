@@ -121,6 +121,11 @@ pub struct Settings {
     /// theirs, the most recently shown (Preferences ▸ Window): a tab comes back as it was when shown again
     pub unload_after: u32,
     pub loaded_tabs: u32,
+    /// the most memory the app takes (GB; 0: no limit), its pages' processes with it: beyond, the least recently
+    /// shown tabs are unloaded too (Linux)
+    pub tabs_memory: u32,
+    /// every tab loaded at the start, one at a time; else only the tab in front, the others as they are shown
+    pub load_all_tabs: bool,
 }
 
 impl Default for Settings {
@@ -153,8 +158,10 @@ impl Default for Settings {
             project_colour_bar: false,
             project_bar: ProjectBar::Shown,
             check_updates: true,
-            unload_after: 15,
-            loaded_tabs: 10,
+            unload_after: 60,
+            loaded_tabs: 20,
+            tabs_memory: 5,
+            load_all_tabs: false,
         }
     }
 }
@@ -548,6 +555,8 @@ mod tests {
             check_updates: false,
             unload_after: 30,
             loaded_tabs: 6,
+            tabs_memory: 3,
+            load_all_tabs: true,
         };
         settings.save(&dir);
         assert_eq!(Settings::load(&dir), settings);

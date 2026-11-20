@@ -426,6 +426,20 @@
         </label>
         <label class="row">
           <span>
+            <span class="label">Memory at most</span>
+            <span class="hint">GB, the pages of the tabs included (0: no limit). Beyond, the tabs shown longest ago are unloaded the same way (Linux)</span>
+          </span>
+          <input class="text number" type="number" min="0" max="256" bind:value={settings.tabs_memory} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
+            <span class="label">Load every tab's page at start</span>
+            <span class="hint">Off: all tabs are back, but only the one in front of each window is loaded; the others load when first shown</span>
+          </span>
+          <input type="checkbox" class="switch" bind:checked={settings.load_all_tabs} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
             <span class="label">Interface follows the text size</span>
             <span class="hint">With the text set larger than the default, menus, fields and icons grow with it (their text about 85% of the editor's)</span>
           </span>

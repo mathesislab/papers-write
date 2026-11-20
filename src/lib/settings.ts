@@ -44,6 +44,8 @@ export type Settings = {
   /** tabs not shown for this long have their page unloaded (minutes; 0: never); at most this many keep theirs */
   unload_after: number;
   loaded_tabs: number;
+  tabs_memory: number;
+  load_all_tabs: boolean;
   /** the project bar: always shown, shown on hover at the window's left edge, or hidden */
   project_bar: "shown" | "hover" | "hidden";
   /** look for updates at start and twice a day; they are installed only when asked */

@@ -76,9 +76,17 @@ impl Host for Write {
         crate::profiles::menu_lists(app);
     }
 
-    fn unload_policy(&self, _app: &AppHandle) -> Option<(std::time::Duration, usize)> {
+    fn unload_policy(&self, _app: &AppHandle) -> Option<papers_tabs::Unloading> {
         let s = crate::settings::get();
-        (s.unload_after > 0).then(|| (std::time::Duration::from_secs(u64::from(s.unload_after) * 60), s.loaded_tabs.max(1) as usize))
+        Some(papers_tabs::Unloading {
+            idle: (s.unload_after > 0).then(|| std::time::Duration::from_secs(u64::from(s.unload_after) * 60)),
+            most: s.loaded_tabs.max(1) as usize,
+            memory: (s.tabs_memory > 0).then(|| u64::from(s.tabs_memory) << 30),
+        })
+    }
+
+    fn load_all_at_start(&self, _app: &AppHandle) -> bool {
+        crate::settings::get().load_all_tabs
     }
 
     fn companion_kind(&self, _app: &AppHandle, page: &str) -> Option<String> {

@@ -127,6 +127,16 @@ pub struct WindowStyle {
 }
 
 /// What the app says of its pages, and does as their tabs come and go.
+/// When the pages of tabs are unloaded (`Host::unload_policy`), checked once a minute: a tab unseen for `idle`, the
+/// tabs beyond the `most` recently seen, and while the app takes more than `memory`, the least recently seen.
+pub struct Unloading {
+    /// none: however long a tab goes unseen
+    pub idle: Option<std::time::Duration>,
+    pub most: usize,
+    /// bytes, the app's own processes and its pages' (none: no limit; Linux only)
+    pub memory: Option<u64>,
+}
+
 pub trait Host: Send + Sync + 'static {
     fn style(&self) -> WindowStyle;
 
@@ -194,10 +204,15 @@ pub trait Host: Send + Sync + 'static {
         Err("no such tab".into())
     }
 
-    /** How long a tab may go unseen before its page is unloaded, and how many tabs keep their page at most; none:
-     *  never unloaded. */
-    fn unload_policy(&self, _app: &AppHandle) -> Option<(std::time::Duration, usize)> {
+    /** When the pages of tabs are unloaded (`Unloading`); none: never. */
+    fn unload_policy(&self, _app: &AppHandle) -> Option<Unloading> {
         None
+    }
+
+    /** Whether every tab is loaded at the start (one at a time, `load_later`), or only the tab in front of each
+     *  window (and the one it goes with): the others then as they come to the front. */
+    fn load_all_at_start(&self, _app: &AppHandle) -> bool {
+        true
     }
 
     /** The colour of a window and of its pages before they are drawn (`dark`: the window's theme is, the system's
@@ -586,6 +601,7 @@ fn load_later(app: &AppHandle) {
         let app = &handle;
         let state = app.state::<Tabs>();
         let base = state.base.lock().unwrap().clone();
+        let all = state.host.load_all_at_start(app);
         loop {
             let next = {
                 let mut later = state.later.lock().unwrap();
@@ -603,12 +619,22 @@ fn load_later(app: &AppHandle) {
                     }
                 };
                 let best = (0..later.len()).min_by_key(|&i| rank(&later[i].0));
-                best.map(|i| later.remove(i))
+                best.map(|i| {
+                    let front = rank(&later[i].0) == 0;
+                    let (label, url) = later.remove(i);
+                    (label, url, front)
+                })
             };
-            let Some((label, url)) = next else { break };
+            let Some((label, url, front)) = next else { break };
             let (Some(page), Some(base)) = (app.get_webview(&label), base.as_ref()) else { continue };
             let address = if url == "index.html" { Ok(base.clone()) } else { base.join(&url) };
             let Ok(address) = address else { continue };
+            // only the tabs in front loaded (`Host::load_all_at_start`): the others as unloaded ones, loaded as they
+            // come to the front
+            if !front && !all {
+                state.unloaded.lock().unwrap().insert(label, address.to_string());
+                continue;
+            }
             eprintln!("[papers-write {}] page {label} loading", stamp());
             if page.navigate(address).is_err() {
                 continue;
@@ -638,8 +664,7 @@ fn unload_idle(app: &AppHandle) {
         std::thread::sleep(std::time::Duration::from_secs(60));
         let app = &handle;
         let state = app.state::<Tabs>();
-        let Some((idle, most)) = state.host.unload_policy(app) else { continue };
-        let started = std::time::Instant::now() - idle * 2;
+        let Some(policy) = state.host.unload_policy(app) else { continue };
         let (pages, kept): (Vec<String>, Vec<String>) = with_tabs(app, |w| {
             let pages = w.values().flat_map(Win::pages).cloned().collect();
             let fronts = w.values().filter_map(|win| win.sets.first()?.front.clone()).collect();
@@ -651,22 +676,25 @@ fn unload_idle(app: &AppHandle) {
         let unloaded: std::collections::HashSet<String> = state.unloaded.lock().unwrap().keys().cloned().collect();
         let waiting: std::collections::HashSet<String> = state.later.lock().unwrap().iter().map(|(l, _)| l.clone()).collect();
         let shown = state.last_shown.lock().unwrap().clone();
-        // the pages loaded, the least recently seen first
-        let mut loaded: Vec<(String, std::time::Instant)> = pages
+        // the pages loaded, the least recently seen first (never seen: first of all)
+        let mut loaded: Vec<(String, Option<std::time::Instant>)> = pages
             .into_iter()
             .filter(|p| !unloaded.contains(p) && !waiting.contains(p))
             .map(|p| {
-                let at = shown.get(&p).copied().unwrap_or(started);
+                let at = shown.get(&p).copied();
                 (p, at)
             })
             .collect();
         loaded.sort_by_key(|(_, at)| *at);
         let mut count = loaded.len();
+        let over = || policy.memory.is_some_and(|most| memory_used() > most);
+        let mut too_much = over();
         for (page, at) in loaded {
             if keep.contains(&page) {
                 continue;
             }
-            if at.elapsed() < idle && count <= most {
+            let recent = policy.idle.is_none_or(|idle| at.is_some_and(|at| at.elapsed() < idle));
+            if recent && count <= policy.most && !too_much {
                 continue;
             }
             let Some(webview) = app.get_webview(&page) else { continue };
@@ -677,8 +705,50 @@ fn unload_idle(app: &AppHandle) {
             state.unloaded.lock().unwrap().insert(page.clone(), url.to_string());
             state.ready.lock().unwrap().remove(&page);
             count -= 1;
+            if too_much {
+                // the page's memory given back, then measured again
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                too_much = over();
+            }
         }
     });
+}
+
+/// The memory the app takes, in bytes: its own process and those of its process group it started (the pages'
+/// processes; not the commands it runs, which have groups of their own), their proportional share (PSS: what is
+/// shared counted once). Linux; elsewhere 0.
+fn memory_used() -> u64 {
+    #[cfg(target_os = "linux")]
+    {
+        let me = std::process::id();
+        // each process's parent and group: the fields after the name, which is in parentheses
+        let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+        let mut group = HashMap::new();
+        for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+            let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
+            let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else { continue };
+            let Some((_, rest)) = stat.rsplit_once(')') else { continue };
+            let mut fields = rest.split_whitespace().skip(1);
+            let (Some(Ok(parent)), Some(Ok(pgid))) = (fields.next().map(str::parse::<u32>), fields.next().map(str::parse::<u32>)) else { continue };
+            children.entry(parent).or_default().push(pid);
+            group.insert(pid, pgid);
+        }
+        let mine = group.get(&me).copied();
+        let mut total = 0;
+        let mut todo = vec![me];
+        while let Some(pid) = todo.pop() {
+            if pid != me && group.get(&pid).copied() != mine {
+                continue;
+            }
+            let rollup = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")).unwrap_or_default();
+            let kb = rollup.lines().find_map(|l| l.strip_prefix("Pss:")).and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok());
+            total += kb.unwrap_or(0) * 1024;
+            todo.extend(children.get(&pid).into_iter().flatten());
+        }
+        total
+    }
+    #[cfg(not(target_os = "linux"))]
+    0
 }
 
 /// A page drawn (`page_ready`, or the wait for it over): shown when its tab is in front.
@@ -1494,5 +1564,15 @@ mod tests {
         assert_eq!(s.of(Some(b)), outline);
         assert_eq!(s.of(Some(a)), files);
         assert_eq!(s.of(None), files);
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod memory_tests {
+    #[test]
+    fn the_memory_of_the_process_is_measured() {
+        let used = super::memory_used();
+        // a test process: more than a megabyte, less than its whole machine
+        assert!(used > 1 << 20 && used < 1 << 40, "{used}");
     }
 }

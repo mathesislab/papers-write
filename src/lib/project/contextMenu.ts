@@ -40,6 +40,8 @@ export async function popupReleased(menu: Menu, at?: LogicalPosition) {
   await showMenu(menu, at);
 }
 
+const MAC = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
+
 /** `menu` shown at `at` (none: at the pointer) by the app's own popup (menu.rs: `popup_menu`), not Tauri's: Tauri's
  *  holds the page's menus while the menu shows, and a menu call of the page meanwhile froze the app (Linux). */
 export async function showMenu(menu: Menu, at?: LogicalPosition) {

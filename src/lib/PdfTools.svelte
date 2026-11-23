@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { showMenu } from "papers-write/project";
   // The tools of a PDF, the same in a PDF's tab and in the pane beside a text: the page in view (a click asks for
   // another), the zoom (−, Fit, +), the section in view (the outline's, when the PDF has one; a click lists them all)
   // and Find (Enter the next match, ⇧Enter the one before, ✕ or Esc clears it). Back and Forward are the Go menu's.
@@ -89,7 +90,7 @@
         .slice(0, 200)
         .map((o, i) => CheckMenuItem.new({ text: `${"    ".repeat(Math.max(0, o.level - 1))}${o.title}`, checked: i === here, action: () => view?.goToOutline(i) })),
     );
-    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+    await showMenu(await Menu.new({ items }), new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
 </script>
 
@@ -150,7 +151,8 @@
 </div>
 
 <style>
-  /* on a narrow pane, onto a second line rather than past its right edge */
+  /* on a narrow pane, the section and Find narrowed first (they start small and grow to fill the line), then onto a
+     second line rather than past its right edge */
   .tools {
     display: flex;
     flex-wrap: wrap;
@@ -175,14 +177,14 @@
   button:disabled {
     opacity: 0.4;
   }
-  /* the section in view: a fixed width, a long title fading out at its end */
+  /* the section in view: up to 16em, a long title fading out at its end */
   .section {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    width: 16em;
-    max-width: 30%;
-    flex: 0 1 auto;
+    flex: 1 1 6em;
+    min-width: 6em;
+    max-width: 16em;
     text-align: left;
   }
   .section span {
@@ -217,8 +219,9 @@
     position: relative;
     display: inline-flex;
     align-items: center;
-    flex: 0 1 12em;
+    flex: 1 1 6em;
     min-width: 6em;
+    max-width: 12em;
   }
   .find input {
     width: 100%;

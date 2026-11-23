@@ -1,0 +1,191 @@
+// Live Preview (src/lib/editor/livePreview.ts): what is drawn of a text, and what is hidden of it where the cursor is not.
+
+import { strict as assert } from "node:assert";
+import { test } from "node:test";
+import { markdown } from "@codemirror/lang-markdown";
+import { EditorState, StateEffect, type Extension } from "@codemirror/state";
+import { parsed } from "./parsed.ts";
+import { blocksOf, citationText, figuresOf, hiddenRanges, inlinePieces } from "../src/lib/editor/livePreview.ts";
+import { labelNumbers, refText } from "../src/lib/editor/hover.ts";
+import { outline } from "../src/lib/editor/outline.ts";
+import { criticReview } from "../src/lib/editor/review/criticMode.ts";
+import { shownFacet } from "../src/lib/editor/review/overlay.ts";
+import { paperMarkdown } from "../src/lib/editor/lang/index.ts";
+
+/** A Markdown state of `doc`, the cursor at its `|` (at the end without one). */
+const md = (marked: string) => {
+  const at = marked.indexOf("|");
+  const doc = marked.replace("|", "");
+  const state = EditorState.create({ doc, selection: { anchor: at < 0 ? doc.length : at }, extensions: [markdown({ extensions: paperMarkdown })] });
+  return parsed(state);
+};
+
+const pieces = (state: EditorState) => inlinePieces(state, 0, state.doc.length);
+/** The classes of the lines, by line number. */
+const lineClasses = (state: EditorState) =>
+  pieces(state).flatMap((p) => (p.type === "line" ? [[state.doc.lineAt(p.at).number, p.cls]] : []));
+
+test("headings, quotes and code are styled by line, inline code as a range", () => {
+  const state = md("# Title\n\ntext `x`\n\n> a quote\n> on\n\n```\ncode\n```\n\nSetext\n------\n");
+  assert.deepEqual(lineClasses(state), [
+    [1, "cm-lp-h1"],
+    [5, "cm-lp-quote"],
+    [6, "cm-lp-quote"],
+    [8, "cm-lp-codeblock"],
+    [9, "cm-lp-codeblock"],
+    [10, "cm-lp-codeblock"],
+    [12, "cm-lp-h2"],
+  ]);
+  const code = pieces(state).find((p) => p.type === "mark");
+  assert.ok(code?.type === "mark" && state.sliceDoc(code.from, code.to) === "`x`");
+});
+
+test("section numbers before the headings, as the outline has them", () => {
+  const state = md("# A {#sec:a}\n\n## B\n\n# C\n");
+  const numbers = pieces(state).flatMap((p) => (p.type === "number" ? [[state.doc.lineAt(p.at).number, p.text]] : []));
+  assert.deepEqual(numbers, [[1, "1"], [3, "1.1"], [5, "2"]]);
+  assert.ok(!pieces(md("# A\n\n## B\n")).some((p) => p.type === "number"));
+});
+
+test("only the range asked for", () => {
+  const state = md("# A\n\n# B\n");
+  const some = inlinePieces(state, 5, state.doc.length);
+  assert.deepEqual(some.flatMap((p) => (p.type === "line" ? [state.doc.lineAt(p.at).number] : [])), [3]);
+});
+
+test("a figure's caption is the text of its brackets", () => {
+  const state = md("![The loop](fig/loop.png){#fig:loop}\n\n![](b.png)\n");
+  assert.deepEqual(
+    figuresOf(state).map((f) => (f.what.kind === "image" ? [f.what.path, f.what.caption] : [])),
+    [["fig/loop.png", "The loop"], ["b.png", undefined]],
+  );
+});
+
+test("a figure alone on its line is drawn in its place off the cursor; one in a sentence stays as typed", () => {
+  const doc = "![The loop](loop.png){#fig:loop}\n\nsee ![x](inline.png) here\n\n\\includegraphics{c.pdf}\n\nend";
+  assert.deepEqual(hidden(doc), ["![The loop](loop.png){#fig:loop}"]);
+  assert.deepEqual(hidden(doc.replace("The", "Th|e")), []);
+  assert.deepEqual(figuresOf(md(doc)).map((f) => f.alone), [true, false, false]);
+  // a URL is no figure
+  assert.deepEqual(figuresOf(md("![a](https://example.org/a.png)\n")), []);
+});
+
+test("the front matter is drawn as its title off the cursor", () => {
+  const doc = "---\ntitle: \"A paper\"\nauthor: Me\n---\n\ntext|";
+  assert.deepEqual(hidden(doc), ["---\ntitle: \"A paper\"\nauthor: Me\n---"]);
+  assert.deepEqual(blocksOf(md(doc)).map((b) => b.what), [{ kind: "front", title: "A paper" }]);
+  assert.deepEqual(hidden("---\nti|tle: x\n---\n\ntext"), []);
+});
+
+test("in a LaTeX file, the figures alone, under their lines", () => {
+  const blocks = blocksOf(md("![a](a.png)\n\n$$\nx\n$$\n"), true);
+  assert.deepEqual(blocks.map((b) => [b.what.kind, b.alone]), [["image", false]]);
+});
+
+/** The texts hidden, the cursor at the `|`. */
+const hidden = (marked: string, extensions: Extension[] = []) => {
+  let state = md(marked);
+  if (extensions.length) state = state.update({ effects: StateEffect.appendConfig.of(extensions) }).state;
+  return hiddenRanges(state).map((s) => state.sliceDoc(s.from, s.to));
+};
+
+test("the marks hidden off the cursor's line, shown on it", () => {
+  const doc = "# Title ##\n\nSome **bold**, *it* and `code`.\n\n> quoted\n\nend";
+  assert.deepEqual(hidden(doc), ["# ", " ##", "**", "**", "*", "*", "`", "`", "> "]);
+  assert.deepEqual(hidden("# Ti|tle ##\n\nSome **bold**.\n"), ["**", "**"]);
+  assert.deepEqual(hidden("# Title\n\nSome **bo|ld**.\n"), ["# "]);
+});
+
+test("a selection over lines shows all of them", () => {
+  const doc = "*a*\n\n*b*\n\n*c*\n";
+  const state = parsed(EditorState.create({ doc, selection: { anchor: 1, head: 6 }, extensions: [markdown({ extensions: paperMarkdown })] }));
+  assert.deepEqual(hiddenRanges(state).map((s) => state.sliceDoc(s.from, s.to)), ["*", "*"]);
+  assert.equal(hiddenRanges(state)[0].from, doc.indexOf("*c*"));
+});
+
+test("links show their text; attributes, escapes and fences are hidden", () => {
+  assert.deepEqual(hidden('see [the site](https://example.org "Title") and <https://a.org>\n\nend'), ["[", '](https://example.org "Title")', "<", ">"]);
+  assert.deepEqual(hidden("# Intro {#sec:intro}\n\na \\* star\n\n```julia\nx = 1\n```\n\nend"), ["# ", " {#sec:intro}", "\\", "```julia", "```"]);
+  // the cursor in the code shows its fences
+  assert.deepEqual(hidden("```\nx| = 1\n```\n"), []);
+});
+
+test("CriticMarkup delimiters hidden off the line", () => {
+  const doc = "an {++insert++} and {~~old~>new~~}{>>@MP: why<<}\n\nend";
+  assert.deepEqual(hidden(doc, [criticReview(() => "")]), ["{++", "++}", "{~~", "~>", "~~}{>>", "<<}"]);
+  assert.deepEqual(hidden("an {++in|sert++}\n", [criticReview(() => "")]), []);
+  // without the review in the text, the marks are text
+  assert.deepEqual(hidden(doc.replace("@MP: ", "")), []);
+});
+
+test("an element a suggestion or comment of the review is on is shown as typed", () => {
+  const doc = "*a* and *b*\n\nend";
+  const at = doc.indexOf("b");
+  const item = { id: "x-1", kind: "comment" as const, slug: "x", from: at, to: at + 1, insert: null, dim: false, item: null };
+  assert.deepEqual(hidden(doc, [shownFacet.of(() => [item])]), ["*", "*"]);
+  assert.equal(hiddenRanges(md(doc)).length, 4);
+});
+
+test("inline math rendered off the cursor's line, display math as a block of whole lines", () => {
+  const doc = "so $x^2$ and $$y$$ here\n\n$$\na = b\n$$ {#eq:a}\n\n$$ c $$ {#eq:c}\n\n\\begin{equation}\nE\n\\end{equation}\n\nend";
+  assert.deepEqual(hidden(doc), ["$x^2$", "$$y$$", "$$\na = b\n$$ {#eq:a}", "$$ c $$ {#eq:c}", "\\begin{equation}\nE\n\\end{equation}"]);
+  // the cursor in a block shows all of it as typed
+  assert.deepEqual(hidden(doc.replace("a = b", "a =| b")), ["$x^2$", "$$y$$", "$$ c $$ {#eq:c}", "\\begin{equation}\nE\n\\end{equation}"]);
+  assert.deepEqual(hidden(doc.replace("so ", "so| ")).slice(0, 1), ["$$\na = b\n$$ {#eq:a}"]);
+  const blocks = blocksOf(md(doc));
+  assert.deepEqual(blocks.map((b) => b.what.tex), ["a = b", "c", "E"]);
+});
+
+test("math that is not alone on its lines stays inline, and over lines in a paragraph is not rendered", () => {
+  assert.deepEqual(blocksOf(md("> $$\n> a\n> $$\n")), []);
+  assert.deepEqual(hidden("text $$a\nb$$ more\n\nend"), []);
+});
+
+test("citations and cross-references rendered off the cursor's line", () => {
+  const doc = "As @schoof2007 says [see @a, p. 3; -@b], in @fig:loop and @eq:x.\n\n![Loop](l.png){#fig:loop}\n\n$$ x $$ {#eq:x}\n\nend";
+  assert.deepEqual(hidden(doc).slice(0, 4), ["@schoof2007", "[see @a, p. 3; -@b]", "@fig:loop", "@eq:x"]);
+  // a reference to a label the text lacks stays as typed
+  assert.deepEqual(hidden("see @fig:none\n\nend"), []);
+  assert.deepEqual(hidden("As @schoof|2007 says\n\nend"), []);
+});
+
+test("what a citation reads", () => {
+  const labels: Record<string, string | null | undefined> = { a: "Schoof (2007)", b: "Smith et al. (2010)", gone: null };
+  const label = (key: string) => labels[key];
+  const state = md("As @a says [see @a, p. 3; -@b] and [@fig:x], @gone, [@a; @later]\n\n![X](x.png){#fig:x}\n");
+  const texts = inlinePieces(state, 0, state.doc.line(1).to).flatMap((p) => (p.type === "render" && p.what.kind === "cite" ? [citationText(p.what, label)] : []));
+  assert.deepEqual(texts, ["Schoof (2007)", "(see Schoof 2007, p. 3; 2010)", "Figure 1", null, undefined]);
+});
+
+test("the numbers of the labels, as the preview's filter gives them", () => {
+  const doc = [
+    "# Intro {#sec:intro}",
+    "![A](a.png){#fig:a}",
+    "$$ x $$ {#eq:x}",
+    "$$ y $$",
+    "\\begin{equation}\nz\n\\end{equation}",
+    "\\begin{align*}\nw\n\\end{align*}",
+    "\\begin{align}\nv \\label{eq:v}\n\\end{align}",
+    "## Two",
+    "![B](b.png){#fig:b}",
+    ": Data {#tbl:d}",
+  ].join("\n\n");
+  const state = md(doc);
+  const { labels, equations } = labelNumbers(state, outline(state));
+  assert.deepEqual([...labels], [["sec:intro", "1"], ["fig:a", "1"], ["eq:x", "1"], ["eq:v", "3"], ["fig:b", "2"], ["tbl:d", "1"]]);
+  assert.equal(equations.size, 3);
+  assert.equal(refText("eq:v", "3"), "Equation (3)");
+  assert.equal(refText("fig-a", "1"), "Figure 1");
+  // the figure's caption numbered, the equation's number with it
+  const blocks = blocksOf(state, false, { labels, equations });
+  assert.deepEqual(
+    blocks.flatMap((b) => (b.what.kind === "image" ? [b.what.caption] : b.what.kind === "math" ? [b.what.number] : [])),
+    ["Figure 1: A", "1", undefined, "2", undefined, "3", "Figure 2: B"],
+  );
+});
+
+test("an element over lines is shown as typed from any of them, and nothing hidden crosses a line", () => {
+  const doc = "*a\nb*\n\nend";
+  assert.deepEqual(hidden(doc), ["*", "*"]);
+  assert.deepEqual(hidden("*a\nb|*\n\nend"), []);
+});

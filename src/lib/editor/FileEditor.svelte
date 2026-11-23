@@ -2,7 +2,23 @@
   /** Where a file stands: what is in the editor is in the file, is not yet, or could not be read or written. */
   export type Status = "saved" | "editing" | "error";
   /** A file read, and the draft of it typed and not saved, if any (`current`: typed over what the file holds now). */
-  export type FileRead = { path: string; text: string; draft?: { text: string; current: boolean } | null };
+  export type FileRead = {
+    path: string;
+    text: string;
+    draft?: { text: string; current: boolean } | null;
+    /** the undo history kept for the file, and a hash of the text it ends on (`textHash`) */
+    history?: { text: string; history: unknown } | null;
+  };
+
+  /** A hash of a text (FNV-1a, 32 bits, over its UTF-16 units): what an undo history is kept with. */
+  export function textHash(text: string): string {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return `${text.length.toString(16)}-${h.toString(16)}`;
+  }
 </script>
 
 <script lang="ts">
@@ -19,7 +35,7 @@
   import { Decoration, EditorView, keymap } from "@codemirror/view";
   import { StateEffect, StateField } from "@codemirror/state";
   import { onMount } from "svelte";
-  import { PREFS, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, setSpelling, type EditorPrefs } from "./editor";
+  import { PREFS, historyOf, insertSymbol, makeEditor, replaceText, selectedWords, setPrefs, setRules, setSpelling, type EditorPrefs } from "./editor";
   import type { Completion, Diagnostics, HoverSources, Spelling } from "./types";
   import { recheck } from "./diagnostics";
   import { findBar, find as findIn, replaceEverywhere, type FindBar, type FindCommand, type ProjectQuery } from "./find";
@@ -38,7 +54,7 @@
   } from "./review/review";
   import { criticMarks, criticReview, decideAll, decideMark, marksHere } from "./review/criticMode";
   import { commentOn, type Mark } from "./review/critic";
-  import { inlineFigures } from "./figures";
+  import { livePreview } from "./livePreview";
   import type { ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "./review/types";
   import SymbolList from "./SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "./symbols";
@@ -61,6 +77,7 @@
     prefs = PREFS,
     autosave = true,
     drafts,
+    historyStore,
     onsync,
     oncontext,
     critic,
@@ -112,6 +129,9 @@
     autosave?: boolean;
     /** where the text typed and not saved is kept, with `autosave` off (`base`: the file's text it was typed over) */
     drafts?: { write: (path: string, text: string, base: string) => Promise<void>; drop: (path: string) => Promise<void> };
+    /** where the undo history is kept as it changes (the app's cache), for the file to undo what was done after its
+     *  page is unloaded or the app opened again */
+    historyStore?: { write: (path: string, text: string, history: unknown) => Promise<void> };
     /** ⌃-click (⌘ on macOS) in the text: the cursor put there, then this (its place shown in the PDF or the preview);
      *  extra cursors are made with ⌥-click instead */
     onsync?: () => void;
@@ -122,7 +142,8 @@
     critic?: { initials: string };
     /** the CriticMarkup marks of the text, told as they change (with `critic`) */
     onmarks?: (marks: Mark[]) => void;
-    /** with it, the figures shown under their lines, their images from it (a data URI, none: not found) */
+    /** with it, Live Preview: the text shown rendered but where the cursor is, the figures under their lines, their
+     *  images from it (a data URI, none: not found); the math and the citations rendered by `hover` */
     figures?: (path: string) => Promise<string | null>;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
@@ -156,6 +177,34 @@
       "&dark .cm-found": { background: "rgba(255, 214, 0, 0.32)" },
     }),
   ];
+
+  /** A place shown a moment (`flash`: the paragraph a click in the preview scrolled to), its lines lit; the cursor
+   *  left where it is. */
+  const flashEffect = StateEffect.define<{ from: number; to: number } | null>();
+  const flashLine = Decoration.line({ class: "cm-flash" });
+  const flashing = [
+    StateField.define({
+      create: () => Decoration.none,
+      update(set, tr) {
+        for (const e of tr.effects) {
+          if (!e.is(flashEffect)) continue;
+          if (!e.value) return Decoration.none;
+          const { doc } = tr.state;
+          const [first, last] = [doc.lineAt(Math.min(e.value.from, doc.length)).number, doc.lineAt(Math.min(e.value.to, doc.length)).number];
+          const lines = [];
+          for (let n = first; n <= last; n++) lines.push(flashLine.range(doc.line(n).from));
+          return Decoration.set(lines);
+        }
+        return tr.docChanged ? Decoration.none : set;
+      },
+      provide: (f) => EditorView.decorations.from(f),
+    }),
+    EditorView.baseTheme({
+      ".cm-flash": { background: "rgba(255, 221, 0, 0.22)" },
+      "&dark .cm-flash": { background: "rgba(255, 221, 0, 0.14)" },
+    }),
+  ];
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** ⌃-click: the place shown elsewhere (`onsync`); a right-click: the app's menu (`oncontext`). */
   const clicks = [
@@ -196,24 +245,39 @@
   const entries = $derived([...rules, ...[...LATEX].map(([keys, insert]) => ({ keys, insert }))]);
   // ⌘/ in the editor lists the symbols (the menu's Symbols… has the key first, in the app)
   const listKey = Prec.high(keymap.of([{ key: "Mod-/", run: () => (list(), true) }]));
-  /** the headings of the text and the one the cursor is under (kept while someone listens) */
+  /** the headings of the text and the one of what shows at the top of the view (kept while someone listens) */
   let headings: Heading[] = [];
   let here = -1;
+  /** The place at the top of what shows (a little below its edge): the outline marks the heading it is under, as
+   *  one reads, scrolls or types, without a click. */
+  const shownAt = (view: EditorView) => view.lineBlockAtHeight(view.scrollDOM.scrollTop + 24).from;
   const selection = EditorView.updateListener.of((u) => {
     if (u.selectionSet || u.docChanged) selected = selectedWords(u.state);
     findbar = findBar(u.state);
-    if (onoutline && (u.docChanged || u.selectionSet)) {
+    if (onoutline && (u.docChanged || u.selectionSet || u.viewportChanged || u.geometryChanged)) {
       const before = here;
       if (u.docChanged) headings = outlineOf(u.state);
-      here = currentHeading(headings, u.state.selection.main.head);
+      here = currentHeading(headings, shownAt(u.view));
       if (u.docChanged || here !== before) onoutline(headings, here);
     }
+  });
+  /** Scrolled: the heading of what shows now, told (once a frame). */
+  let scrolling = 0;
+  const scrolled = EditorView.domEventHandlers({
+    scroll(_e, view) {
+      if (!onoutline || scrolling) return;
+      scrolling = requestAnimationFrame(() => {
+        scrolling = 0;
+        const now = currentHeading(headings, shownAt(view));
+        if (now !== here) onoutline?.(headings, (here = now));
+      });
+    },
   });
   /** The headings of the text as it is, told (when someone listens). */
   function readHeadings() {
     if (!onoutline || !editor) return;
     headings = outlineOf(editor.state);
-    here = currentHeading(headings, editor.state.selection.main.head);
+    here = currentHeading(headings, shownAt(editor));
     onoutline(headings, here);
   }
   /** A heading chosen in the outline: the cursor there, its line near the top. */
@@ -249,14 +313,15 @@
   }
 
   /** the review in the editor: given as the app has it, which may be after the file is read */
-  /** the figures shown in the text, and the source they were shown with */
+  /** Live Preview, on with the images of the figures it is given (`figures`), and the source they were given with */
   const figuresSlot = new Compartment();
   let figured: typeof figures;
+  const previewOf = (image: typeof figures) => (image ? livePreview({ image, hover, latex }) : []);
   $effect(() => {
     const now = figures;
     if (!editor || now === figured) return;
     figured = now;
-    editor.dispatch({ effects: figuresSlot.reconfigure(now ? inlineFigures(now) : []) });
+    editor.dispatch({ effects: figuresSlot.reconfigure(previewOf(now)) });
   });
 
   const reviewSlot = new Compartment();
@@ -295,6 +360,8 @@
     [path, written, conflict, drafted] = [file.path, file.text, !!draft && !draft.current, !!draft];
     if (editor) replaceText(editor, shown);
     else editor = makeEditor(host, shown, typed, {
+        // the undo history kept for this very text
+        history: file.history && file.history.text === textHash(shown) ? file.history.history : undefined,
         mono,
         latex,
         rules,
@@ -307,13 +374,15 @@
         extensions: [
           ...extensions,
           selection,
+          scrolled,
           found,
+          flashing,
           clicks,
           ...(mono || latex ? [] : [listKey]),
           reviewSlot.of(review ? reviewOf(review) : []),
           criticSlot.of(critic ? criticOf() : []),
+          figuresSlot.of(previewOf(figures)),
           marksTold,
-          figuresSlot.of(figures ? inlineFigures(figures) : []),
         ],
       });
     if (critic && !critical) {
@@ -348,8 +417,16 @@
     }
   }
 
+  let historyTimer: ReturnType<typeof setTimeout> | undefined;
   function typed(now: string) {
     onchange?.(now);
+    // the undo history kept, a moment after the typing stops
+    if (historyStore) {
+      clearTimeout(historyTimer);
+      historyTimer = setTimeout(() => {
+        if (editor && path) void historyStore.write(path, textHash(editor.state.doc.toString()), historyOf(editor)).catch(() => {});
+      }, 1000);
+    }
     clearTimeout(timer);
     // typed back to what the file holds (undone)
     if (now === written && !conflict) {
@@ -509,6 +586,14 @@
     const range = { anchor: Math.min(from, end), head: Math.min(to, end) };
     editor.dispatch({ selection: range, effects: EditorView.scrollIntoView(range.anchor, { y: "center" }) });
     editor.focus();
+  }
+
+  /** The lines from `from` to `to` lit a moment (1.5 s), the cursor left where it is. */
+  export function flash(from: number, to: number) {
+    if (!editor) return;
+    editor.dispatch({ effects: flashEffect.of({ from, to }) });
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => editor?.dispatch({ effects: flashEffect.of(null) }), 1500);
   }
 
   /** A place found elsewhere (from a PDF): the cursor at its start, the place marked till the user types or moves. */

@@ -837,37 +837,66 @@ fn document_of(window: &Webview) -> Result<PathBuf, String> {
 }
 
 /// Build (⇧⌘B), or with `show` Build and Show PDF (⌥⇧⌘B). The page has written the document. With a build profile
-/// active (`profiles.rs`), what it says: its command run (one at a time per project), or started and left running,
-/// or nothing but its PDF shown; without, the document in front built by texmark, Quarto or latexmk.
+/// active (`profiles.rs`: Build with), what it says: its command run (one at a time per project), or nothing but its
+/// PDF shown; without, the document in front built by texmark, Quarto or latexmk.
 #[tauri::command]
 pub fn build(app: AppHandle, window: Webview, show: bool) -> Result<(), String> {
-    let file = document_of(&window)?;
+    // a PDF's tab builds with the project's Build With profile (it has no text of its own to build)
+    let file = match document_of(&window) {
+        Ok(file) => file,
+        Err(e) => match documents::path_of(&app, window.label()).filter(|p| documents::is_pdf(p)) {
+            Some(pdf) if crate::profiles::active(&app, &pdf).is_some() => pdf,
+            Some(_) => return Err("A PDF is built from its text, or with a Build With profile of its project".into()),
+            None => return Err(e),
+        },
+    };
     let Some((profile, root)) = crate::profiles::active(&app, &file) else {
+        // the document's own PDF kept up to date by a watch in the background (texmark watch): shown, not built again
+        if let Some(root) = project::find(&file)
+            && let Some(kept) = crate::profiles::kept_pdf(&app, &root)
+        {
+            let own = project::build_dir_of(&file).join(format!("{}.pdf", file.file_stem().unwrap_or_default().to_string_lossy()));
+            if root.join(&kept) == own {
+                if show && own.is_file() {
+                    let _ = documents::open_file(&app, &own);
+                }
+                tell(&app, window.label(), Status {
+                    what: "build",
+                    state: "kept",
+                    pdf: Some(s(&own)),
+                    message: Some("kept up to date by the watch in the background".into()),
+                    ..Default::default()
+                });
+                return Ok(());
+            }
+        }
         request(&app, &window, file, Job::Build { show });
         return Ok(());
     };
+    let profile = profile.for_document_with(&root, &file, &crate::profiles::tools())?;
     let pdf = profile.pdf.as_ref().map(|p| root.join(p));
     let show_pdf = |pdf: &Option<PathBuf>| {
         if show && let Some(pdf) = pdf.as_ref().filter(|p| p.is_file()) {
             let _ = documents::open_file(&app, pdf);
         }
     };
+    // the same PDF kept up to date by the watch running in the background: not built again (its command would clash
+    // with the watch's, texmark refusing a build folder a watch uses), the PDF shown
+    if profile.run == Run::Build && profile.pdf.is_some() && crate::profiles::kept_pdf(&app, &root) == profile.pdf {
+        show_pdf(&pdf);
+        tell(&app, window.label(), Status {
+            what: "build",
+            state: "kept",
+            pdf: pdf.map(|p| s(&p)),
+            message: Some(format!("{}: kept up to date by the watch in the background", profile.name)),
+            ..Default::default()
+        });
+        return Ok(());
+    }
     match profile.run {
         Run::Build => request(&app, &window, root.clone(), Job::Profile { profile, root, show }),
-        Run::Watch => {
-            let started = crate::profiles::start(&app, &root, &profile)?;
-            let log = crate::profiles::log_of(&root, &profile);
-            let message = if started { "started" } else { "running" };
-            show_pdf(&pdf);
-            tell(&app, window.label(), Status {
-                what: "build",
-                state: "watching",
-                pdf: pdf.map(|p| s(&p)),
-                log: Some(s(&log)),
-                message: Some(format!("{}: {message} ({})", profile.name, profile.command)),
-                ..Default::default()
-            });
-        }
+        // a background profile (`profiles::active` gives none)
+        Run::Watch => return Err(format!("{}: chosen under In the background, not built", profile.name)),
         Run::External => {
             show_pdf(&pdf);
             tell(&app, window.label(), Status {
@@ -941,7 +970,43 @@ pub async fn earlier_file(app: AppHandle, window: Webview) -> Result<Option<Stri
 /// The file shown in Finder.
 #[tauri::command]
 pub fn reveal(path: String) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    if shown_in_files(Path::new(&path), false).is_ok() {
+        return Ok(());
+    }
     tauri_plugin_opener::reveal_item_in_dir(&path).map_err(|e| format!("{path}: {e}"))
+}
+
+/// The file (`folder`: the folder itself, opened) shown by the file manager, its window brought forward even when it
+/// is open already: the file managers' D-Bus interface (Nautilus, Dolphin, Nemo…) given the activation token GTK
+/// makes for the window in front (GNOME on Wayland raises no window opened without one). On the main thread (GTK's).
+#[cfg(target_os = "linux")]
+pub fn shown_in_files(path: &Path, folder: bool) -> Result<(), String> {
+    use gtk::prelude::*;
+    use gtk::{gdk, gio};
+    let uri = gio::File::for_path(path).uri().to_string();
+    let token = gdk::Display::default()
+        .and_then(|display| {
+            let context = display.app_launch_context()?;
+            let manager = gio::AppInfo::default_for_type("inode/directory", false)?;
+            context.startup_notify_id(&manager, &[])
+        })
+        .map(|t| t.to_string())
+        .unwrap_or_default();
+    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).map_err(|e| e.to_string())?;
+    bus.call_sync(
+        Some("org.freedesktop.FileManager1"),
+        "/org/freedesktop/FileManager1",
+        "org.freedesktop.FileManager1",
+        if folder { "ShowFolders" } else { "ShowItems" },
+        Some(&(vec![uri], token).to_variant()),
+        None,
+        gio::DBusCallFlags::NONE,
+        5000,
+        gio::Cancellable::NONE,
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 /// A file opened in a tab (the LaTeX log as text).

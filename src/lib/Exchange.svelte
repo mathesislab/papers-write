@@ -151,6 +151,8 @@
   async function compare() {
     const c = comparing;
     if (!c || !ready) return;
+    // in a project that keeps its review in the text, the marks are written into the file: what is typed goes first
+    await flush();
     [c.busy, c.done, problem] = [true, "", ""];
     try {
       const source = revision ? { revision } : { file: c.file };

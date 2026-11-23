@@ -88,6 +88,28 @@
     }
   }
 
+  /** View ▸ Show Notes in a PDF's tab: the project's notes in their tab (from there, back here). */
+  function showNotes() {
+    void invoke("notes_tab_show").catch((e) => say(String(e)));
+  }
+  /** Add Note Here: a line started in the notes with the date and a link to the page in view, the notes shown. */
+  async function noteHere() {
+    const d = new Date();
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    try {
+      await invoke("note_here", { date, place: { page: current } });
+      await invoke("notes_tab_show");
+    } catch (e) {
+      say(String(e));
+    }
+  }
+  /** The page a link of the notes asked for, once the PDF is read. */
+  async function pageAsked() {
+    await opened.promise;
+    const page = await invoke<number | null>("take_page").catch(() => null);
+    if (page) view?.pageTo(page);
+  }
+
   function say(what: string) {
     note = what;
     clearTimeout(noteTimer);
@@ -149,10 +171,14 @@
     ready(opened.promise, frame?.loaded() ?? Promise.resolve());
     ask();
     void showAsked();
+    void pageAsked();
     const unlisten = [
       listen("show-source", () => void showAsked()),
+      listen("page-to", () => void pageAsked()),
+      listen("notes-pane", showNotes),
+      listen("note-here", () => void noteHere()),
       // View ▸ Show PDF with this PDF in front (shown from a text, panes in tabs): back to the text, as a toggle
-      listen("pdf-beside", () => void invoke("pdf_tab_back").catch(() => false)),
+      listen("pdf-beside", () => void invoke("tab_back").catch(() => false)),
       // File ▸ Print…: the PDF's pages
       listen("print", () => void (path ? printPdf(path).catch((e) => say(`Print: ${e}`)) : undefined)),
       listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];

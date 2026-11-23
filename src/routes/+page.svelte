@@ -91,6 +91,8 @@
   import Toolbar from "$lib/Toolbar.svelte";
   import Frame from "$lib/Frame.svelte";
   import SidePdf from "$lib/SidePdf.svelte";
+  import NotesPane from "$lib/NotesPane.svelte";
+  import { appendLines, placeLinkOf } from "$lib/notesLinks";
   import { phrasesAt, plainOf } from "$lib/pdfSearch";
   import type { Spot } from "$lib/pdf";
   import { figureImage } from "$lib/pdfImage";
@@ -162,6 +164,9 @@
   let previewing = $state(false);
   /** the PDF beside the text rather than the preview (View ▸ Show PDF), and its pane */
   let pdfBeside = $state(false);
+  /** the project's notes beside the text (View ▸ Show Notes; in tabs: a tab of their own) */
+  let notesBeside = $state(false);
+  let notesPane = $state<NotesPane>();
   let sidePdf = $state<SidePdf>();
   let html = $state("");
   let said = $state("");
@@ -430,7 +435,7 @@
   function keepPane() {
     if (!path) return;
     try {
-      const pane = previewing || previewTab ? "preview" : pdfBeside ? "pdf" : "";
+      const pane = previewing || previewTab ? "preview" : pdfBeside ? "pdf" : notesBeside ? "notes" : "";
       if (pane) localStorage.setItem(paneKey(path), pane);
       else localStorage.removeItem(paneKey(path));
       if (pane && paneActive) localStorage.setItem(activeKey(path), "1");
@@ -480,6 +485,7 @@
     const items = await Promise.all([
       ...(markdown ? [CheckMenuItem.new({ text: "Preview", checked: previewing || !!previewTab, action: () => togglePreview() })] : []),
       ...(path ? [CheckMenuItem.new({ text: "PDF", checked: pdfBeside, action: () => togglePdf() })] : []),
+      ...(path ? [CheckMenuItem.new({ text: "Notes", checked: notesBeside, action: () => toggleNotes() })] : []),
       PredefinedMenuItem.new({ item: "Separator" }),
       ...(
         [
@@ -499,7 +505,7 @@
   }
   /** The keys to the pane's side (the preview, or the PDF beside the text). */
   function focusPane() {
-    queueMicrotask(() => (previewing ? previewPane?.focus() : sidePdf?.focus()));
+    queueMicrotask(() => (previewing ? previewPane?.focus() : notesBeside ? notesPane?.focus() : sidePdf?.focus()));
   }
   async function restorePane() {
     if (!path) return;
@@ -535,6 +541,7 @@
       return;
     }
     if (pane === "pdf" && !pdfBeside) togglePdf(false);
+    else if (pane === "notes" && !notesBeside) toggleNotes(false);
     else if (pane === "preview" && !previewing && markdown) togglePreview(false);
     if (active) setTimeout(focusPane, 400);
   }
@@ -550,6 +557,7 @@
     if (previewing) {
       panel = false;
       pdfBeside = false;
+      notesBeside = false;
       follow();
       refresh();
     }
@@ -656,6 +664,10 @@
         pdfBeside = false;
         pdfTab();
         if (!paneActive) setTimeout(bringText, 300);
+      } else if (notesBeside) {
+        notesBeside = false;
+        notesTab();
+        if (!paneActive) setTimeout(bringText, 300);
       }
     } else if (previewTab) {
       // the preview's tab closed, the preview beside the text instead; the keys where they were
@@ -688,10 +700,58 @@
     }
     if (!path) return say("Save the document first, to show its PDF");
     pdfBeside = !pdfBeside;
-    if (pdfBeside) [previewing, panel] = [false, false];
+    if (pdfBeside) [previewing, panel, notesBeside] = [false, false, false];
     if (pdfBeside) playBackground();
     if (keep) keepPane();
   }
+  /** View ▸ Show Notes (⌥⌘N): the project's notes beside the text, in the preview's place; in tabs, their tab (from
+   *  it, back to the text it was shown from), as Show PDF does. */
+  function toggleNotes(keep = true) {
+    if (inTabs) {
+      if (keep) notesTab();
+      return;
+    }
+    if (!path) return say("Save the document first: the notes are the project's");
+    notesBeside = !notesBeside;
+    if (notesBeside) [previewing, pdfBeside, panel] = [false, false, false];
+    if (keep) keepPane();
+    if (notesBeside && keep) setTimeout(focusPane, 100);
+    else if (!notesBeside) editor?.focus();
+  }
+  /** The notes in their tab: this text's tab when it is the notes (then back to the text it was shown from). */
+  async function notesTab() {
+    try {
+      if (path && (await invoke<{ path: string }>("project_notes")).path === path) return void (await invoke("tab_back"));
+      await invoke("notes_tab_show");
+    } catch (e) {
+      say(String(e));
+    }
+  }
+  /** Add Note Here (⌥⇧⌘N): a line started at the end of the notes, with the date and a link to the cursor's line,
+   *  the notes shown with the cursor after it. */
+  async function noteHere() {
+    const view = editor?.view();
+    if (!view || !path) return say("Save the document first: the notes are the project's");
+    const d = new Date();
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    try {
+      const notes = await invoke<{ path: string }>("note_here", { date, place: { line: view.state.doc.lineAt(view.state.selection.main.head).number } });
+      if (notes.path === path) return void takeNotesLines();
+      if (inTabs) return void (await invoke("notes_tab_show"));
+      if (notesBeside) void notesPane?.takeLines();
+      // the pane takes them as it opens
+      else toggleNotes();
+    } catch (e) {
+      say(String(e));
+    }
+  }
+  /** The lines Add Note Here started in this text, when it is the notes, put at its end. */
+  async function takeNotesLines() {
+    const view = editor?.view();
+    if (!view || !path) return;
+    appendLines(view, await invoke<string[]>("take_notes_line", { path }).catch(() => []));
+  }
+
   /** The PDF shown: what was chosen to run in the background of the project (paused since the start) started, so
    *  that the PDF keeps up with the text. */
   function playBackground() {
@@ -705,6 +765,10 @@
   /** ⌃-click in the text, or Show in … of its menu: where the cursor is, shown in the pane beside it: the preview's
    *  block when the preview is shown, else in the PDF (shown first when it is not). */
   function syncHere() {
+    // a link to a place (the notes' links: Add Note Here) followed
+    const view = editor?.view();
+    const target = view && path && placeLinkOf(view);
+    if (target) return void invoke("open_place", { notes: path, target }).catch((e) => say(String(e)));
     if ((previewing || previewTab) && markdown) void showInPreview();
     else void showInPdf();
   }
@@ -776,7 +840,7 @@
 
   // View ▸ Show Preview and Show PDF say Hide while shown: told as they change, and as the window comes to the front
   $effect(() => {
-    const shown = { preview: previewing && markdown, pdf: pdfBeside, panes: panesMode };
+    const shown = { preview: previewing && markdown, pdf: pdfBeside, notes: notesBeside, panes: panesMode };
     const tell = () => invoke("view_shown", shown).catch(() => {});
     tell();
     window.addEventListener("focus", tell);
@@ -1005,7 +1069,7 @@
 
   function togglePanel() {
     panel = !panel;
-    if (panel) [previewing, pdfBeside] = [false, false];
+    if (panel) [previewing, pdfBeside, notesBeside] = [false, false, false];
   }
 
   /** A choice of the Review menu. */
@@ -1224,6 +1288,8 @@
   onMount(() => {
     const stop = watchSettings(apply);
     ready(ask(), textIn.promise, frame?.loaded() ?? Promise.resolve());
+    // the lines Add Note Here started before this text, the notes, was open
+    void textIn.promise.then(() => setTimeout(takeNotesLines, 50));
     const unlisten = [
       // File ▸ Print…: the text's preview (fresh), or the text itself where it has none (LaTeX)
       listen("print", () => void printThis()),
@@ -1252,6 +1318,10 @@
       listen<string>("exchange", (e) => exchange?.run(e.payload)),
       listen("preview", () => togglePreview()),
       listen("pdf-beside", () => togglePdf()),
+      listen("notes-pane", () => toggleNotes()),
+      listen("note-here", () => void noteHere()),
+      // a line Add Note Here started, for this text when it is the notes
+      listen("notes-line", () => void takeNotesLines()),
       listen("go-to-file", () => (goingToFile = "")),
       listen<string>("panes", (e) => setPanes(e.payload as Panes)),
       listen("preview-tab", fromPreviewTab),
@@ -1392,6 +1462,13 @@
     <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
       <SidePdf bind:this={sidePdf} onsource={toSource} onsay={say} onpreview={markdown ? () => togglePreview() : undefined} />
       <button class="close-pane" onclick={() => togglePdf()} title="Hide PDF" aria-label="Hide PDF">×</button>
+    </div>
+  {:else if notesBeside && path}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="split" onpointerdown={drag}></div>
+    <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
+      <NotesPane bind:this={notesPane} read={readFile} {drafts} {autosave} {prefs} onsay={say} onhide={() => toggleNotes()} />
+      <button class="close-pane" onclick={() => toggleNotes()} title="Hide Notes" aria-label="Hide Notes">×</button>
     </div>
   {/if}
   {#if panel}

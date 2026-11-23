@@ -33,8 +33,11 @@ pub struct PaneTabs {
     shows: Mutex<HashMap<String, ShowSource>>,
     /// each text's preview tab
     previews: Mutex<HashMap<String, String>>,
-    /// the text each PDF's tab was last shown from (Show PDF in that tab goes back to it)
+    /// the text each tab of a pane (a PDF's, the notes') was last shown from (Show PDF, Show Notes in that tab go back
+    /// to it)
     shown_from: Mutex<HashMap<String, String>>,
+    /// the page each PDF's tab is to show, till it takes it (a link of the notes)
+    pages: Mutex<HashMap<String, u32>>,
     next: AtomicUsize,
 }
 
@@ -44,32 +47,64 @@ pub fn pdf_tab_show(window: Webview, show: Option<ShowSource>) -> Result<(), Str
     let app = window.app_handle();
     let source = documents::path_of(app, window.label()).ok_or("Save the document first, to show its PDF")?;
     let pdf = crate::sidepdf::pdf_of(app, &source).ok_or("No PDF yet: Build first, or choose one with the PDF beside the text")?;
-    let page = crate::tabs::page_of(app, &pdf);
-    app.state::<PaneTabs>().shown_from.lock().unwrap().insert(pdf.to_string_lossy().into_owned(), window.label().to_string());
     if let Some(show) = show {
         let state = app.state::<PaneTabs>();
         let key = pdf.to_string_lossy().into_owned();
         state.shows.lock().unwrap().insert(key, show);
     }
+    if let Some(page) = show_in_tab(app, window.label(), &pdf)? {
+        let _ = app.emit_to(EventTarget::webview(&page), "show-source", ());
+    }
+    Ok(())
+}
+
+/// The file of a pane (a PDF, the notes) in a tab of its own, brought forward or opened, shown from the text of page
+/// `from` (Show PDF or Show Notes in that tab goes back to it: `tab_back`). Its page when it was open already.
+pub fn show_in_tab(app: &AppHandle, from: &str, file: &Path) -> Result<Option<String>, String> {
+    // as the pages know their files
+    let file = &file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
+    let page = crate::tabs::page_of(app, file);
+    app.state::<PaneTabs>().shown_from.lock().unwrap().insert(file.to_string_lossy().into_owned(), from.to_string());
     match page {
         Some(page) => {
             crate::tabs::select(app, &page);
-            let _ = app.emit_to(EventTarget::webview(&page), "show-source", ());
-            Ok(())
+            Ok(Some(page))
         }
-        None => documents::open_file(app, &pdf),
+        None => documents::open_file(app, file).map(|()| None),
     }
 }
 
-/// View ▸ Show PDF in a PDF's tab (in tabs: the PDF in front): back to the text it was last shown from, as Show
-/// Preview in a preview's tab goes back to its text. Whether there was one.
+/// A PDF opened at `page` (a link of the notes): its tab brought forward or opened, and told the page.
+pub fn show_page(app: &AppHandle, pdf: &Path, page: u32) -> Result<(), String> {
+    let pdf = &pdf.canonicalize().unwrap_or_else(|_| pdf.to_path_buf());
+    app.state::<PaneTabs>().pages.lock().unwrap().insert(pdf.to_string_lossy().into_owned(), page);
+    match crate::tabs::page_of(app, pdf) {
+        Some(label) => {
+            crate::tabs::select(app, &label);
+            let _ = app.emit_to(EventTarget::webview(&label), "page-to", ());
+            Ok(())
+        }
+        None => documents::open_file(app, pdf),
+    }
+}
+
+/// The page a PDF's tab is to show, once (none: nothing asked).
 #[tauri::command]
-pub fn pdf_tab_back(window: Webview) -> bool {
+pub fn take_page(window: Webview) -> Option<u32> {
     let app = window.app_handle();
-    let Some(pdf) = documents::path_of(app, window.label()) else {
+    let pdf = documents::path_of(app, window.label())?;
+    app.state::<PaneTabs>().pages.lock().unwrap().remove(pdf.to_string_lossy().as_ref())
+}
+
+/// View ▸ Show PDF in a PDF's tab, or Show Notes in the notes' tab (in tabs: the pane in front): back to the text it
+/// was last shown from, as Show Preview in a preview's tab goes back to its text. Whether there was one.
+#[tauri::command]
+pub fn tab_back(window: Webview) -> bool {
+    let app = window.app_handle();
+    let Some(file) = documents::path_of(app, window.label()) else {
         return false;
     };
-    let text = app.state::<PaneTabs>().shown_from.lock().unwrap().get(pdf.to_string_lossy().as_ref()).cloned();
+    let text = app.state::<PaneTabs>().shown_from.lock().unwrap().get(file.to_string_lossy().as_ref()).cloned();
     match text.filter(|t| app.get_webview(t).is_some()) {
         Some(text) => {
             crate::tabs::select(app, &text);

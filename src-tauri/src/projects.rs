@@ -134,7 +134,7 @@ pub fn clear_recent(app: &AppHandle) {
     with_saved(app, Saved::clear_recent);
 }
 
-fn changed(app: &AppHandle) {
+pub fn changed(app: &AppHandle) {
     let _ = app.emit("projects-changed", ());
 }
 
@@ -440,17 +440,20 @@ pub fn choose(app: &AppHandle) {
     });
 }
 
-/// The library of a project chosen, a `.bib` file, by its path relative to the project's folder when it is inside it;
-/// none when the dialog was cancelled.
+/// A file of a project chosen for Project Info: its library (`library`: a `.bib` file) or its notes (`notes`: a
+/// Markdown file), by its path relative to the project's folder when it is inside it; none when the dialog was
+/// cancelled.
 #[tauri::command]
-pub async fn choose_library(app: AppHandle, root: String) -> Option<String> {
-    let path = app
-        .dialog()
-        .file()
-        .set_title("Library")
-        .set_directory(&root)
-        .add_filter("BibTeX", &["bib"])
-        .blocking_pick_file()
-        .and_then(|f| f.into_path().ok())?;
+pub async fn choose_in_project(app: AppHandle, root: String, what: String) -> Option<String> {
+    let path = pick_file(&app, Path::new(&root), &what)?;
     Some(path.strip_prefix(&root).map(s).unwrap_or_else(|_| s(&path)))
+}
+
+/// The dialog that chooses a file of the project at `root`: `what` it is to be, `library` or `notes`.
+pub fn pick_file(app: &AppHandle, root: &Path, what: &str) -> Option<PathBuf> {
+    let (title, kind, extensions): (&str, &str, &[&str]) = match what {
+        "notes" => ("Notes", "Markdown", &["md", "markdown", "qmd", "txt"]),
+        _ => ("Library", "BibTeX", &["bib"]),
+    };
+    app.dialog().file().set_title(title).set_directory(root).add_filter(kind, extensions).blocking_pick_file().and_then(|f| f.into_path().ok())
 }

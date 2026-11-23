@@ -82,6 +82,7 @@ pub fn run() {
         .manage(spelling::Tags::default())
         .manage(tabs::Tabs::new(tabs::Write))
         .manage(sidebar::GoTos::default())
+        .manage(notes::Started::default())
         .setup(|app| {
             settings::init(app.handle());
             // a frozen main thread said in the log, with where it is held
@@ -131,7 +132,8 @@ pub fn run() {
             panetabs::preview_tab,
             panetabs::preview_tab_of,
             panetabs::tab_in_front,
-            panetabs::pdf_tab_back,
+            panetabs::tab_back,
+            panetabs::take_page,
             panetabs::pdf_tab_offered,
             panetabs::pdf_tab_choose,
             panetabs::relay,
@@ -248,6 +250,14 @@ pub fn run() {
             notes::search_notes,
             notes::new_note,
             notes::kept_by,
+            notes::project_notes,
+            notes::watch_notes,
+            notes::notes_tab_show,
+            notes::rename_notes,
+            notes::choose_notes,
+            notes::note_here,
+            notes::take_notes_line,
+            notes::open_place,
             projects::switch_project,
             projects::open_project_in_new_window,
             projects::remove_from_bar,
@@ -258,7 +268,7 @@ pub fn run() {
             projects::asking_project,
             projects::cancel_project,
             projects::create_project,
-            projects::choose_library,
+            projects::choose_in_project,
             projects::choose_project,
             sidebar::project_files,
             sidebar::project_file_list,

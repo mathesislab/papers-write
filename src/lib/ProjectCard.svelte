@@ -38,6 +38,8 @@
   let keptBy = $state<string | null>(null);
   const notes = $derived(kind === "notes");
   let library = $state("");
+  /** the project's notes file (View ▸ Show Notes): notes.md when blank */
+  let notesFile = $state("");
   /** what Go to File and Find in Project leave out (exclude.rs): one pattern a line */
   let gitignore = $state(true);
   let hide = $state("");
@@ -73,6 +75,7 @@
       engine = m.engine ?? "texmark";
       reviewStore = m.review ?? "notes";
       library = m.library ?? "";
+      notesFile = m.notes ?? "";
       keptBy = await invoke<string | null>("kept_by", { root }).catch(() => null);
       kind = m.kind ?? (!next.defined && keptBy ? "notes" : "paper");
       gitignore = m.gitignore ?? true;
@@ -112,6 +115,7 @@
       // notes and none set: unset still
       review: was.review === null && reviewStore === "notes" ? null : reviewStore,
       library: blank(library),
+      notes: blank(notesFile),
       profile: was.profile,
       // a paper and none set: unset still
       kind: was.kind === null && kind === "paper" ? null : kind,
@@ -142,8 +146,13 @@
   }
 
   async function chooseLibrary() {
-    const chosen = await invoke<string | null>("choose_library", { root }).catch((e) => ((error = String(e)), null));
+    const chosen = await invoke<string | null>("choose_in_project", { root, what: "library" }).catch((e) => ((error = String(e)), null));
     if (chosen) library = chosen;
+  }
+
+  async function chooseNotes() {
+    const chosen = await invoke<string | null>("choose_in_project", { root, what: "notes" }).catch((e) => ((error = String(e)), null));
+    if (chosen) notesFile = chosen;
   }
 
   function focus(input: HTMLInputElement) {
@@ -246,6 +255,12 @@
         <div class="row">
           <input id="project-library" class="grow" bind:value={library} placeholder="The papers library" autocomplete="off" spellcheck="false" />
           <button type="button" onclick={chooseLibrary}>Choose…</button>
+        </div>
+
+        <label for="project-notes">Notes</label>
+        <div class="row">
+          <input id="project-notes" class="grow" bind:value={notesFile} placeholder="notes.md" autocomplete="off" spellcheck="false" />
+          <button type="button" onclick={chooseNotes}>Choose…</button>
         </div>
 
         <span class="label">Go to File, Find in Project</span>

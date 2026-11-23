@@ -270,6 +270,16 @@ them) are proposed upstream; until they are released,
   Settings ▸ Editor) shows instead the text with all of them accepted, or all
   rejected; Read Aloud reads the text with them accepted.
   Drag the split to resize; its width is kept for the window.
+- View ▸ Show Notes (⌥⌘N) shows the project's notes in the preview's place:
+  beside the text, or in a tab of their own as View ▸ Panes says (from that
+  tab, ⌥⌘N goes back to the text). They are one Markdown file of the
+  project, `notes.md` unless Project Info names another (`notes` in
+  write.toml), made the first time. The file's name at the top of the pane
+  renames it, chooses another file or opens it in a tab. View ▸ Add Note
+  Here (⌥⇧⌘N), in a text or a PDF, starts a line at the end of the notes with
+  the date and a link to the place: `[discussion.md:35](discussion.md#L35)`,
+  `[synopsis.pdf p. 12](build/synopsis.pdf#page=12)`. A ⌘-click on such a link
+  opens the file at that line or page.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
   project's tile) has three tabs; shown or not, its width and its tab are the same in all the
   project's tabs, and kept for the next time. Files: the project's folder as a tree (the

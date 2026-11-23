@@ -22,6 +22,9 @@ pub const BUILD: &str = "build";
 /// The main document a new project can start with: the paper-draft skeleton.
 pub const PAPER: &str = "paper.md";
 
+/// The project's notes file, unless write.toml names another (`notes`).
+pub const NOTES: &str = "notes.md";
+
 #[derive(Debug)]
 pub enum Error {
     NotAFolder(PathBuf),
@@ -163,6 +166,8 @@ pub struct Manifest {
     pub hide: Vec<String>,
     #[serde(default)]
     pub show: Vec<String>,
+    /// the project's notes (View ▸ Show Notes), relative to the folder: `notes.md` without
+    pub notes: Option<PathBuf>,
 }
 
 /// `main = "paper.md"` or `main = ["paper.md", "supplement.md"]`.
@@ -309,6 +314,9 @@ impl Project {
                 }
             }
         }
+        if manifest.notes != old.notes {
+            text(doc, "notes", path(&manifest.notes).as_deref());
+        }
         for (key, new, was) in [("hide", &manifest.hide, &old.hide), ("show", &manifest.show, &old.show)] {
             if new != was {
                 if new.is_empty() {
@@ -347,6 +355,15 @@ impl Project {
         self.root.join(self.manifest.build.as_deref().unwrap_or(Path::new(BUILD)))
     }
 
+    /// The project's notes file (`notes` of write.toml, else `notes.md`), by its path; `~/` is the home folder.
+    pub fn notes(&self) -> PathBuf {
+        let notes = self.manifest.notes.as_deref().unwrap_or(Path::new(NOTES));
+        match (notes.strip_prefix("~"), std::env::var_os("HOME")) {
+            (Ok(rest), Some(home)) => PathBuf::from(home).join(rest),
+            _ => self.root.join(notes),
+        }
+    }
+
     /// The library searched, by its path (`~/` is the home folder).
     pub fn library(&self) -> Option<PathBuf> {
         let library = self.manifest.library.as_ref()?;
@@ -376,6 +393,8 @@ impl Manifest {
             gitignore: self.gitignore.filter(|g| !g),
             hide: self.hide.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
             show: self.show.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+            // the default one: unset
+            notes: path(&self.notes).filter(|p| p != Path::new(NOTES)),
         }
     }
 }
@@ -582,6 +601,20 @@ mod tests {
         assert_eq!(inner.root, root.join("sections"));
         assert_eq!(inner.name(), "inner");
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_notes_file_notes_md_unless_write_toml_names_another() {
+        let root = folder();
+        let mut project = Project::create(&root, &Manifest::default()).unwrap();
+        assert_eq!(project.notes(), root.join(NOTES));
+        project.set(&Manifest { notes: Some("ideas.md".into()), ..project.manifest.clone() }).unwrap();
+        assert!(fs::read_to_string(root.join(MANIFEST)).unwrap().contains("notes = \"ideas.md\""));
+        assert_eq!(Project::read(&root).unwrap().notes(), root.join("ideas.md"));
+        // the default named: the key taken out
+        project.set(&Manifest { notes: Some(NOTES.into()), ..project.manifest.clone() }).unwrap();
+        assert!(!fs::read_to_string(root.join(MANIFEST)).unwrap().contains("notes"));
+        assert_eq!(project.manifest.notes, None);
     }
 
     #[test]

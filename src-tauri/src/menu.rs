@@ -200,6 +200,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &[
                 &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
                 &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
+                // the project's notes, as the preview and the PDF are shown (notes.rs)
+                &item("notes-pane", "Show Notes", Some("Alt+CmdOrCtrl+N"))?,
+                &item("note-here", "Add Note Here", Some("Alt+Shift+CmdOrCtrl+N"))?,
                 // the text's preview and PDF beside it, or in tabs of their own (a small screen: panetabs.rs), or so only
                 // while the window is narrow; the one chosen checked by the page (`view_shown`)
                 &Submenu::with_items(
@@ -246,6 +249,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &[
                 &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
                 &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
+                // the project's notes, as the preview and the PDF are shown (notes.rs)
+                &item("notes-pane", "Show Notes", Some("Alt+CmdOrCtrl+N"))?,
+                &item("note-here", "Add Note Here", Some("Alt+Shift+CmdOrCtrl+N"))?,
                 // the text's preview and PDF beside it, or in tabs of their own (a small screen: panetabs.rs), or so only
                 // while the window is narrow; the one chosen checked by the page (`view_shown`)
                 &Submenu::with_items(
@@ -620,7 +626,7 @@ fn command(app: &AppHandle, id: &str) {
         "appearance-system" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::System),
         "appearance-light" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Light),
         "appearance-dark" => crate::settings::set_appearance(app.clone(), crate::settings::Appearance::Dark),
-        "preview" | "pdf-beside" | "outline" | "sidebar" | "go-to-file" => {
+        "preview" | "pdf-beside" | "notes-pane" | "note-here" | "outline" | "sidebar" | "go-to-file" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), id, ());
             }
@@ -700,13 +706,13 @@ pub fn sidebar_shown(app: AppHandle, shown: bool, outline: bool) {
     }
 }
 
-/// View ▸ Show Preview and Show PDF saying Hide when the page in front shows them.
+/// View ▸ Show Preview, Show PDF and Show Notes saying Hide when the page in front shows them.
 #[tauri::command]
-pub fn view_shown(app: AppHandle, preview: bool, pdf: bool, panes: String) {
+pub fn view_shown(app: AppHandle, preview: bool, pdf: bool, notes: bool, panes: String) {
     if crate::projects::with_saved(&app, |saved| saved.panes.clone()) != panes {
         crate::projects::with_saved(&app, |saved| saved.panes = panes.clone());
     }
-    for (id, shown, name) in [("preview", preview, "Preview"), ("pdf-beside", pdf, "PDF")] {
+    for (id, shown, name) in [("preview", preview, "Preview"), ("pdf-beside", pdf, "PDF"), ("notes-pane", notes, "Notes")] {
         if let Some(item) = item_of(&app, id) {
             let _ = item.set_text(format!("{} {name}", if shown { "Hide" } else { "Show" }));
         }

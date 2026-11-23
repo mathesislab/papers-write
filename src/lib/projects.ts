@@ -23,6 +23,8 @@ export type Manifest = {
   gitignore: boolean | null;
   hide: string[];
   show: string[];
+  /** the project's notes (View ▸ Show Notes), relative to the folder: notes.md when null */
+  notes: string | null;
 };
 
 /** mirrors projects::Card */

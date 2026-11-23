@@ -34,12 +34,24 @@ pub fn own(command: &mut Command) -> &mut Command {
 #[cfg(unix)]
 fn tie() -> Option<&'static (i32, i32)> {
     static TIE: std::sync::OnceLock<Option<(i32, i32)>> = std::sync::OnceLock::new();
-    TIE.get_or_init(|| {
-        let mut fds = [0; 2];
-        // SAFETY: a plain pipe2 into a local array
-        (unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } == 0).then_some((fds[0], fds[1]))
-    })
-    .as_ref()
+    TIE.get_or_init(pipe).as_ref()
+}
+
+/// A pipe whose ends close on exec (only the guard, which never execs, keeps the reading end). `pipe` then `fcntl`:
+/// macOS has no `pipe2`; this is done once, at the first command, before any of them is forked.
+#[cfg(unix)]
+fn pipe() -> Option<(i32, i32)> {
+    let mut fds = [0; 2];
+    // SAFETY: a pipe into a local array, then flags set on the two descriptors it made
+    unsafe {
+        if libc::pipe(fds.as_mut_ptr()) != 0 {
+            return None;
+        }
+        for fd in fds {
+            libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+        }
+    }
+    Some((fds[0], fds[1]))
 }
 
 /// In the command's process, before its exec: the guard forked (the command goes on to its exec). The guard waits
@@ -119,9 +131,7 @@ mod tests {
     #[test]
     fn a_command_is_stopped_when_the_app_ends_and_its_guard_goes_when_it_ends() {
         // the app ending: the writing end of a pipe of the test's own closed
-        let mut fds = [0; 2];
-        assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
-        let (read, write) = (fds[0], fds[1]);
+        let (read, write) = pipe().unwrap();
         let tied = |line: &str| {
             let mut command = Command::new("sh");
             command.args(["-c", line]);

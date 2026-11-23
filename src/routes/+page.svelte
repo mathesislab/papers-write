@@ -32,6 +32,7 @@
   // it changes.
 
   import { readAloudItems, spokenOf } from "$lib/readAloud";
+  import { blockIndexAt, previewBlocks } from "$lib/previewBlocks";
   import { toggleComment } from "@codemirror/commands";
   import { selectNextOccurrence } from "@codemirror/search";
   import GoToFile from "$lib/GoToFile.svelte";
@@ -340,9 +341,12 @@
     }
   }
 
-  /** The top-level blocks of the text that pandoc shows, before and including the cursor's: front matter, link
-   *  definitions, comments and raw LaTeX environments are not in its HTML. */
-  const HIDDEN_BLOCKS = new Set(["FrontMatter", "LinkReference", "CommentBlock", "LatexEnvironment"]);
+  /** The blocks of the text as its preview shows them (previewBlocks.ts): the preview's blocks are matched to the
+   *  text's by their index among these, whichever way (`follow`, `scrollToBlock`, `followPreviewTab`). */
+  function shownBlocks(view: EditorView) {
+    const tree = ensureSyntaxTree(view.state, view.state.doc.length, 50);
+    return tree ? previewBlocks(tree, view.state.doc) : null;
+  }
   /** a block scrolled to (from the preview) starts this far below the top of the text's view */
   const TOP_MARGIN = 48;
   /** the preview follows the view, not the cursor: in a tab of its own always (Ctrl+Tab finds both at the same
@@ -355,11 +359,9 @@
     // by the view: the block at the top of what the text shows (as `followPreviewTab` puts a block there, its start
     // `TOP_MARGIN` below the top); else the cursor's
     const head = byView() ? view.lineBlockAtHeight(view.scrollDOM.scrollTop + TOP_MARGIN + 1).from : state.selection.main.head;
-    const tree = ensureSyntaxTree(state, state.doc.length, 50);
-    if (!tree) return;
-    let index = -1;
-    for (let n = tree.topNode.firstChild; n && n.from <= head; n = n.nextSibling) if (!HIDDEN_BLOCKS.has(n.name)) index++;
-    block = Math.max(index, 0);
+    const blocks = shownBlocks(view);
+    if (!blocks) return;
+    block = Math.max(blockIndexAt(blocks, head), 0);
   }
 
   /** A click in the preview: the text scrolled to the block clicked (the `index`th block pandoc shows, as `follow`
@@ -369,17 +371,12 @@
   function scrollToBlock(index: number, later = false) {
     const view = editor?.view();
     if (!view) return;
-    const tree = ensureSyntaxTree(view.state, view.state.doc.length, 50);
-    if (!tree) return;
-    let i = -1;
-    for (let n = tree.topNode.firstChild; n; n = n.nextSibling) {
-      if (HIDDEN_BLOCKS.has(n.name) || ++i < index) continue;
-      view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: 48 }) });
-      // the paragraph lit a moment, for the eye to find it (in tabs: as the text comes back to the front)
-      if (later) toFlash = { from: n.from, to: n.to };
-      else editor?.flash(n.from, n.to);
-      return;
-    }
+    const n = shownBlocks(view)?.[index];
+    if (!n) return;
+    view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: TOP_MARGIN }) });
+    // the paragraph lit a moment, for the eye to find it (in tabs: as the text comes back to the front)
+    if (later) toFlash = { from: n.from, to: n.to };
+    else editor?.flash(n.from, n.to);
   }
 
   /** The text scrolled to a block of its preview's tab as that one scrolls (the text behind it, unseen: Ctrl+Tab
@@ -387,16 +384,11 @@
   function followPreviewTab(index: number) {
     const view = editor?.view();
     if (!view) return;
-    const tree = ensureSyntaxTree(view.state, view.state.doc.length, 50);
-    if (!tree) return;
-    let i = -1;
-    for (let n = tree.topNode.firstChild; n; n = n.nextSibling) {
-      if (HIDDEN_BLOCKS.has(n.name) || ++i < index) continue;
-      view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: TOP_MARGIN }) });
-      shownHeading = currentHeading(headings, n.from);
-      void sendOutline();
-      return;
-    }
+    const n = shownBlocks(view)?.[index];
+    if (!n) return;
+    view.dispatch({ effects: EditorView.scrollIntoView(n.from, { y: "start", yMargin: TOP_MARGIN }) });
+    shownHeading = currentHeading(headings, n.from);
+    void sendOutline();
   }
   /** the heading of what the preview's tab shows (its outline's mark) */
   let shownHeading = -1;

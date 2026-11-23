@@ -4,24 +4,24 @@
 //
 // What is drawn is found by pure functions of the state, tested without an editor: `inlinePieces` for a range of the
 // text (the classes of the lines and ranges, the section numbers, the marks to hide, the inline math to render), and
-// `blocksOf` for the whole of it (display math). A ViewPlugin draws the pieces of the lines in view, again as the
-// text, the view, the syntax tree or the selection change; a StateField draws the blocks, which change the height of
-// the text (CodeMirror takes those from the state only).
+// `blocksOf` for the whole of it (display math, figures, the front matter). A ViewPlugin draws the pieces of the lines
+// in view, again as the text, the view, the syntax tree or the selection change; a StateField draws the blocks, which
+// change the height of the text (CodeMirror takes those from the state only).
 //
 // What is shown as typed, and what rendered, is said in one place, `revealer`: an element is shown as typed when the
 // selection is on one of its lines (a selection over several lines shows all of them), or when a suggestion or comment
 // of the review is on it (the review draws over the text). A mark is hidden by a replace decoration, never atomic: the
 // cursor goes through the text as without Live Preview, and the line it comes to is shown as typed. A block revealed
-// is its text, with its rendering kept under it.
+// is its text, with its rendering kept under it; a figure that shares its line with other text is always so.
 //
-// The renderings are the tooltips' (`HoverSources.math`: pandoc's MathML), each asked once while the editor lives
-// (`Renderings`); an element is shown as typed until its rendering has come, and when it cannot be rendered.
+// The renderings are the tooltips' (`HoverSources.math`: pandoc's MathML) and the figures' images, each asked once
+// while the editor lives (`Renderings`); an element is shown as typed until its rendering has come, and when it cannot
+// be rendered (an image not found).
 
 import { syntaxTree } from "@codemirror/language";
 import { StateEffect, StateField, type EditorState, type Extension, type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
-import { inlineFigures } from "./figures.ts";
-import { mathOf } from "./hover.ts";
+import { INCLUDE, imagePath, isFile, mathOf } from "./hover.ts";
 import { outline } from "./outline.ts";
 import { criticMarks } from "./review/criticMode.ts";
 import { shownOf } from "./review/overlay.ts";
@@ -40,8 +40,12 @@ export type LivePreviewSources = {
 /** A range of the text. */
 export type Span = { from: number; to: number };
 
-/** What an element is rendered as: a formula (by `HoverSources.math`). */
-export type Rendering = { kind: "math"; tex: string; display: boolean };
+/** What an element is rendered as: a formula (by `HoverSources.math`), a figure (its image by `image`), the front
+ *  matter (its title). */
+export type Rendering =
+  | { kind: "math"; tex: string; display: boolean }
+  | { kind: "image"; path: string; caption?: string }
+  | { kind: "front"; title?: string };
 
 /** What is drawn of the text: a class on a line (at its start), a class on a range, a section number before a
  *  heading, a range hidden (a mark) or rendered unless the element it is part of, `scope`, is revealed. */
@@ -52,8 +56,9 @@ export type Piece =
   | { type: "hide"; from: number; to: number; scope: Span }
   | { type: "render"; from: number; to: number; scope: Span; what: Rendering };
 
-/** A block of the text, whole lines from `from` to `to`, rendered in their place, or under them when revealed. */
-export type Block = { type: "math"; from: number; to: number; what: Rendering };
+/** A block of the text, whole lines from `from` to `to`, rendered in their place, or under them when revealed or not
+ *  `alone` on them. */
+export type Block = { from: number; to: number; alone: boolean; what: Rendering };
 
 /** Whether the element from `from` to `to` is shown as typed: the selection is on one of its lines, or an item of the
  *  review is on it. Made once for a state, asked of each element. */
@@ -69,32 +74,67 @@ export function revealer(state: EditorState): (from: number, to: number) => bool
 
 const MATH = new Set(["InlineMath", "DisplayMath", "MathEnvironment"]);
 
-/** The lines of a math node that is a block (display math alone on its lines, its attributes after it), or null. */
-function mathBlockOf(state: EditorState, node: SyntaxNode): Span | null {
-  if (node.name === "InlineMath") return null;
+/** The lines of `node` and of its attributes after it; `alone`: nothing else is on them. */
+function linesOfNode(state: EditorState, node: SyntaxNode): Span & { alone: boolean } {
   let end = node.to;
-  // `$$ x $$ {#eq:x}` on one line is a paragraph: its attributes are the next node
+  // `$$ x $$ {#eq:x}` and `![a](b) {#fig:x}` are a paragraph: the attributes are the next node
   const next = node.nextSibling;
   if (next?.name === "Attributes" && !state.sliceDoc(end, next.from).trim()) end = next.to;
   const first = state.doc.lineAt(node.from);
   const last = state.doc.lineAt(end);
-  if (first.text.slice(0, node.from - first.from).trim() || state.sliceDoc(end, last.to).trim()) return null;
-  return { from: first.from, to: last.to };
+  const alone = !first.text.slice(0, node.from - first.from).trim() && !state.sliceDoc(end, last.to).trim();
+  return { from: first.from, to: last.to, alone };
 }
 
-/** The blocks of the text, in order. */
-export function blocksOf(state: EditorState): Block[] {
-  const out: Block[] = [];
+/** Whether a math node is a block: display math alone on its lines (its attributes after it). */
+const isMathBlock = (state: EditorState, node: SyntaxNode) => node.name !== "InlineMath" && linesOfNode(state, node).alone;
+
+/** The figures of the text (`![caption](path)` in Markdown, `\includegraphics{path}` anywhere), in order: of a path
+ *  that is a file. */
+export function figuresOf(state: EditorState): Block[] {
+  const found: Block[] = [];
   syntaxTree(state).iterate({
     enter(node) {
-      if (!MATH.has(node.name)) return;
-      const lines = mathBlockOf(state, node.node);
-      const math = lines && mathOf(state, node.node);
-      if (lines && math?.tex) out.push({ type: "math", ...lines, what: { kind: "math", tex: math.tex, display: true } });
+      if (node.name !== "Image") return;
+      const url = node.node.getChild("URL");
+      const path = url ? imagePath(state.sliceDoc(url.from, url.to)) : "";
+      const caption = /^!\[([^]*)\]/.exec(state.sliceDoc(node.from, url ? url.from : node.to))?.[1]?.trim();
+      const alone = node.node.parent?.name === "Paragraph";
+      const lines = linesOfNode(state, node.node);
+      if (isFile(path)) found.push({ ...lines, alone: alone && lines.alone, what: { kind: "image", path, ...(caption ? { caption } : {}) } });
       return false;
     },
   });
-  return out;
+  // raw LaTeX: the image under its line, which stays as typed
+  const text = state.doc.toString();
+  for (const m of text.matchAll(INCLUDE)) {
+    const path = m[1].trim();
+    const at = m.index ?? 0;
+    const lines = { from: state.doc.lineAt(at).from, to: state.doc.lineAt(at + m[0].length).to };
+    if (isFile(path)) found.push({ ...lines, alone: false, what: { kind: "image", path } });
+  }
+  return found.sort((a, b) => a.from - b.from);
+}
+
+/** The blocks of the text, in order: display math, figures, the front matter. In a LaTeX file only the figures, under
+ *  their lines. */
+export function blocksOf(state: EditorState, latex = false): Block[] {
+  if (latex) return figuresOf(state).map((f) => ({ ...f, alone: false }));
+  const out: Block[] = figuresOf(state);
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === "FrontMatter") {
+        const title = /^title:[ \t]*(.*?)[ \t]*$/m.exec(state.sliceDoc(node.from, node.to))?.[1].replace(/^(["'])(.*)\1$/, "$2");
+        out.push({ from: node.from, to: state.doc.lineAt(node.to).to, alone: true, what: { kind: "front", ...(title ? { title } : {}) } });
+        return false;
+      }
+      if (!MATH.has(node.name)) return;
+      const math = isMathBlock(state, node.node) && mathOf(state, node.node);
+      if (math && math.tex) out.push({ ...linesOfNode(state, node.node), what: { kind: "math", tex: math.tex, display: true } });
+      return false;
+    },
+  });
+  return out.sort((a, b) => a.from - b.from);
 }
 
 /** What is read from the whole text, again as it or its tree changes: the section numbers, by where their heading
@@ -102,10 +142,10 @@ export function blocksOf(state: EditorState): Block[] {
 export type Analysis = { numbers: Map<number, string>; blocks: Block[] };
 
 /** The analysis of `state`: the headings of the tree as it is (not parsed further: this runs as the text is typed). */
-export function analyse(state: EditorState): Analysis {
+export function analyse(state: EditorState, latex = false): Analysis {
   const numbers = new Map<number, string>();
-  for (const h of outline(state, false)) if (h.number) numbers.set(h.from, h.number);
-  return { numbers, blocks: blocksOf(state) };
+  if (!latex) for (const h of outline(state, false)) if (h.number) numbers.set(h.from, h.number);
+  return { numbers, blocks: blocksOf(state, latex) };
 }
 
 const HEADING = /^(?:ATX|Setext)Heading([1-6])$/;
@@ -162,7 +202,7 @@ export function inlinePieces(state: EditorState, from: number, to: number, analy
       }
       if (MATH.has(node.name)) {
         // a block is drawn by the blocks; math over lines in a paragraph stays as typed
-        if (mathBlockOf(state, node.node) || state.doc.lineAt(node.from).number !== state.doc.lineAt(node.to).number) return false;
+        if (isMathBlock(state, node.node) || state.doc.lineAt(node.from).number !== state.doc.lineAt(node.to).number) return false;
         const math = mathOf(state, node.node);
         if (math?.tex) out.push({ type: "render", from: node.from, to: node.to, scope: scoped(node), what: { kind: "math", ...math } });
         return false;
@@ -239,13 +279,13 @@ export function inlinePieces(state: EditorState, from: number, to: number, analy
   return out;
 }
 
-/** What is rendered of a rendering, if it has come: HTML (math). */
+/** What is rendered of a rendering, if it has come: HTML (math), a URL (an image), "" (what needs nothing). */
 export type Rendered = (what: Rendering) => string | null | undefined;
 
 /** The blocks drawn in place of their lines where the selection is as it is: not revealed, their rendering come. */
 export function blocksInPlace(state: EditorState, blocks: Block[], rendered: Rendered = () => ""): Block[] {
   const revealed = revealer(state);
-  return blocks.filter((b) => !revealed(b.from, b.to) && typeof rendered(b.what) === "string");
+  return blocks.filter((b) => b.alone && !revealed(b.from, b.to) && typeof rendered(b.what) === "string");
 }
 
 /** What of the pieces is drawn where the selection is as it is: the ranges hidden (in order, those that touch merged)
@@ -304,25 +344,46 @@ class NumberWidget extends WidgetType {
   }
 }
 
-/** An element rendered: the HTML of its rendering, inline or as a block. A click on it puts the cursor in its text. */
+/** An element rendered, inline or as a block: `what` with what came of it (`value`: HTML of math, the URL of an
+ *  image). A click on it puts the cursor in its text. */
 class RenderedWidget extends WidgetType {
-  readonly html: string;
+  readonly what: Rendering;
+  readonly value: string;
   readonly block: boolean;
-  constructor(html: string, block: boolean) {
+  readonly key: string;
+  constructor(what: Rendering, value: string, block: boolean) {
     super();
-    [this.html, this.block] = [html, block];
+    [this.what, this.value, this.block, this.key] = [what, value, block, JSON.stringify(what)];
   }
   eq(other: RenderedWidget) {
-    return other.html === this.html && other.block === this.block;
+    return other.key === this.key && other.value === this.value && other.block === this.block;
   }
   get estimatedHeight() {
-    return this.block ? 48 : -1;
+    return !this.block ? -1 : this.what.kind === "image" ? 200 : 48;
   }
-  toDOM() {
+  toDOM(view: EditorView) {
     const dom = document.createElement(this.block ? "div" : "span");
-    dom.className = this.block ? "cm-lp-block" : "cm-lp-inline";
-    // the app's rendering (pandoc's MathML of the text typed: the text is escaped there), as the tooltips show it
-    dom.innerHTML = this.html;
+    const what = this.what;
+    if (what.kind === "math") {
+      dom.className = this.block ? "cm-lp-block" : "cm-lp-inline";
+      // the app's rendering (pandoc's MathML of the text typed: the text is escaped there), as the tooltips show it
+      dom.innerHTML = this.value;
+    } else if (what.kind === "image") {
+      dom.className = "cm-figure";
+      const img = dom.appendChild(document.createElement("img"));
+      img.alt = what.path;
+      // the height known once the image is drawn
+      img.onload = () => view.requestMeasure();
+      img.src = this.value;
+      if (what.caption) {
+        const caption = dom.appendChild(document.createElement("div"));
+        caption.className = "cm-figure-caption";
+        caption.textContent = what.caption;
+      }
+    } else {
+      dom.className = what.title ? "cm-lp-title" : "cm-lp-front";
+      dom.textContent = what.title ?? "Front matter";
+    }
     return dom;
   }
   ignoreEvent() {
@@ -337,22 +398,41 @@ class Renderings {
   readonly asked = new Set<string>();
   readonly views = new Set<EditorView>();
   timer: ReturnType<typeof setTimeout> | undefined;
-  readonly sources: HoverSources;
-  constructor(sources: HoverSources) {
+  readonly sources: LivePreviewSources;
+  constructor(sources: LivePreviewSources) {
     this.sources = sources;
+  }
+
+  /** What `what` is asked as, and what of the answer is kept. */
+  ask(what: Rendering): { key: string; asking: () => Promise<string | null> } | null {
+    const { hover, image } = this.sources;
+    switch (what.kind) {
+      case "math": {
+        const math = hover?.math;
+        if (!math) return null;
+        const asking = () => math(what.tex, what.display).then((html) => (html.includes("<math") ? html : null));
+        return { key: `math:${what.display ? "display" : "inline"}:${what.tex}`, asking };
+      }
+      case "image":
+        return { key: `image:${what.path}`, asking: () => image(what.path) };
+      case "front":
+        return null;
+    }
   }
 
   /** The rendering of `what` if it has come (null: it cannot be rendered); asked if it was not. */
   get = (what: Rendering): string | null | undefined => {
-    const key = `${what.kind}:${what.display ? "display" : "inline"}:${what.tex}`;
+    if (what.kind === "front") return "";
+    const asked = this.ask(what);
+    if (!asked) return null;
+    const { key, asking } = asked;
     if (this.results.has(key)) return this.results.get(key);
     if (!this.asked.has(key)) {
       this.asked.add(key);
-      const ask = this.sources.math ? this.sources.math(what.tex, what.display) : Promise.resolve(null);
-      ask
-        .then((html) => (html && html.includes("<math") ? html : null), () => null)
-        .then((html) => {
-          this.results.set(key, html);
+      asking()
+        .then((value) => value || null, () => null)
+        .then((value) => {
+          this.results.set(key, value);
           this.tell();
         });
     }
@@ -384,7 +464,7 @@ function inlineDecorations(state: EditorState, from: number, to: number, analysi
   }
   const drawn = drawnPieces(state, pieces, rendered, blocksInPlace(state, analysis.blocks, rendered));
   for (const s of drawn.hidden) ranges.push(hidden.range(s.from, s.to));
-  for (const r of drawn.rendered) ranges.push(Decoration.replace({ widget: new RenderedWidget(r.html, false) }).range(r.from, r.to));
+  for (const r of drawn.rendered) ranges.push(Decoration.replace({ widget: new RenderedWidget(r.what, r.html, false) }).range(r.from, r.to));
   return Decoration.set(ranges, true);
 }
 
@@ -393,26 +473,27 @@ function blockDecorations(state: EditorState, blocks: Block[], rendered: Rendere
   const inPlace = new Set(blocksInPlace(state, blocks, rendered));
   const ranges: Range<Decoration>[] = [];
   for (const b of blocks) {
-    const html = rendered(b.what);
-    if (typeof html !== "string") continue;
-    const widget = new RenderedWidget(html, true);
+    const value = rendered(b.what);
+    // the front matter revealed is its text alone
+    if (typeof value !== "string" || (b.what.kind === "front" && !inPlace.has(b))) continue;
+    const widget = new RenderedWidget(b.what, value, true);
     if (inPlace.has(b)) ranges.push(Decoration.replace({ widget, block: true }).range(b.from, b.to));
     else ranges.push(Decoration.widget({ widget, block: true, side: 1 }).range(b.to));
   }
   return Decoration.set(ranges, true);
 }
 
-/** Live Preview of a Markdown text, its renderings from `renderings`. */
-function markdownPreview(renderings: Renderings): Extension {
+/** Live Preview of a text, its renderings from `renderings`: in a LaTeX file, the blocks (figures) alone. */
+function preview(renderings: Renderings, latex: boolean): Extension {
   const rendered: Rendered = renderings.get;
   const field = StateField.define<{ analysis: Analysis; blocks: DecorationSet }>({
     create(state) {
-      const analysis = analyse(state);
+      const analysis = analyse(state, latex);
       return { analysis, blocks: blockDecorations(state, analysis.blocks, rendered) };
     },
     update(value, tr) {
       const parsed = syntaxTree(tr.state) !== syntaxTree(tr.startState);
-      const analysis = tr.docChanged || parsed ? analyse(tr.state) : value.analysis;
+      const analysis = tr.docChanged || parsed ? analyse(tr.state, latex) : value.analysis;
       if (analysis === value.analysis && !tr.selection && !tr.effects.length) return value;
       return { analysis, blocks: blockDecorations(tr.state, analysis.blocks, rendered) };
     },
@@ -436,6 +517,7 @@ function markdownPreview(renderings: Renderings): Extension {
       }
       build(): DecorationSet {
         const { state, viewport } = this.view;
+        if (latex) return Decoration.none;
         return inlineDecorations(state, viewport.from, viewport.to, state.field(field).analysis, rendered);
       }
       destroy() {
@@ -476,11 +558,16 @@ const theme = EditorView.baseTheme({
   ".cm-lp-block": { padding: "4px 0", textAlign: "center", overflowX: "auto", cursor: "text" },
   ".cm-lp-block math": { display: "block", margin: "0 auto" },
   ".cm-lp-inline": { cursor: "text" },
+  // a figure as wide as the column at most, its caption under it
+  ".cm-figure": { padding: "6px 0 10px", textAlign: "center" },
+  ".cm-figure img": { maxWidth: "100%", maxHeight: "60vh", height: "auto", borderRadius: "3px" },
+  ".cm-figure-caption": { fontSize: "0.85em", color: "var(--muted)", marginTop: "0.4em", textAlign: "left" },
+  // the front matter: its title, as the preview's first heading
+  ".cm-lp-title": { fontSize: "1.6em", fontWeight: "650", lineHeight: "1.3", padding: "0.2em 0 0.4em", color: "var(--md-heading)", cursor: "text" },
+  ".cm-lp-front": { fontSize: "0.85em", color: "var(--muted)", cursor: "text" },
 });
 
 /** The extension of Live Preview. */
 export function livePreview(sources: LivePreviewSources): Extension {
-  const figures = inlineFigures(sources.image);
-  if (sources.latex) return figures;
-  return [markdownPreview(new Renderings(sources.hover ?? {})), figures];
+  return preview(new Renderings(sources), sources.latex ?? false);
 }

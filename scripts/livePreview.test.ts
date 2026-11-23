@@ -5,10 +5,9 @@ import { test } from "node:test";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorState, StateEffect, type Extension } from "@codemirror/state";
 import { parsed } from "./parsed.ts";
-import { blocksOf, hiddenRanges, inlinePieces } from "../src/lib/editor/livePreview.ts";
+import { blocksOf, figuresOf, hiddenRanges, inlinePieces } from "../src/lib/editor/livePreview.ts";
 import { criticReview } from "../src/lib/editor/review/criticMode.ts";
 import { shownFacet } from "../src/lib/editor/review/overlay.ts";
-import { figuresOf } from "../src/lib/editor/figures.ts";
 import { paperMarkdown } from "../src/lib/editor/lang/index.ts";
 
 /** A Markdown state of `doc`, the cursor at its `|` (at the end without one). */
@@ -55,9 +54,30 @@ test("only the range asked for", () => {
 test("a figure's caption is the text of its brackets", () => {
   const state = md("![The loop](fig/loop.png){#fig:loop}\n\n![](b.png)\n");
   assert.deepEqual(
-    figuresOf(state).map((f) => [f.path, f.caption]),
+    figuresOf(state).map((f) => (f.what.kind === "image" ? [f.what.path, f.what.caption] : [])),
     [["fig/loop.png", "The loop"], ["b.png", undefined]],
   );
+});
+
+test("a figure alone on its line is drawn in its place off the cursor; one in a sentence stays as typed", () => {
+  const doc = "![The loop](loop.png){#fig:loop}\n\nsee ![x](inline.png) here\n\n\\includegraphics{c.pdf}\n\nend";
+  assert.deepEqual(hidden(doc), ["![The loop](loop.png){#fig:loop}"]);
+  assert.deepEqual(hidden(doc.replace("The", "Th|e")), []);
+  assert.deepEqual(figuresOf(md(doc)).map((f) => f.alone), [true, false, false]);
+  // a URL is no figure
+  assert.deepEqual(figuresOf(md("![a](https://example.org/a.png)\n")), []);
+});
+
+test("the front matter is drawn as its title off the cursor", () => {
+  const doc = "---\ntitle: \"A paper\"\nauthor: Me\n---\n\ntext|";
+  assert.deepEqual(hidden(doc), ["---\ntitle: \"A paper\"\nauthor: Me\n---"]);
+  assert.deepEqual(blocksOf(md(doc)).map((b) => b.what), [{ kind: "front", title: "A paper" }]);
+  assert.deepEqual(hidden("---\nti|tle: x\n---\n\ntext"), []);
+});
+
+test("in a LaTeX file, the figures alone, under their lines", () => {
+  const blocks = blocksOf(md("![a](a.png)\n\n$$\nx\n$$\n"), true);
+  assert.deepEqual(blocks.map((b) => [b.what.kind, b.alone]), [["image", false]]);
 });
 
 /** The texts hidden, the cursor at the `|`. */

@@ -281,8 +281,20 @@ them) are proposed upstream; until they are released,
   `[synopsis.pdf p. 12](build/synopsis.pdf#page=12)`. A ⌘-click on such a link
   opens the file at that line or page.
 - View ▸ Live Preview (also Settings ▸ Editor; it was "Figures in the text"):
-  each figure shown under its line (a PDF figure as its first page). In a
-  LaTeX file that is all it does.
+  the Markdown shown as the preview has it, but on the lines the cursor or
+  the selection is on, which are as typed. Headings at the preview's sizes
+  with their section numbers, quotes with a bar at the left, code on a shade;
+  the marks (`#`, `**`, `*`, backticks, `>`, link brackets and URLs,
+  `{#…}` attributes, CriticMarkup delimiters) hidden; inline math rendered as
+  in the tooltips, citations as their labels ("Schoof (2007)", "(see Schoof
+  2007, p. 3)"), cross-references as "Figure 2", "Equation (1)" (always with
+  the word, whatever the front matter says the preview should write).
+  Display math, a figure alone on its line (image and caption) and the front
+  matter (its title) are drawn in place of their lines; with the cursor in
+  one, its text shows and the equation or figure stays drawn under it. A click
+  on what is drawn puts the cursor there. A key or a label not found, an
+  image missing, stays as typed. Tables are not drawn. In a LaTeX file it is
+  each figure under its line (a PDF figure as its first page), nothing else.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
   project's tile) has three tabs; shown or not, its width and its tab are the same in all the
   project's tabs, and kept for the next time. Files: the project's folder as a tree (the

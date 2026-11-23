@@ -98,7 +98,7 @@
     <ul bind:this={list}>
       {#each shown as note, i (note.path)}
         <li class:on={i === at}>
-          <button onclick={() => open(note)} onmouseenter={() => (at = i)}>
+          <button onclick={() => open(note)} onmousemove={() => (at = i)}>
             <span class="title">{note.title}</span>
             <span class="meta">{note.name} · {ago(note.modified)}</span>
             {#if note.line && query.trim()}<span class="line">{note.line}</span>{/if}

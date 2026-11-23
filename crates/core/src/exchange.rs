@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 use serde::Serialize;
 
-use crate::review::{self, Person, Review};
+use crate::review::{self, Person, Review, history};
 
 /// The pandoc the app's settings name, which wins over the search (`set_pandoc`); none: searched.
 static CHOSEN: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
@@ -148,10 +148,36 @@ pub fn export_critic(doc: &Path, current: &str, to: &Path) -> Result<Exported, S
     if to.canonicalize().ok().zip(doc.canonicalize().ok()).is_some_and(|(a, b)| a == b) {
         return Err(format!("{}: that is the document itself; choose another name", to.display()));
     }
-    let items = Review::load(doc).map_err(|e| e.to_string())?.items(current);
-    let made = review::critic::markdown_with_changes(current, &items);
+    let made = critic_of(doc, current, false)?;
     std::fs::write(to, &made.markdown).map_err(|e| format!("{}: {e}", to.display()))?;
     Ok(Exported { path: to.to_string_lossy().into_owned(), suggestions: made.suggestions, comments: made.comments, skipped: made.skipped, notes: Vec::new() })
+}
+
+/// `current` with the open suggestions and comments of the review of `doc` as CriticMarkup: as Export as
+/// CriticMarkup writes them, or (`in_text`) as the marks of a project that keeps its review in the text.
+fn critic_of(doc: &Path, current: &str, in_text: bool) -> Result<review::critic::Export, String> {
+    let items = Review::load(doc).map_err(|e| e.to_string())?.items(current);
+    Ok(if in_text { review::critic::in_text(current, &items) } else { review::critic::markdown_with_changes(current, &items) })
+}
+
+/// The suggestions `changes` (positions in `start`, as [`history::suggestions`] makes them) as the CriticMarkup of a
+/// project that keeps its review in the text, in `current`, each mark signed by its author. They go the way of
+/// Export as CriticMarkup: written to a review of their own (in a temporary folder, as the document `name`, removed
+/// after), folded onto `current` there and marked. What could not be marked is in `skipped`.
+pub fn marks_of(name: &str, start: &str, current: &str, changes: &[history::Change]) -> Result<review::critic::Export, String> {
+    /// The temporary folder, removed when done with.
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+    let scratch = Scratch(std::env::temp_dir().join(format!("pw-marks-{}-{nonce}", std::process::id())));
+    std::fs::create_dir_all(&scratch.0).map_err(|e| format!("{}: {e}", scratch.0.display()))?;
+    let doc = scratch.0.join(if name.is_empty() { "document.md" } else { name });
+    history::add(&doc, start, changes).map_err(|e| e.to_string())?;
+    critic_of(&doc, current, true)
 }
 
 /// What an import made.

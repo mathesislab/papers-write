@@ -65,11 +65,13 @@ pub fn suggestions(start: &str, end: &str, who: impl Fn(&Hunk) -> Commit) -> Vec
 }
 
 /// What [`add`] did: the suggestions written, by whom (names, in the order met), and those the review had already.
+/// Written as marks in the text instead, `left_out` are those that could not be placed (one line each).
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct Added {
     pub added: usize,
     pub already: usize,
     pub people: Vec<String>,
+    pub left_out: Vec<String>,
 }
 
 /// `changes` (positions in `start`) written to the review of `doc` with `start` as their base, each in its author's
@@ -311,7 +313,7 @@ mod tests {
         assert_eq!(changes[0].author.email, "jane-doe@example.org");
 
         let added = add(&d, &start, &changes).unwrap();
-        assert_eq!(added, Added { added: 4, already: 0, people: vec!["Jane Doe".into(), "Bob Smith".into()] });
+        assert_eq!(added, Added { added: 4, already: 0, people: vec!["Jane Doe".into(), "Bob Smith".into()], left_out: vec![] });
         let review = Review::load(&d).unwrap();
         assert_eq!(review.files.len(), 2, "one file per author");
         let items = review.items(&current);
@@ -327,7 +329,7 @@ mod tests {
         assert_eq!((robust.status.clone(), robust.record.insert.as_deref()), (Status::Moved, Some("")));
 
         // the same range again adds nothing
-        assert_eq!(add(&d, &start, &changes).unwrap(), Added { added: 0, already: 4, people: vec![] });
+        assert_eq!(add(&d, &start, &changes).unwrap(), Added { added: 0, already: 4, people: vec![], left_out: vec![] });
         assert_eq!(Review::load(&d).unwrap().records().count(), 4);
     }
 

@@ -26,7 +26,9 @@ export type Settings = {
   review_initials: string;
   /** 1 to 6, or null: from the name */
   review_colour: number | null;
-  preview_follow: boolean;
+  preview_follows: "cursor" | "view";
+  /** the suggestions in the text itself (CriticMarkup) in the preview */
+  preview_changes: "marked" | "accepted" | "original";
   texmark_path: string;
   quarto_path: string;
   latexmk_path: string;
@@ -41,6 +43,11 @@ export type Settings = {
   /** the interface as large as the text asks (settings.rs `scale`) */
   interface_follows_text: boolean;
   project_colour_bar: boolean;
+  /** tabs not shown for this long have their page unloaded (minutes; 0: never); at most this many keep theirs */
+  unload_after: number;
+  loaded_tabs: number;
+  tabs_memory: number;
+  tabs_at_start: number;
   /** the project bar: always shown, shown on hover at the window's left edge, or hidden */
   project_bar: "shown" | "hover" | "hidden";
   /** look for updates at start and twice a day; they are installed only when asked */

@@ -264,7 +264,22 @@ them) are proposed upstream; until they are released,
   Quarto's (`{#fig-x}`, `@fig-x`) are numbered too, with Quarto's words:
   "Figure 1", "Figures 1 and 2", "Equation 1"; `crossref: {fig-prefix: Fig.}`
   changes them. The export to Word numbers them the same way.
+  Suggestions kept in the text itself (CriticMarkup) are marked as changes:
+  insertions underlined in green, deletions struck through in red, highlights
+  in yellow, comments as small notes in the line. The preview's ▾ (or
+  Settings ▸ Editor) shows instead the text with all of them accepted, or all
+  rejected; Read Aloud reads the text with them accepted.
   Drag the split to resize; its width is kept for the window.
+- View ▸ Show Notes (⌥⌘N) shows the project's notes in the preview's place:
+  beside the text, or in a tab of their own as View ▸ Panes says (from that
+  tab, ⌥⌘N goes back to the text). They are one Markdown file of the
+  project, `notes.md` unless Project Info names another (`notes` in
+  write.toml), made the first time. The file's name at the top of the pane
+  renames it, chooses another file or opens it in a tab. View ▸ Add Note
+  Here (⌥⇧⌘N), in a text or a PDF, starts a line at the end of the notes with
+  the date and a link to the place: `[discussion.md:35](discussion.md#L35)`,
+  `[synopsis.pdf p. 12](build/synopsis.pdf#page=12)`. A ⌘-click on such a link
+  opens the file at that line or page.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
   project's tile) has three tabs; shown or not, its width and its tab are the same in all the
   project's tabs, and kept for the next time. Files: the project's folder as a tree (the
@@ -377,6 +392,16 @@ them) are proposed upstream; until they are released,
     change back and rejecting it leaves it out. The document must have nothing
     uncommitted. A sheet says what happened ("Jane Doe's edits since a1b2c3d,
     back as suggestions"); commit when you like (Git ▸ Commit…).
+  - In a project that keeps its review in the text (`review = "in-file"`),
+    both (and Compare as Suggestions…) write the changes into the document as
+    CriticMarkup instead of the
+    review's notes: `{++ ++}`, `{-- --}`, `{~~ ~> ~~}`, each followed by its
+    commit's author (`{>>@Jane Doe:<<}`), the marks Export as CriticMarkup
+    makes. The commit's round and date are not kept. A change on or right
+    against a mark the text has already is not marked: Review Commits… then
+    changes nothing and lists them (the text going back would lose them);
+    Review Branch… marks the others and lists those left out, as it does those
+    on words changed since.
   - Who made what comes from `git blame`, by line: two commits that changed the
     same line both count as the later one.
 - Settings (⌘, in the app menu; one window, every change

@@ -62,8 +62,9 @@ function numbering(skip: boolean) {
 }
 
 /** The headings of the document, in order: with the syntax tree of a Markdown file (no heading in code or in a
- *  comment), with the lines of a LaTeX file (the sectioning commands that begin a line, not in a comment). */
-export function outline(state: EditorState): Heading[] {
+ *  comment), with the lines of a LaTeX file (the sectioning commands that begin a line, not in a comment). `whole`:
+ *  the whole text parsed first (up to 200 ms); else the tree as it is, which may stop short of the end. */
+export function outline(state: EditorState, whole = true): Heading[] {
   const found: Heading[] = [];
   if (state.facet(language)?.name === "latex") {
     // numbered as LaTeX does: no star; the sections down to the subsubsection (to the subsection with chapters),
@@ -85,7 +86,7 @@ export function outline(state: EditorState): Heading[] {
   }
   const attributes: string[] = [];
   // the whole text parsed (the state's own tree may stop short of it when the first parse ran out of time)
-  (ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state)).iterate({
+  ((whole && ensureSyntaxTree(state, state.doc.length, 200)) || syntaxTree(state)).iterate({
     enter(node) {
       const m = /^(?:ATXHeading|SetextHeading)([1-6])$/.exec(node.name);
       if (!m) return;

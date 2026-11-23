@@ -28,6 +28,7 @@ mod tabs;
 mod trash;
 mod update;
 mod watch;
+mod watchdog;
 
 use tauri::{AppHandle, DragDropEvent, Manager, RunEvent, State, WebviewEvent, WindowEvent};
 use update::{Available, Installed, Updates};
@@ -77,6 +78,8 @@ pub fn run() {
         .manage(sidebar::GoTos::default())
         .setup(|app| {
             settings::init(app.handle());
+            // a frozen main thread said in the log, with where it is held
+            watchdog::start(app.handle());
             // elsewhere than on macOS the files to open are the arguments of the command
             #[cfg(not(target_os = "macos"))]
             documents::opened(

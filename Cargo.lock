@@ -2929,6 +2929,7 @@ dependencies = [
 name = "papers-write"
 version = "0.6.2"
 dependencies = [
+ "libc",
  "notify",
  "objc2",
  "objc2-app-kit",

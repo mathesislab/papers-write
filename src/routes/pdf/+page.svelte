@@ -6,6 +6,7 @@
   // changes on disk (`file-changed`: a build writes it, in several passes: a moment after the last). A ⌘-click on its
   // text (Ctrl elsewhere) opens the source there (`open_source_at`). Either view (pdf.ts) does all of this.
 
+  import { showSourceIn } from "$lib/pdfPlace";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
   import PdfView from "$lib/PdfView.svelte";
@@ -43,6 +44,20 @@
   /** what was just done or went wrong, for a moment */
   let note = $state("");
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** A place of a text to show here (Show in PDF with the panes in tabs: panetabs.rs), once the PDF is read: from the
+   *  build's map, else by the words of its line. */
+  async function showAsked() {
+    await opened.promise;
+    const asked = await invoke<{ source: string; line: number; along: number; word: string; before: string[]; after: string[]; phrases: string[] } | null>(
+      "take_show_source",
+    ).catch(() => null);
+    if (!asked || !view || !path) return;
+    const shown = await showSourceIn(view, path, asked.source, asked.line, asked.word, asked.along, asked.before, asked.after);
+    if (shown.page) return say(shown.status);
+    for (const phrase of asked.phrases) if (await view.find(phrase)) return say(`Found by its words: “${phrase}”`);
+    say("Not found in the PDF");
+  }
 
   /** ⌘-click on the PDF's text: its source opened there, found by its words in the project's Markdown and LaTeX. */
   async function toSource({ line, at, word, before, after }: Spot) {
@@ -115,7 +130,11 @@
   onMount(() => {
     ready(opened.promise, frame?.loaded() ?? Promise.resolve());
     ask();
-    const unlisten = [listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
+    void showAsked();
+    const unlisten = [
+      listen("show-source", () => void showAsked()),
+      // View ▸ Show PDF with this PDF in front (shown from a text, panes in tabs): back to the text, as a toggle
+      listen("pdf-beside", () => void invoke("pdf_tab_back").catch(() => false)), listen("opened", ask), listen("file-changed", changed), listen<string>("pdf", (e) => command(e.payload)), listen<boolean>("tab-shown", (e) => (front = e.payload)), listen<string>("find", (e) => command(e.payload)), listen<string>("go", (e) => go(e.payload))];
     return () => {
       clearTimeout(timer);
       clearTimeout(noteTimer);

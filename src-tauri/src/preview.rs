@@ -25,7 +25,7 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use crate::documents;
 
 /// What a run gives the page.
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Preview {
     pub html: String,
     /// what pandoc said that went wrong; the html is what could be made of it
@@ -81,6 +81,9 @@ fn label_table(app: &AppHandle, page: &str, files: Vec<PathBuf>) -> Option<PathB
         table.making = true;
         let (app, page, file) = (app.clone(), page.to_string(), table.file.clone());
         std::thread::spawn(move || {
+            // once the files are still a moment (an autosave every few seconds while one types: one pass in a pause)
+            quiet(&files);
+            let stamp = write_core::refs::files_stamp(&files);
             let made = make_table(&files, &file);
             let mut tables = TABLES.lock().unwrap();
             if let Some(table) = tables.get_mut(&main) {
@@ -98,6 +101,22 @@ fn label_table(app: &AppHandle, page: &str, files: Vec<PathBuf>) -> Option<PathB
     table.file.is_file().then(|| table.file.clone())
 }
 
+/// How long the files of a document are left unchanged before their table is made again.
+const QUIET: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Back once none of `files` changed for `QUIET` (at most a minute: a file always changing does not hold it back).
+fn quiet(files: &[PathBuf]) {
+    let start = std::time::Instant::now();
+    loop {
+        let newest = files.iter().filter_map(|f| std::fs::metadata(f).ok()?.modified().ok()).max();
+        let still = newest.and_then(|t| t.elapsed().ok()).unwrap_or(QUIET);
+        if still >= QUIET || start.elapsed() > std::time::Duration::from_secs(60) {
+            return;
+        }
+        std::thread::sleep(QUIET - still);
+    }
+}
+
 /// The table of the labels of the document `files` make written to `file` (the filter's PAPERS_WRITE_LABELS_OUT);
 /// whether it was.
 fn make_table(files: &[PathBuf], file: &Path) -> bool {
@@ -106,10 +125,12 @@ fn make_table(files: &[PathBuf], file: &Path) -> bool {
     };
     let dir = files.first().and_then(|m| m.parent()).map(Path::to_path_buf).unwrap_or_else(home);
     let part = file.with_extension("tsv.part");
+    let headings_part = file.with_extension("headings.part");
     let Ok(mut child) = Command::new(pandoc)
         .args(["-f", "markdown", "-t", "json"])
         .arg(format!("--lua-filter={}", filter.display()))
         .env("PAPERS_WRITE_LABELS_OUT", &part)
+        .env("PAPERS_WRITE_HEADINGS_OUT", &headings_part)
         .current_dir(&dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -122,7 +143,76 @@ fn make_table(files: &[PathBuf], file: &Path) -> bool {
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(whole.as_bytes());
     }
-    child.wait().is_ok_and(|s| s.success()) && std::fs::rename(&part, file).is_ok()
+    child.wait().is_ok_and(|s| s.success()) && std::fs::rename(&headings_part, headings_of(file)).is_ok() && std::fs::rename(&part, file).is_ok()
+}
+
+/// Where the headings of a table's document are kept, beside its labels.
+fn headings_of(table: &Path) -> PathBuf {
+    table.with_extension("headings.tsv")
+}
+
+/// A heading of a whole document: the file it is in (by its place in `files`), its level, number (none: unnumbered,
+/// or the document numbers no sections) and text.
+#[derive(Serialize)]
+pub struct OutlineHeading {
+    file: usize,
+    level: u8,
+    number: String,
+    title: String,
+}
+
+/// The outline of the whole document the asking text is part of (a thesis or book: its main document and chapters):
+/// its files and their headings, as the last made table has them (made again aside when they changed: the page is
+/// told, `preview-labels`). None for a text of no such document, or before a table was made.
+#[derive(Serialize)]
+pub struct WholeOutline {
+    files: Vec<String>,
+    headings: Vec<OutlineHeading>,
+}
+
+#[tauri::command]
+pub fn document_outline(window: Webview) -> Option<WholeOutline> {
+    let path = documents::path_of(window.app_handle(), window.label())?;
+    let files = write_core::refs::document_files(&path)?;
+    let table = label_table(window.app_handle(), window.label(), files.clone())?;
+    let text = std::fs::read_to_string(headings_of(&table)).ok()?;
+    let headings = text
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.splitn(4, '\t');
+            Some(OutlineHeading { file: f.next()?.parse().ok()?, level: f.next()?.parse().ok()?, number: f.next()?.to_string(), title: f.next()?.to_string() })
+        })
+        .collect();
+    Some(WholeOutline { files: files.iter().map(|f| f.to_string_lossy().into_owned()).collect(), headings })
+}
+
+/// Where the `nth` heading (from 0) of the text `title` is in the Markdown file `path`, by its line's offset (UTF-16): for a
+/// heading of another file of the outline to be gone to. Its `#`s and attributes (`{#sec:x}`) left out; fenced code
+/// passed over.
+#[tauri::command]
+pub fn heading_place(path: String, title: String, nth: usize) -> Option<usize> {
+    let text = std::fs::read_to_string(&path).ok()?;
+    let want = title.trim();
+    let (mut at, mut fenced, mut seen) = (0usize, false, 0usize);
+    for line in text.split_inclusive('\n') {
+        let t = line.trim_end();
+        if t.trim_start().starts_with("```") || t.trim_start().starts_with("~~~") {
+            fenced = !fenced;
+        } else if !fenced && t.starts_with('#') {
+            let body = t.trim_start_matches('#').trim();
+            let body = body.rfind('{').filter(|_| body.ends_with('}')).map_or(body, |i| body[..i].trim_end());
+            let plain: String = body.chars().filter(|c| !matches!(c, '*' | '_' | '`')).collect();
+            if plain.trim() == want || body == want {
+                if seen == nth {
+                    // as the editor counts (UTF-16), as the project's search gives its places
+                    return Some(text[..at].encode_utf16().count());
+                }
+                seen += 1;
+            }
+        }
+        at += line.len();
+    }
+    None
 }
 /// the largest image embedded
 const LARGEST: u64 = 5 * 1024 * 1024;
@@ -131,6 +221,12 @@ pub const SUPERSEDED: &str = "superseded";
 /// The preview of `text`, as the document of this window reads it.
 #[tauri::command]
 pub async fn preview(window: Webview, text: String) -> Result<Preview, String> {
+    // made ahead for this very text (a chapter beside the one read: `prepare_preview`)
+    if let Some(path) = documents::path_of(window.app_handle(), window.label())
+        && let Some(made) = READY.lock().unwrap().get(&path).filter(|(hash, _)| *hash == hash_of(&text)).map(|(_, p)| p.clone())
+    {
+        return Ok(made);
+    }
     let runs = window.state::<Runs>();
     let generation = runs.0.lock().unwrap().entry(window.label().to_string()).or_default().clone();
     let mine = generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -545,4 +641,101 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
         assert!(p.html.contains("<h1") && p.error.as_deref().is_some_and(|e| e.contains("boom")));
         std::fs::remove_dir_all(&dir).unwrap();
     }
+}
+
+/// A chapter beside another: its file, and its title (its first heading, else its name).
+#[derive(Serialize)]
+pub struct Chapter {
+    path: String,
+    title: String,
+}
+
+/// The chapters before and after the text at `path` in its document (the main document's `chapters:`, the main one
+/// first); none for a text that is not one of them.
+#[derive(Serialize, Default)]
+pub struct Neighbours {
+    previous: Option<Chapter>,
+    next: Option<Chapter>,
+}
+
+#[tauri::command]
+pub fn chapter_neighbours(path: String) -> Neighbours {
+    let path = std::path::PathBuf::from(path);
+    let Some(files) = write_core::refs::document_files(&path) else {
+        return Neighbours::default();
+    };
+    let same = |a: &std::path::Path| a.canonicalize().ok() == path.canonicalize().ok();
+    let Some(at) = files.iter().position(|f| same(f)) else {
+        return Neighbours::default();
+    };
+    let chapter = |i: usize| files.get(i).map(|f| Chapter { path: f.to_string_lossy().into_owned(), title: title_of(f) });
+    Neighbours { previous: at.checked_sub(1).and_then(chapter), next: chapter(at + 1) }
+}
+
+/// A Markdown file's first heading (`# Title {#sec:x}`: Title), else its name without the extension.
+fn title_of(file: &std::path::Path) -> String {
+    let text = std::fs::read_to_string(file).unwrap_or_default();
+    let mut fenced = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+        }
+        if fenced || !line.starts_with('#') {
+            continue;
+        }
+        let title = line.trim_start_matches('#');
+        if !title.starts_with(' ') {
+            continue;
+        }
+        let title = title.split(" {").next().unwrap_or(title).trim();
+        if !title.is_empty() {
+            return title.to_string();
+        }
+    }
+    file.file_stem().unwrap_or_default().to_string_lossy().into_owned()
+}
+
+/// Previews made ahead, by file: the text's hash they were made of, and the preview. The chapters before and after
+/// the one read, so that going there shows its preview at once.
+static READY: std::sync::LazyLock<Mutex<HashMap<PathBuf, (u64, Preview)>>> = std::sync::LazyLock::new(Default::default);
+/// The most kept.
+const READY_MOST: usize = 6;
+
+fn hash_of(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    h.finish()
+}
+
+/// The preview of the file at `path` made ahead (the chapter linked before or after the one read), unless made already
+/// of its text as it is on disk.
+#[tauri::command]
+pub async fn prepare_preview(window: Webview, path: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let hash = hash_of(&text);
+    if READY.lock().unwrap().get(&path).is_some_and(|(h, _)| *h == hash) {
+        return Ok(());
+    }
+    let (app, label) = (window.app_handle().clone(), window.label().to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = path.parent().map(Path::to_path_buf).unwrap_or_else(home);
+        let bibs = write_core::refs::main_bibliography(&path, &text);
+        let labels = write_core::refs::document_files(&path).and_then(|files| label_table(&app, &label, files));
+        // a run of its own: nothing supersedes it
+        let generation = AtomicU64::new(1);
+        let made = render(&text, &dir, true, &bibs, labels.as_deref(), Turn { generation: &generation, mine: 1 })?;
+        let mut ready = READY.lock().unwrap();
+        if ready.len() >= READY_MOST && !ready.contains_key(&path) {
+            let first = ready.keys().next().cloned();
+            if let Some(first) = first {
+                ready.remove(&first);
+            }
+        }
+        ready.insert(path, (hash, made));
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

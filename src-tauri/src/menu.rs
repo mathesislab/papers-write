@@ -152,6 +152,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             // a menu item, not a key of the page: macOS takes ⌘. for Cancel before the page sees it
             &item("cite-key", "Cite as [@key]", Some("CmdOrCtrl+."))?,
             &item("check", "Check Citations…", None)?,
+            &separator()?,
+            // the selection or the paragraph read, or the reading stopped (the command of Preferences ▸ Read Aloud;
+            // none set: off); macOS's own key for speaking there
+            &MenuItem::with_id(
+                app,
+                "read-aloud",
+                "Read Aloud",
+                !crate::settings::get().read_aloud.trim().is_empty(),
+                Some(if MAC { "Alt+Escape" } else { "Ctrl+Alt+A" }),
+            )?,
         ],
     )?;
     // the formats of the toolbar, at the selection of the text in front (Markdown, or LaTeX in a .tex file)
@@ -171,6 +181,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &item("format-quote", "Quote", Some("Shift+CmdOrCtrl+9"))?,
         ],
     )?;
+    // View ▸ Panes as last chosen (the pages correct it as they load)
+    let panes_now = match crate::projects::with_saved(app, |saved| saved.panes.clone()).as_str() {
+        "" => "side".to_string(),
+        other => other.to_string(),
+    };
     let view = Submenu::with_items(
         app,
         "View",
@@ -178,8 +193,22 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &item("preview", "Show Preview", Some("Shift+CmdOrCtrl+P"))?,
             &item("pdf-beside", "Show PDF", Some("Alt+Shift+CmdOrCtrl+P"))?,
-            &item("sidebar", "Show Sidebar", Some("Alt+CmdOrCtrl+S"))?,
-            &item("outline", "Show Outline", Some("Alt+CmdOrCtrl+O"))?,
+            // the text's preview and PDF beside it, or in tabs of their own (a small screen: panetabs.rs), or so only
+            // while the window is narrow; the one chosen checked by the page (`view_shown`)
+            &Submenu::with_items(
+                app,
+                "Panes",
+                true,
+                &[
+                    &CheckMenuItem::with_id(app, "panes-side", "Beside the Text", true, panes_now == "side", None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-tabs", "In Tabs of Their Own", true, panes_now == "tabs", None::<&str>)?,
+                    &CheckMenuItem::with_id(app, "panes-auto", "In Tabs on a Narrow Window", true, panes_now == "auto", None::<&str>)?,
+                ],
+            )?,
+            // the sidebar on a tab (pressed again: hidden); outside macOS O for the files (open), H for the outline (the
+            // headings), as Ctrl+Shift+F is the search's
+            &item("sidebar", "Show Files", Some(if MAC { "Alt+CmdOrCtrl+S" } else { "Ctrl+Alt+O" }))?,
+            &item("outline", "Show Outline", Some(if MAC { "Alt+CmdOrCtrl+O" } else { "Ctrl+Alt+H" }))?,
             // the project bar hidden at the window's left edge till the pointer comes there (Settings ▸ Window)
             &CheckMenuItem::with_id(
                 app,
@@ -325,7 +354,22 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 }
 
 pub fn on_event(app: &AppHandle, event: MenuEvent) {
-    let id = event.id().as_ref();
+    command(app, event.id().as_ref());
+}
+
+/// ⌃+ (⌘+) where + is a key of its own (an Italian or German keyboard): the menu's ⌃= is ⌃⇧0 there, so the page
+/// says it (`step` 1; -1 and 0 the same for ⌃- and ⌃0, should a layout need them).
+#[tauri::command]
+pub fn zoom_key(app: AppHandle, step: i32) {
+    command(&app, match step.signum() {
+        1 => "zoom-in",
+        -1 => "zoom-out",
+        _ => "zoom-fit",
+    });
+}
+
+/// What a menu item does, by its id.
+fn command(app: &AppHandle, id: &str) {
     if crate::tabs::menu::handle(app, id) {
         return;
     }
@@ -382,6 +426,18 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
         "text-narrower" => crate::settings::step_text_width(app, -1.0),
         "text-full" => crate::settings::toggle_full_width(app),
         // the whole window, text and all (the text's own size is Settings ▸ Editor ▸ Size)
+        "panes-side" | "panes-tabs" | "panes-auto" => {
+            // one of the three, whatever tab is in front (a PDF's too): the marks at once (GTK ticks the one clicked by
+            // itself), kept, and every page told (the texts change their panes' form)
+            let mode = id.trim_start_matches("panes-").to_string();
+            for other in ["side", "tabs", "auto"] {
+                if let Some(item) = app.menu().and_then(|m| m.get(&format!("panes-{other}"))).and_then(|k| k.as_check_menuitem().cloned()) {
+                    let _ = item.set_checked(other == mode);
+                }
+            }
+            crate::projects::with_saved(app, |saved| saved.panes = mode.clone());
+            let _ = app.emit("panes", mode);
+        }
         "zoom-window-in" => crate::settings::step_zoom(app, 1.0),
         "zoom-window-out" => crate::settings::step_zoom(app, -1.0),
         "zoom-window-reset" => crate::settings::step_zoom(app, 0.0),
@@ -429,7 +485,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "format", &id["format-".len()..]);
             }
         }
-        "undo" | "redo" | "symbols" | "references" | "check" | "go-to-line" | "select-next" | "toggle-comment" => {
+        "undo" | "redo" | "symbols" | "references" | "check" | "go-to-line" | "select-next" | "toggle-comment" | "read-aloud" => {
             if let Some(window) = documents::front(app) {
                 let _ = app.emit_to(EventTarget::webview(window.label()), "edit", id);
             }
@@ -448,7 +504,7 @@ fn item_of(app: &AppHandle, id: &str) -> Option<MenuItem<Wry>> {
 /// window comes to the front); View ▸ Show Preview and Show PDF the same (`view_shown`).
 #[tauri::command]
 pub fn sidebar_shown(app: AppHandle, shown: bool, outline: bool) {
-    for (id, on, name) in [("sidebar", shown, "Sidebar"), ("outline", outline, "Outline")] {
+    for (id, on, name) in [("sidebar", shown, "Files"), ("outline", outline, "Outline")] {
         if let Some(item) = item_of(&app, id) {
             let _ = item.set_text(format!("{} {name}", if on { "Hide" } else { "Show" }));
         }
@@ -457,10 +513,31 @@ pub fn sidebar_shown(app: AppHandle, shown: bool, outline: bool) {
 
 /// View ▸ Show Preview and Show PDF saying Hide when the page in front shows them.
 #[tauri::command]
-pub fn view_shown(app: AppHandle, preview: bool, pdf: bool) {
+pub fn view_shown(app: AppHandle, preview: bool, pdf: bool, panes: String) {
+    if crate::projects::with_saved(&app, |saved| saved.panes.clone()) != panes {
+        crate::projects::with_saved(&app, |saved| saved.panes = panes.clone());
+    }
     for (id, shown, name) in [("preview", preview, "Preview"), ("pdf-beside", pdf, "PDF")] {
         if let Some(item) = item_of(&app, id) {
             let _ = item.set_text(format!("{} {name}", if shown { "Hide" } else { "Show" }));
         }
+    }
+    for mode in ["side", "tabs", "auto"] {
+        if let Some(item) = app.menu().and_then(|m| m.get(&format!("panes-{mode}"))).and_then(|k| k.as_check_menuitem().cloned()) {
+            let _ = item.set_checked(panes == mode);
+        }
+    }
+}
+
+/** Edit ▸ Read Aloud as Read Aloud can be: on while a command is set, Stop Reading while it reads. */
+pub fn read_aloud_item(app: &AppHandle, set: Option<bool>, reading: Option<bool>) {
+    let Some(item) = app.menu().and_then(|m| m.get("read-aloud")).and_then(|k| k.as_menuitem().cloned()) else {
+        return;
+    };
+    if let Some(set) = set {
+        let _ = item.set_enabled(set);
+    }
+    if let Some(reading) = reading {
+        let _ = item.set_text(if reading { "Stop Reading" } else { "Read Aloud" });
     }
 }

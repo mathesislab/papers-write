@@ -7,6 +7,7 @@
   // mode, Editing or Suggesting (ModeControl). Each button says its key, where it has one (the menus give them).
 
   import { keys, TEXT_WIDTH, type FindBar, type Format, type ReviewMode, type ReviewView } from "papers-write/editor";
+  import { popupReleased } from "papers-write/project";
   import ModeControl from "$lib/ModeControl.svelte";
   import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -105,7 +106,7 @@
     const items = await Promise.all(
       choices.map(([a, text]) => CheckMenuItem.new({ text, checked: appearance === a, action: () => onappearance(a) })),
     );
-    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+    await popupReleased(await Menu.new({ items }), new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
   /** the popover of the column's width is open; the width last set, kept while the text is full width */
   let sizing = $state(false);
@@ -234,10 +235,6 @@
       >
     {/each}
   </div>
-  {#if speak}
-    <span class="rule"></span>
-    <div class="group"><ReadAloudButton text={speak} /></div>
-  {/if}
   <!-- in the middle, how the text is shown -->
   <div class="middle">
     <button class="size" onclick={() => onsize(-1)} title={keys("Zoom Out: the whole window, text and all (⌘−)")} aria-label="Zoom Out">A<sup>−</sup></button>
@@ -248,6 +245,7 @@
       title="{NAMES[shown]}{appearance === 'system' ? ' (matching the system)' : ''}. Click: {NAMES[other]}. Right-click: Match System, Light or Dark"
       aria-label="Appearance: {NAMES[shown]}; switch to {NAMES[other]}">{@render icon(shown)}</button
     >
+    {#if speak}<ReadAloudButton text={speak} />{/if}
     <div class="sizing" bind:this={sizer}>
       <button
         class:on={sizing}

@@ -141,9 +141,9 @@ pub fn main_bibliography(path: &Path, text: &str) -> Vec<PathBuf> {
     bibliography_of(&main, &main_text).into_iter().map(|n| folder.join(n)).filter(|f| f.is_file()).collect()
 }
 
-/// The files of the whole document `path` is a chapter of (texmark's thesis or book: the main document lists its
-/// chapters in `chapters:`): the main document, then the chapters in order, those that are there. None when `path` is
-/// no chapter of its project's main document.
+/// The files of the whole document `path` is part of (texmark's thesis or book: the main document lists its chapters
+/// in `chapters:`): the main document, then the chapters in order, those that are there. None when `path` is neither
+/// a chapter of its project's main document nor that document with chapters.
 pub fn document_files(path: &Path) -> Option<Vec<PathBuf>> {
     if path.as_os_str().is_empty() {
         return None;
@@ -152,7 +152,8 @@ pub fn document_files(path: &Path) -> Option<Vec<PathBuf>> {
     let same = |a: &Path, b: &Path| a.canonicalize().ok().zip(b.canonicalize().ok()).is_some_and(|(a, b)| a == b);
     let dir = folder_of(&main);
     let chapters: Vec<PathBuf> = frontmatter::chapters(&std::fs::read_to_string(&main).ok()?).iter().map(|c| dir.join(c)).collect();
-    if !chapters.iter().any(|c| same(c, path)) {
+    // a chapter, or the main document itself when it has chapters
+    if chapters.is_empty() || !(same(&main, path) || chapters.iter().any(|c| same(c, path))) {
         return None;
     }
     Some(std::iter::once(main).chain(chapters.into_iter().filter(|c| c.is_file())).collect())
@@ -164,7 +165,13 @@ pub fn whole_text(files: &[PathBuf]) -> String {
     let mut whole = String::new();
     for (i, file) in files.iter().enumerate() {
         let text = std::fs::read_to_string(file).unwrap_or_default();
-        whole.push_str(if i == 0 { &text } else { &text[frontmatter::body_start(&text)..] });
+        let body = if i == 0 { text.as_str() } else { &text[frontmatter::body_start(&text)..] };
+        // where each file starts, for the headings to be told by file (the filter's PAPERS_WRITE_HEADINGS_OUT); the
+        // main document's after its front matter
+        let at = if i == 0 { frontmatter::body_start(body) } else { 0 };
+        whole.push_str(&body[..at]);
+        whole.push_str(&format!("\n\n<!-- papers-write-file {i} -->\n\n"));
+        whole.push_str(&body[at..]);
         whole.push_str("\n\n");
     }
     whole
@@ -553,7 +560,9 @@ mod tests {
         assert!(!whole.contains("x: 1"));
         assert!(whole.find("Abstract.").unwrap() < whole.find("# One").unwrap());
         assert!(whole.find("# One").unwrap() < whole.find("# Two").unwrap());
-        assert!(document_files(&root.join("thesis.md")).is_none());
+        assert!(whole.contains("<!-- papers-write-file 2 -->"));
+        // the main document has the whole document too
+        assert_eq!(document_files(&root.join("thesis.md")).unwrap().len(), 3);
         assert!(document_files(&root.join("other.md")).is_none());
     }
 }

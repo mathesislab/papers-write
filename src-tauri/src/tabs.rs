@@ -74,9 +74,36 @@ impl Host for Write {
         crate::documents::focused(app, page);
     }
 
+    fn unload_policy(&self, _app: &AppHandle) -> Option<(std::time::Duration, usize)> {
+        let s = crate::settings::get();
+        (s.unload_after > 0).then(|| (std::time::Duration::from_secs(u64::from(s.unload_after) * 60), s.loaded_tabs.max(1) as usize))
+    }
+
+    fn companion_kind(&self, _app: &AppHandle, page: &str) -> Option<String> {
+        page.starts_with("preview-").then(|| "preview".to_string())
+    }
+
+    fn open_companion(&self, app: &AppHandle, beside: &str, kind: &str) -> Result<String, String> {
+        match kind {
+            // beside the text (View ▸ Panes): the text's page shows it there as it loads
+            "preview" if matches!(crate::projects::with_saved(app, |saved| saved.panes.clone()).as_str(), "" | "side") => {
+                Err("the preview is beside the text".into())
+            }
+            "preview" => crate::panetabs::open_preview(app, beside),
+            _ => Err(format!("no tab of kind {kind}")),
+        }
+    }
+
     fn closed(&self, app: &AppHandle, page: &str) {
+        // a tab closed (not the app quitting): its undo history goes
+        if !crate::tabs::is_quitting(app)
+            && let Some(path) = crate::documents::path_of(app, page)
+        {
+            crate::undo::drop_history(app, &path);
+        }
         crate::documents::closed(app, page);
         crate::git::closed(app, page);
+        crate::panetabs::closed(app, page);
         crate::spelling::closed(app, page);
     }
 

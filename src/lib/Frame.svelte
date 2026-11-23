@@ -133,7 +133,8 @@
   // View ▸ Show Sidebar and Show Outline say Hide while they are shown: told as they change, and as the window comes
   // to the front
   $effect(() => {
-    const [shown, outline] = [side.shown, side.shown && sideTab === "outline"];
+    // each item says Hide while its own tab is the one shown
+    const [shown, outline] = [side.shown && sideTab === "files", side.shown && sideTab === "outline"];
     const tell = () => invoke("sidebar_shown", { shown, outline }).catch(() => {});
     tell();
     window.addEventListener("focus", tell);
@@ -152,6 +153,14 @@
     onfocus?.();
   }
 
+  /** View ▸ Show Files: the sidebar on its files, or hidden when it shows them (each tab of the sidebar has its key,
+   *  which hides it when that tab is the one shown). */
+  export function toggleFiles() {
+    if (!sideRoot) return onsay("Save the document first, to see its folder");
+    if (side.shown && sideTab === "files") return hideSidebar();
+    side.set({ shown: true, tab: "files" });
+  }
+
   /** View ▸ Show Outline: the sidebar on its outline, or hidden when it shows it. */
   export function toggleOutline() {
     if (side.shown && sideTab === "outline") return toggleSidebar();
@@ -161,6 +170,8 @@
   /** Edit ▸ Find ▸ Find in Project…: the sidebar on its search. */
   export function findInProject() {
     if (!sideRoot) return onsay("Save the document first, to search its folder");
+    // asked again with the search's field in hand: the sidebar hidden, as the other tabs' keys do
+    if (side.shown && sideTab === "search" && document.activeElement?.closest(".side")) return hideSidebar();
     side.set({ shown: true });
     queueMicrotask(() => list?.find());
   }
@@ -208,19 +219,29 @@
     const stops = [side.start(), watchSettings((s) => ([colourBar, barMode] = [s.project_colour_bar, s.project_bar ?? "shown"]))];
     askProject();
     window.addEventListener("focus", loadBar);
+    // ⌃+ where + is a key of its own (Italian, German): the menu's Zoom In is ⌃= (⌃⇧0 there), so said here; where
+    // the menu took the key the page does not see it
+    const plus = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === "+") {
+        e.preventDefault();
+        void invoke("zoom_key", { step: 1 }).catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", plus);
     const unlisten = [
       listen("projects-changed", loadBar),
       listen("asking-project", askProject),
       listen("project-info", projectInfo),
       listen("switch-project", () => (switching = true)),
       listen("outline", toggleOutline),
-      listen("sidebar", toggleSidebar),
+      listen("sidebar", toggleFiles),
     ];
     return () => {
       stops.forEach((stop) => stop());
       clearTimeout(barTimer);
       clearTimeout(slideTimer);
       window.removeEventListener("focus", loadBar);
+      window.removeEventListener("keydown", plus);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });

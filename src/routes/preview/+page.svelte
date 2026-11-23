@@ -93,6 +93,7 @@
       onsource={(text, word, around) => void tell({ kind: "source", text, word, around })}
       onblock={(index) => void tell({ kind: "block", index })}
       onpdf={(text, word, around) => void tell({ kind: "pdf", text, word, around })}
+      onlink={(text) => void tell({ kind: "link", text })}
       previous={chapters.previous}
       next={chapters.next}
       onchapter={(file, atEnd) => void tell({ kind: "chapter", text: file, index: atEnd ? 1 : 0 })}

@@ -23,6 +23,7 @@
     previous = null,
     next = null,
     onchapter,
+    onlink,
     onscrolled,
     inTab = false,
     panes,
@@ -42,6 +43,9 @@
     next?: Chapter | null;
     /** a click on one of them: that chapter opened (at its end, going up), its preview shown as this one is */
     onchapter?: (path: string, atEnd: boolean) => void;
+    /** a link of the text clicked (not an anchor of the page): its target as written, to open (the frame never goes
+     *  there itself: a file of the computer is no page of the frame, a 404) */
+    onlink?: (target: string) => void;
     /** scrolled (by hand or not): the index of the top-level block at the top of what shows */
     onscrolled?: (index: number) => void;
     /** the preview in a tab of its own (it then always follows the view) */
@@ -371,6 +375,17 @@
             const win = frame?.contentWindow;
             win?.scrollTo({ top: chapter.dataset.jump === "top" ? 0 : doc.body.scrollHeight, behavior: "smooth" });
           } else onchapter?.(chapter.dataset.chapter ?? "", chapter.dataset.end === "1");
+          return;
+        }
+        const link = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+        const href = link?.getAttribute("href") ?? "";
+        if (link && !href.startsWith("#")) {
+          e.preventDefault();
+          let target = href;
+          try {
+            target = decodeURI(href);
+          } catch {}
+          onlink?.(target);
           return;
         }
         if (!(e.ctrlKey || e.metaKey)) {

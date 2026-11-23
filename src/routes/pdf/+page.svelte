@@ -103,11 +103,15 @@
       say(String(e));
     }
   }
-  /** The page a link of the notes asked for, once the PDF is read. */
+  /** The page a link asked for (a link of the notes): the page the PDF opens at, when it is not read yet; else gone
+   *  to, and again a moment later if the view was not ready for it (a tab just brought forward). */
   async function pageAsked() {
-    await opened.promise;
     const page = await invoke<number | null>("take_page").catch(() => null);
-    if (page) view?.pageTo(page);
+    if (!page) return;
+    current = page;
+    await opened.promise;
+    view?.pageTo(page);
+    setTimeout(() => current !== page && view?.pageTo(page), 400);
   }
 
   function say(what: string) {

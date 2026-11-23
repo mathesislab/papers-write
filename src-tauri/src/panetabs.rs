@@ -78,6 +78,7 @@ pub fn show_in_tab(app: &AppHandle, from: &str, file: &Path) -> Result<Option<St
 pub fn show_page(app: &AppHandle, pdf: &Path, page: u32) -> Result<(), String> {
     let pdf = &pdf.canonicalize().unwrap_or_else(|_| pdf.to_path_buf());
     app.state::<PaneTabs>().pages.lock().unwrap().insert(pdf.to_string_lossy().into_owned(), page);
+    eprintln!("[papers-write {}] {} asked at page {page}", crate::tabs::stamp(), pdf.display());
     match crate::tabs::page_of(app, pdf) {
         Some(label) => {
             crate::tabs::select(app, &label);

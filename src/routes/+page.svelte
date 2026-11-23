@@ -54,7 +54,7 @@
   import { notesReview, textReview } from "$lib/reviewer";
   import { colorOf } from "$lib/reviewFormat";
   import { message, type Entry } from "$lib/commitLog";
-  import { openPath } from "@tauri-apps/plugin-opener";
+  import { openPath, openUrl } from "@tauri-apps/plugin-opener";
   import {
     FileEditor,
     PREFS,
@@ -639,6 +639,7 @@
     else if (what.kind === "shown") setActive(true);
     else if (what.kind === "block") scrollToBlock(what.index ?? 0, true);
     else if (what.kind === "chapter" && what.text) openChapter(what.text, true, what.index === 1);
+    else if (what.kind === "link" && what.text) openLink(what.text);
     else if (what.kind === "pdf") void previewToPdf(what.text ?? "", what.word ?? "", what.around ?? { before: [], after: [] });
     else if (what.kind === "source") {
       void invoke("bring_tab", { page: getCurrentWebview().label });
@@ -745,6 +746,14 @@
       say(String(e));
     }
   }
+  /** A link of this text followed (⌘-click on a link to a place, a click on a link in its preview): a web address
+   *  in the browser; a file, from this text's folder, opened (at its line, `#L35`, or its page, `#page=12`). */
+  function openLink(target: string) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target) && !/^[a-z]:[\\/]/i.test(target)) return void openUrl(target).catch((e) => say(String(e)));
+    if (!path) return say("Save the document first: its links are from its folder");
+    void invoke("open_place", { notes: path, target }).catch((e) => say(String(e)));
+  }
+
   /** The lines Add Note Here started in this text, when it is the notes, put at its end. */
   async function takeNotesLines() {
     const view = editor?.view();
@@ -768,7 +777,7 @@
     // a link to a place (the notes' links: Add Note Here) followed
     const view = editor?.view();
     const target = view && path && placeLinkOf(view);
-    if (target) return void invoke("open_place", { notes: path, target }).catch((e) => say(String(e)));
+    if (target) return openLink(target);
     if ((previewing || previewTab) && markdown) void showInPreview();
     else void showInPdf();
   }
@@ -1453,7 +1462,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="split" onpointerdown={drag}></div>
     <div class="pane" style:width={width ? `${width * 100}%` : "45%"} onfocusin={() => setActive(true)}>
-      <Preview bind:this={previewPane} {html} error={said} {block} onscrolled={follows === "view" ? followPreviewTab : undefined} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file, atEnd) => openChapter(file, false, atEnd)} panes={{ mode: panesMode, onpanes: setPanes }} />
+      <Preview bind:this={previewPane} {html} error={said} {block} onscrolled={follows === "view" ? followPreviewTab : undefined} onsource={previewToSource} onblock={scrollToBlock} onpdf={path ? previewToPdf : undefined} previous={chapters.previous} next={chapters.next} onchapter={(file, atEnd) => openChapter(file, false, atEnd)} onlink={openLink} panes={{ mode: panesMode, onpanes: setPanes }} />
       <button class="close-pane" onclick={() => togglePreview()} title="Hide Preview" aria-label="Hide Preview">×</button>
     </div>
   {:else if pdfBeside && path}

@@ -105,6 +105,18 @@ impl Host for Write {
         }
     }
 
+    fn not_loaded(&self, app: &AppHandle, page: &str) {
+        let name = self.title(app, page);
+        let shown = crate::documents::front(app);
+        crate::sheet::tell(
+            app,
+            shown.as_ref(),
+            "Tab Not Loaded",
+            format!("{name} could not be loaded. Its tab is still there: choose it again to load it again."),
+            crate::sheet::Level::Warning,
+        );
+    }
+
     fn closed(&self, app: &AppHandle, page: &str) {
         // a tab closed (not the app quitting): its undo history goes
         if !crate::tabs::is_quitting(app)

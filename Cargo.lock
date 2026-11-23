@@ -2981,6 +2981,7 @@ dependencies = [
  "objc2-app-kit",
  "serde",
  "tauri",
+ "webkit2gtk",
 ]
 
 [[package]]

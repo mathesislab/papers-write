@@ -196,6 +196,10 @@ pub trait Host: Send + Sync + 'static {
     /// The last window of tabs gone.
     fn none_left(&self, _app: &AppHandle) {}
 
+    /// The page of the tab `page` could not be loaded: the tab stays, the page shown before it in view, and is
+    /// loaded again when chosen again.
+    fn not_loaded(&self, _app: &AppHandle, _page: &str) {}
+
     /// What kind of tab `page` is when it goes with another's file (made with `add_beside`: a preview), to be saved
     /// and made again (`open_companion`); none: it is not kept.
     fn companion_kind(&self, _app: &AppHandle, _page: &str) -> Option<String> {
@@ -293,6 +297,11 @@ pub struct Tabs {
     /// the page above the others of each window: the one in view (the model's front may be a page still being drawn,
     /// or none yet, as a project comes)
     on_top: Mutex<HashMap<String, String>>,
+    /// the pages whose document has begun to show (WebKit's load committed, an app page and not the empty one of a
+    /// tab unloaded; Linux): a tab chosen whose page has not, after a while, is loaded again rather than shown empty
+    committed: Mutex<HashSet<String>>,
+    /// the pages whose WebKit process ended: how many times since when (each reloaded, a few times at most)
+    ended: Mutex<HashMap<String, (u32, std::time::Instant)>>,
 }
 
 impl Tabs {
@@ -321,6 +330,8 @@ impl Tabs {
             folders: Mutex::default(),
             ready: Mutex::default(),
             on_top: Mutex::default(),
+            committed: Mutex::default(),
+            ended: Mutex::default(),
         }
     }
 }
@@ -558,6 +569,8 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
         builder = builder.background_color(colour);
     }
     let page = window.add_child(builder, LogicalPosition::new(0.0, 0.0), LogicalSize::new(size.width, size.height))?;
+    #[cfg(target_os = "linux")]
+    watch_loads(app, &page);
     if later {
         state.later.lock().unwrap().push((label.to_string(), url.to_string()));
     } else if state.base.lock().unwrap().is_none() {
@@ -575,7 +588,7 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
     }
     eprintln!("[papers-write {}] page {label} added{}", stamp(), if later { " (loaded later)" } else { "" });
     if !later {
-        show_after_a_while(app, label);
+        show_after_a_while(app, label, None);
     }
     with_tabs(app, |w| w.entry(window.label().to_string()).or_default().insert(label, title));
     host(app).added(app, window, label);
@@ -590,15 +603,116 @@ pub fn stamp() -> String {
     format!("{:02}:{:02}:{:02}.{:03}", s / 3600 % 24, s / 60 % 60, s % 60, ms % 1000)
 }
 
-/// A page that never says it is drawn shown all the same, after a while.
-fn show_after_a_while(app: &AppHandle, page: &str) {
+/// A page that never says it is drawn shown all the same, after a while. Outside macOS, one sent to `again` (a tab
+/// loaded later or again) that has not begun to load by then is sent there once more; if it still has not, it is
+/// not shown (an empty page, the tab strip with it, would leave no way out): the page shown before is brought back,
+/// the tab left unloaded, loaded again when chosen again (`Host::not_loaded` tells).
+fn show_after_a_while(app: &AppHandle, page: &str, again: Option<String>) {
     let (handle, waited) = (app.clone(), page.to_string());
     std::thread::spawn(move || {
+        let app = &handle;
+        let state = app.state::<Tabs>();
         std::thread::sleep(std::time::Duration::from_secs(2));
-        if !handle.state::<Tabs>().ready.lock().unwrap().contains(&waited) {
+        let drawn = || state.ready.lock().unwrap().contains(&waited);
+        let begun = || state.committed.lock().unwrap().contains(&waited);
+        if cfg!(target_os = "linux")
+            && let Some(url) = again
+            && !drawn()
+            && !begun()
+        {
+            eprintln!("[papers-write {}] page {waited} not loaded after 2 s: loading again", stamp());
+            let Some(webview) = app.get_webview(&waited) else { return };
+            if let Ok(address) = url.parse() {
+                let _ = webview.navigate(address);
+            }
+            for _ in 0..80 {
+                if drawn() || begun() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            if !drawn() && !begun() {
+                eprintln!("[papers-write {}] page {waited} could not be loaded: its tab left unloaded", stamp());
+                state.unloaded.lock().unwrap().insert(waited.clone(), url);
+                let window = window_of(app, &waited).unwrap_or_default();
+                let before = state.on_top.lock().unwrap().get(&window).cloned().filter(|p| *p != waited);
+                let (handle, page) = (app.clone(), waited.clone());
+                let _ = app.run_on_main_thread(move || {
+                    if let Some(before) = before {
+                        select(&handle, &before);
+                    }
+                    host(&handle).not_loaded(&handle, &page);
+                });
+                return;
+            }
+        }
+        if !drawn() {
             eprintln!("[papers-write {}] page {waited} not drawn after 2 s: shown all the same", stamp());
         }
-        ready(&handle, &waited);
+        ready(app, &waited);
+    });
+}
+
+/// WebKit's loads of `page` followed (Linux): whether its document has begun to show (`committed`), its loads that
+/// failed logged, and its process, ended (crashed, or killed for its memory), started again by a reload, three
+/// times in ten minutes at most; then the tab is left unloaded, loaded again when chosen.
+#[cfg(target_os = "linux")]
+fn watch_loads(app: &AppHandle, page: &Webview) {
+    let (handle, label) = (app.clone(), page.label().to_string());
+    let _ = page.with_webview(move |w| {
+        use webkit2gtk::{LoadEvent, WebViewExt};
+        let view = w.inner();
+        let blank = |uri: Option<String>| uri.as_deref().is_none_or(|u| u.is_empty() || u == "about:blank");
+        let (app, l) = (handle.clone(), label.clone());
+        view.connect_load_changed(move |view, event| {
+            let empty = blank(view.uri().map(|u| u.to_string()));
+            let state = app.state::<Tabs>();
+            match event {
+                LoadEvent::Started if !empty => eprintln!("[papers-write {}] page {l}: WebKit loading", stamp()),
+                LoadEvent::Committed if empty => {
+                    state.committed.lock().unwrap().remove(&l);
+                }
+                LoadEvent::Committed => {
+                    state.committed.lock().unwrap().insert(l.clone());
+                }
+                _ => {}
+            }
+        });
+        let l = label.clone();
+        view.connect_load_failed(move |_, _, uri, error| {
+            eprintln!("[papers-write {}] page {l}: loading {uri} failed: {error}", stamp());
+            false
+        });
+        let (app, l) = (handle.clone(), label.clone());
+        view.connect_web_process_terminated(move |view, reason| {
+            let uri = view.uri().map(|u| u.to_string());
+            eprintln!("[papers-write {}] page {l}: its process ended ({reason:?})", stamp());
+            let state = app.state::<Tabs>();
+            state.ready.lock().unwrap().remove(&l);
+            state.committed.lock().unwrap().remove(&l);
+            if blank(uri.clone()) {
+                return;
+            }
+            let uri = uri.unwrap_or_default();
+            let again = {
+                let mut ended = state.ended.lock().unwrap();
+                let e = ended.entry(l.clone()).or_insert((0, std::time::Instant::now()));
+                if e.1.elapsed() > std::time::Duration::from_secs(600) {
+                    *e = (0, std::time::Instant::now());
+                }
+                e.0 += 1;
+                e.0 <= 3
+            };
+            if again {
+                eprintln!("[papers-write {}] page {l} loading again", stamp());
+                view.reload();
+                show_after_a_while(&app, &l, Some(uri));
+            } else {
+                eprintln!("[papers-write {}] page {l}: its process ended three times in ten minutes: left unloaded", stamp());
+                state.unloaded.lock().unwrap().insert(l.clone(), uri);
+                host(&app).not_loaded(&app, &l);
+            }
+        });
     });
 }
 
@@ -656,10 +770,10 @@ fn load_later(app: &AppHandle) {
                 *count += 1;
             }
             eprintln!("[papers-write {}] page {label} loading", stamp());
-            if page.navigate(address).is_err() {
+            if page.navigate(address.clone()).is_err() {
                 continue;
             }
-            show_after_a_while(app, &label);
+            show_after_a_while(app, &label, Some(address.to_string()));
             for _ in 0..80 {
                 if state.ready.lock().unwrap().contains(&label) || app.get_webview(&label).is_none() {
                     break;
@@ -867,10 +981,12 @@ fn selected(app: &AppHandle, page: &str) {
         // a page unloaded: loaded again, shown once drawn (the one before in view meanwhile)
         let again = state.unloaded.lock().unwrap().remove(page);
         if let (Some(url), Some(webview)) = (again, app.get_webview(page))
-            && let Ok(url) = url.parse()
-            && webview.navigate(url).is_ok()
+            && let Ok(address) = url.parse()
         {
-            show_after_a_while(app, page);
+            eprintln!("[papers-write {}] page {page} loading again", stamp());
+            if webview.navigate(address).is_ok() {
+                show_after_a_while(app, page, Some(url));
+            }
         }
     }
     visited(app, &window_label, front_of(app, &window_label), page);

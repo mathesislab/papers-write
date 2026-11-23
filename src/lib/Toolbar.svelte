@@ -10,6 +10,7 @@
   import ModeControl from "$lib/ModeControl.svelte";
   import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
+  import { showMenu } from "papers-write/project";
   import type { Appearance } from "$lib/settings";
   import ReadAloudButton from "$lib/ReadAloudButton.svelte";
 
@@ -105,7 +106,7 @@
     const items = await Promise.all(
       choices.map(([a, text]) => CheckMenuItem.new({ text, checked: appearance === a, action: () => onappearance(a) })),
     );
-    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+    await showMenu(await Menu.new({ items }), new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
   /** the popover of the column's width is open; the width last set, kept while the text is full width */
   let sizing = $state(false);

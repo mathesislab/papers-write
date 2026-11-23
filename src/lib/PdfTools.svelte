@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { showMenu } from "papers-write/project";
   // The tools of a PDF, the same in a PDF's tab and in the pane beside a text: the page in view (a click asks for
   // another), the zoom (−, Fit, +), the section in view (the outline's, when the PDF has one; a click lists them all)
   // and Find (Enter the next match, ⇧Enter the one before, ✕ or Esc clears it). Back and Forward are the Go menu's.
@@ -89,7 +90,7 @@
         .slice(0, 200)
         .map((o, i) => CheckMenuItem.new({ text: `${"    ".repeat(Math.max(0, o.level - 1))}${o.title}`, checked: i === here, action: () => view?.goToOutline(i) })),
     );
-    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+    await showMenu(await Menu.new({ items }), new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
 </script>
 

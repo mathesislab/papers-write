@@ -59,17 +59,30 @@
     field?.focus();
     invoke<Offered[]>("project_list").then((found) => (projects = found));
   });
+  /** The focus gone to another place of the page (the text): closed, never shown with the cursor elsewhere (the
+   *  window left for another app, it stays). */
+  function leaving(e: FocusEvent) {
+    const to = e.relatedTarget as Node | null;
+    if (to && !(e.currentTarget as HTMLElement).contains(to)) onclose();
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="veil" onclick={onclose} {@attach overPage}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <div class="sheet" role="dialog" aria-label="Switch Project" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+  <div
+    class="sheet"
+    role="dialog"
+    aria-label="Switch Project"
+    tabindex="-1"
+    onclick={(e) => e.stopPropagation()}
+    onfocusout={(e) => leaving(e)}>
+    <!-- the line under the pointer chosen as the pointer moves (not as the list appears under it) -->
     <input bind:this={field} bind:value={query} onkeydown={keys} placeholder="Switch to a project" spellcheck="false" autocomplete="off" />
     <ul>
       {#each shown as { project: p, inName, inRoot }, i (p.root)}
         <li class:on={i === at}>
-          <button onclick={() => go(i)} onmouseenter={() => (at = i)}>
+          <button onclick={() => go(i)} onmousemove={() => (at = i)}>
             <span class="dot" style:background={cssOf(p.colour) ?? "var(--line)"}></span>
             <span class="name">{#each pieces(p.name, inName) as piece, k (k)}{#if piece.on}<b>{piece.text}</b>{:else}{piece.text}{/if}{/each}</span>
             {#if p.current}<span class="here">this window</span>{/if}
@@ -78,7 +91,7 @@
         </li>
       {/each}
       <li class:on={at === shown.length}>
-        <button class="other" onclick={() => go(shown.length)} onmouseenter={() => (at = shown.length)}>Open Another Project…</button>
+        <button class="other" onclick={() => go(shown.length)} onmousemove={() => (at = shown.length)}>Open Another Project…</button>
       </li>
     </ul>
   </div>

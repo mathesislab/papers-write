@@ -72,7 +72,7 @@ impl Host for Write {
 
     fn focused(&self, app: &AppHandle, page: &str) {
         crate::documents::focused(app, page);
-        // Build ▸ Build With and In the Background, for the project of this tab
+        // Build ▸ Build With and Keep Building (watch), for the project of this tab
         crate::profiles::menu_lists(app);
     }
 

@@ -6,7 +6,7 @@
 //! ```toml
 //! command = "make synopsis"
 //! pdf = "build/synopsis.pdf"
-//! run = "build"     # Build runs it (and after saves, Build ▸ Build After Saves); "watch": kept running in the
+//! run = "build"     # Build runs it (and after saves, Build ▸ Also Build on Save); "watch": kept running in the
 //!                   # background (the Build button's menu); "external": never run, its PDF followed
 //! ```
 //!

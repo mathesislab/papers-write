@@ -59,11 +59,11 @@
   /** what runs in the background of the project: "watching" (started here), "elsewhere" (the same command started in
    *  a terminal, followed), "ended" (its command exited), "paused" (chosen, not started), "busy" (building now) */
   type Background = { name: string; file: string | null; state: "busy" | "watching" | "failed" | "elsewhere" | "ended" | "paused"; log: string | null };
-  type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; kept: string | null; on_save: boolean; wrong: string[]; folder: string | null };
+  type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; kept: string | null; on_save: boolean; wrong: string[]; folder: string | null; default: string };
   let profiles = $state<Profiles | null>(null);
   const loadProfiles = async () => (profiles = await invoke<Profiles>("build_profiles").catch(() => null));
   /** the active profile's name, said after what the button says */
-  const named = $derived((profiles?.active ? ` · ${profiles.active}` : "") + (profiles?.on_save ? " · after saves" : ""));
+  const named = $derived((profiles?.active ? ` · ${profiles.active}` : "") + (profiles?.on_save ? " · on save" : ""));
   /** the background, said after it */
   const BACKGROUND = { busy: "building", watching: "watching", failed: "its last build failed", elsewhere: "watching (terminal)", ended: "ended", paused: "paused" };
   /** the background's button: ▶ starts what is paused (or ended), ❚❚ pauses what runs (still chosen) */
@@ -77,7 +77,7 @@
   });
   async function playPause() {
     if (!behind || behind.state === "elsewhere") return;
-    // its last build failed: its log in a tab (the menu's In the Background pauses it)
+    // its last build failed: its log in a tab (the menu's Keep Building (watch) pauses it)
     if (behind.state === "failed" && behind.log) return void request("open_document", { path: behind.log });
     profiles = (await request<Profiles>("background_play", { play: !running })) ?? profiles;
   }
@@ -149,14 +149,15 @@
     return [
       PredefinedMenuItem.new({ item: "Separator" }),
       MenuItem.new({ text: "Build With", enabled: false }),
-      CheckMenuItem.new({ text: "This Document", checked: !profiles.active, action: () => void choose(null) }),
+      CheckMenuItem.new({ text: profiles.default, checked: !profiles.active, action: () => void choose(null) }),
       ...now.map((p) => CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}${keptBy(p)}`, checked: profiles?.active === p.name, action: () => void choose(p.name) })),
-      CheckMenuItem.new({ text: "Build After Saves", checked: profiles.on_save, action: () => void onSave(!profiles?.on_save) }),
+      PredefinedMenuItem.new({ item: "Separator" }),
+      CheckMenuItem.new({ text: "Also Build on Save", checked: profiles.on_save, action: () => void onSave(!profiles?.on_save) }),
       ...(background.length
         ? [
             PredefinedMenuItem.new({ item: "Separator" }),
-            MenuItem.new({ text: "In the Background", enabled: false }),
-            CheckMenuItem.new({ text: "Nothing", checked: !on, action: () => void behind(null) }),
+            MenuItem.new({ text: "Keep Building (watch)", enabled: false }),
+            CheckMenuItem.new({ text: "Off", checked: !on, action: () => void behind(null) }),
             ...background.map((p) => CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}`, checked: on === p.name, action: () => void behind(p.name) })),
           ]
         : []),
@@ -225,7 +226,7 @@
   onMount(() => {
     loadProfiles();
     const unlisten = listen<Status>("build-status", (e) => told(e.payload));
-    // chosen in Build ▸ Build With or In the Background (outside macOS)
+    // chosen in Build ▸ Build With or Keep Building (watch) (outside macOS)
     const unlistenChosen = listen("profiles-changed", () => void loadProfiles());
     // the background of the project as the tab comes in front (chosen from another of its tabs, or its command ended)
     const shown = () => document.visibilityState === "visible" && void loadProfiles();

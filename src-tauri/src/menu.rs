@@ -377,8 +377,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // and where the profiles and the tools are set
     if !MAC {
         let with = Submenu::with_id(app, "build-with", "Build With", true)?;
-        let behind = Submenu::with_id(app, "background", "In the Background", true)?;
-        let on_save = CheckMenuItem::with_id(app, "build-on-save", "Build After Saves", true, false, None::<&str>)?;
+        let behind = Submenu::with_id(app, "background", "Keep Building (watch)", true)?;
+        let on_save = CheckMenuItem::with_id(app, "build-on-save", "Also Build on Save", true, false, None::<&str>)?;
         build.append_items(&[&separator()?, &separator()?, &on_save, &item("build-log", "Show Build Log", None)?, &item("build-profiles", "Build Profiles…", None)?, &item("build-tools", "Build Tools…", None)?])?;
         // the two lists put in (after the first separator) by `profiles::menu_lists` when they have something to list
         crate::profiles::keep_menu_lists(app, build.clone(), with, behind, on_save);
@@ -529,7 +529,7 @@ fn command(app: &AppHandle, id: &str) {
                     .and_then(|p| write_core::project::find(&p))
                     .is_some_and(|root| crate::projects::with_saved(app, |saved| saved.build_on_save.contains(&root)));
                 if let Err(e) = crate::profiles::set_build_on_save(page, !on) {
-                    crate::sheet::tell(app, None, "Build After Saves", e, crate::sheet::Level::Error);
+                    crate::sheet::tell(app, None, "Also Build on Save", e, crate::sheet::Level::Error);
                 }
                 let _ = app.emit_to(EventTarget::webview(&label), "profiles-changed", ());
             }

@@ -8,7 +8,7 @@
 //! for (the chapters of a book) follow it.
 //!
 //! Per project, kept in the app's state: *Build With*, the profile Build (⇧⌘B) runs now, a `build` one (or an `external`
-//! one, its PDF only shown); *Build After Saves*, the same build once the project's files have been quiet `QUIET` after
+//! one, its PDF only shown); *Also Build on Save*, the same build once the project's files have been quiet `QUIET` after
 //! a save (autosave saves as one types; one run at a time, `build.rs`: a save during a run makes one more); *In the
 //! Background*, a `watch` profile or none, chosen in the Build button's menu only, never by Build.
 //!
@@ -44,7 +44,7 @@ pub enum Background {
     Elsewhere(u32),
 }
 
-/// How long the project's files are to be quiet after a save before Build After Saves builds.
+/// How long the project's files are to be quiet after a save before Also Build on Save builds.
 const QUIET: std::time::Duration = std::time::Duration::from_secs(5);
 /// The saves of each project (by folder) counted: a build after saves waits `QUIET` for no other.
 static SAVES: std::sync::LazyLock<Mutex<HashMap<PathBuf, u64>>> = std::sync::LazyLock::new(Default::default);
@@ -74,11 +74,23 @@ pub struct Profiles {
     /// the PDF a running watch keeps up to date (as its profile says it): a Build With profile making the same one is
     /// not run while it runs
     kept: Option<PathBuf>,
-    /// Build ▸ Build After Saves, for the project
+    /// Build ▸ Also Build on Save, for the project
     on_save: bool,
     wrong: Vec<String>,
     /// the folder of the profiles, to open
     folder: Option<String>,
+    /// Build With's first choice, the app's own build of the document: "Default (texmark)", by the tool it runs
+    default: String,
+}
+
+/// Build With's first choice (no profile), named after the tool that builds `source`.
+fn default_label(source: &Path) -> String {
+    match crate::build::kind_of(source) {
+        Some(crate::build::Kind::Texmark) => "Default (texmark)".into(),
+        Some(crate::build::Kind::Quarto) => "Default (Quarto)".into(),
+        Some(crate::build::Kind::Latex) => "Default (latexmk)".into(),
+        None => "Default".into(),
+    }
 }
 
 /// The profiles of the project at `root` (its files), and, with texmark found, the app's own that no file of the
@@ -124,7 +136,7 @@ fn builds_now(profile: &Profile) -> bool {
 
 fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
     let Some(root) = project::find(source) else {
-        return Profiles { profiles: vec![], active: None, background: None, kept: None, on_save: false, wrong: vec![], folder: None };
+        return Profiles { profiles: vec![], active: None, background: None, kept: None, on_save: false, wrong: vec![], folder: None, default: default_label(source) };
     };
     let (profiles, wrong) = all(&root);
     let active = chosen(app, source, &root).filter(|n| profiles.iter().any(|p| &p.name == n && builds_now(p)));
@@ -159,7 +171,7 @@ fn profiles_of(app: &AppHandle, source: &Path) -> Profiles {
             state: "paused",
         })
     });
-    Profiles { profiles, active, background, kept, on_save, wrong, folder: Some(profiles::dir_of(&root).to_string_lossy().into_owned()) }
+    Profiles { profiles, active, background, kept, on_save, wrong, folder: Some(profiles::dir_of(&root).to_string_lossy().into_owned()), default: default_label(source) }
 }
 
 /// The PDF the watch running in `root` keeps up to date (its profile's `pdf`, for the document it was chosen from),
@@ -179,7 +191,7 @@ pub fn kept_pdf(app: &AppHandle, root: &Path) -> Option<PathBuf> {
     all.into_iter().find(|p| p.name == name)?.for_document_with(root, &source, &tools()).ok()?.pdf
 }
 
-/// Build ▸ Build After Saves for the page's project, on or off.
+/// Build ▸ Also Build on Save for the page's project, on or off.
 #[tauri::command]
 pub fn set_build_on_save(window: Webview, on: bool) -> Result<Profiles, String> {
     let app = window.app_handle();
@@ -200,7 +212,7 @@ pub fn set_build_on_save(window: Webview, on: bool) -> Result<Profiles, String> 
 pub fn build_profiles(window: Webview) -> Profiles {
     match documents::path_of(window.app_handle(), window.label()) {
         Some(source) => profiles_of(window.app_handle(), &source),
-        None => Profiles { profiles: vec![], active: None, background: None, kept: None, on_save: false, wrong: vec![], folder: None },
+        None => Profiles { profiles: vec![], active: None, background: None, kept: None, on_save: false, wrong: vec![], folder: None, default: "Default".into() },
     }
 }
 
@@ -282,7 +294,7 @@ fn start_background(app: &AppHandle, root: &Path, name: Option<String>, source: 
     Ok(())
 }
 
-/// A file of a project saved by the page `label`: with Build After Saves on for the project, Build (as Build With
+/// A file of a project saved by the page `label`: with Also Build on Save on for the project, Build (as Build With
 /// says) once its files have been quiet `QUIET`.
 pub fn saved(app: &AppHandle, label: &str, path: &Path) {
     let Some(root) = project::find(path) else { return };
@@ -466,7 +478,7 @@ pub fn keep_menu_lists(
     menu_lists(app);
 }
 
-/// Outside macOS, Build ▸ Build With and In the Background as the Build button's ▾ has them, for the tab in front;
+/// Outside macOS, Build ▸ Build With and Keep Building (watch) as the Build button's ▾ has them, for the tab in front;
 /// a list with nothing to choose (out of a project; no `watch` or `save` profile) not in the menu at all. Made again
 /// on the main thread (the menu's), not waited for.
 pub fn menu_lists(app: &AppHandle) {
@@ -495,7 +507,7 @@ fn refresh_menu_lists(app: &AppHandle) {
         }
         let Some(p) = p else { continue };
         let on = if background { p.background.as_ref().map(|b| b.name.clone()) } else { p.active.clone() };
-        let mut items = vec![(String::new(), if background { "Nothing" } else { "This Document" }.to_string())];
+        let mut items = vec![(String::new(), if background { "Off".to_string() } else { p.default.clone() })];
         for profile in p.profiles.iter().filter(|q| builds_now(q) != background) {
             let kept = !background && p.kept.is_some() && p.kept == profile.pdf;
             let how = match profile.run {

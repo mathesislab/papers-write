@@ -226,7 +226,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                     crate::settings::get().project_bar == crate::settings::ProjectBar::Hover,
                     None::<&str>,
                 )?,
-                &item("figures-inline", "Show Figures in the Text", None)?,
+                &item("figures-inline", "Live Preview", None)?,
                 &separator()?,
                 &item("text-wider", "Text Width +", None)?,
                 &item("text-narrower", "Text Width −", None)?,
@@ -299,7 +299,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                         &item("text-narrower", "Narrower", None)?,
                         &item("text-full", "Full Width", None)?,
                         &separator()?,
-                        &item("figures-inline", "Show Figures in the Text", None)?,
+                        &item("figures-inline", "Live Preview", None)?,
                     ],
                 )?,
                 &Submenu::with_items(

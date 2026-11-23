@@ -201,8 +201,8 @@
         </label>
         <label class="row">
           <span>
-            <span class="label">Figures in the text</span>
-            <span class="hint">Each figure shown under its line; off: in a tooltip over it. Also View ▸ Show Figures in the Text</span>
+            <span class="label">Live Preview</span>
+            <span class="hint">The text shown as the preview has it (headings, emphasis, math, citations, figures), but the line or block the cursor is in, shown as typed; in a LaTeX file, the figures under their lines. Also View ▸ Live Preview</span>
           </span>
           <input type="checkbox" class="switch" bind:checked={settings.inline_figures} onchange={save} />
         </label>

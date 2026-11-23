@@ -256,8 +256,10 @@ and `library` are kept but not yet used by the build and the references.
   reference's citation, a label's target.
 - Outline of the sections; diagnostics for undefined labels and keys;
   spelling from the system. Grammar (Harper, a local Rust checker) later.
-- Figures in the text (an option): each figure under its line, a PDF figure
-  as its first page drawn by pdf.js (WebKitGTK draws no PDF in an `<img>`).
+- Live Preview (an option, once "Figures in the text"): the Markdown shown
+  rendered in the editor but where the cursor is; each figure under its line,
+  a PDF figure as its first page drawn by pdf.js (WebKitGTK draws no PDF in an
+  `<img>`).
 - Read Aloud (when Settings names a command): the selection, the paragraph,
   or a PDF's page from the line clicked, given to that command.
 - Outside macOS the keys follow the editors there (Ctrl+G Go to Line, F3 Find

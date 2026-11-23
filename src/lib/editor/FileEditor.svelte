@@ -54,7 +54,7 @@
   } from "./review/review";
   import { criticMarks, criticReview, decideAll, decideMark, marksHere } from "./review/criticMode";
   import { commentOn, type Mark } from "./review/critic";
-  import { inlineFigures } from "./figures";
+  import { livePreview } from "./livePreview";
   import type { ReviewHandlers, ReviewItem, ReviewMode, ReviewView } from "./review/types";
   import SymbolList from "./SymbolList.svelte";
   import { DEFAULTS, LATEX, merged } from "./symbols";
@@ -142,7 +142,8 @@
     critic?: { initials: string };
     /** the CriticMarkup marks of the text, told as they change (with `critic`) */
     onmarks?: (marks: Mark[]) => void;
-    /** with it, the figures shown under their lines, their images from it (a data URI, none: not found) */
+    /** with it, Live Preview: the text shown rendered but where the cursor is, the figures under their lines, their
+     *  images from it (a data URI, none: not found); the math and the citations rendered by `hover` */
     figures?: (path: string) => Promise<string | null>;
     /** the text after each change typed, and as the file is read */
     onchange?: (text: string) => void;
@@ -312,14 +313,15 @@
   }
 
   /** the review in the editor: given as the app has it, which may be after the file is read */
-  /** the figures shown in the text, and the source they were shown with */
+  /** Live Preview, on with the images of the figures it is given (`figures`), and the source they were given with */
   const figuresSlot = new Compartment();
   let figured: typeof figures;
+  const previewOf = (image: typeof figures) => (image ? livePreview({ image, hover, latex }) : []);
   $effect(() => {
     const now = figures;
     if (!editor || now === figured) return;
     figured = now;
-    editor.dispatch({ effects: figuresSlot.reconfigure(now ? inlineFigures(now) : []) });
+    editor.dispatch({ effects: figuresSlot.reconfigure(previewOf(now)) });
   });
 
   const reviewSlot = new Compartment();
@@ -379,7 +381,7 @@
           ...(mono || latex ? [] : [listKey]),
           reviewSlot.of(review ? reviewOf(review) : []),
           criticSlot.of(critic ? criticOf() : []),
-          figuresSlot.of(figures ? inlineFigures(figures) : []),
+          figuresSlot.of(previewOf(figures)),
           marksTold,
         ],
       });

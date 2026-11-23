@@ -280,6 +280,9 @@ them) are proposed upstream; until they are released,
   the date and a link to the place: `[discussion.md:35](discussion.md#L35)`,
   `[synopsis.pdf p. 12](build/synopsis.pdf#page=12)`. A ⌘-click on such a link
   opens the file at that line or page.
+- View ▸ Live Preview (also Settings ▸ Editor; it was "Figures in the text"):
+  each figure shown under its line (a PDF figure as its first page). In a
+  LaTeX file that is all it does.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
   project's tile) has three tabs; shown or not, its width and its tab are the same in all the
   project's tabs, and kept for the next time. Files: the project's folder as a tree (the

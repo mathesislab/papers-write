@@ -13,7 +13,8 @@ export type Settings = {
   /** the width of the column of text (em) */
   text_width: number;
   line_numbers: boolean;
-  /** the figures shown in the text, under their lines, rather than in a tooltip */
+  /** Live Preview: the Markdown rendered in the editor but for the lines the cursor is on, the figures under their
+   *  lines (the key is that of the option it was, "Figures in the text") */
   inline_figures: boolean;
   spelling: boolean;
   /** a file written as it is typed; off: only when saved (⌘S), the text typed kept meanwhile as a draft */

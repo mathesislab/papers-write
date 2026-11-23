@@ -86,7 +86,8 @@ pub struct Settings {
     /// the interface as large as the text asks: text set larger than the default makes the windows larger (`scale`)
     pub interface_follows_text: bool,
     pub line_numbers: bool,
-    /// the figures shown in the text, under their lines, rather than in a tooltip
+    /// Live Preview: the Markdown shown rendered in the editor but for the lines the cursor is on, the figures under
+    /// their lines (in a LaTeX file, only the figures). The key is the one of the option it was, "Figures in the text"
     pub inline_figures: bool,
     /// the spelling of the text checked as it is typed
     pub spelling: bool,
@@ -382,7 +383,7 @@ pub fn toggle_full_width(app: &AppHandle) {
     put(app, settings);
 }
 
-/// View ▸ Show Figures in the Text: the figures in the text, or in their tooltips.
+/// View ▸ Live Preview: the text shown rendered but where the cursor is, or as typed.
 pub fn toggle_inline_figures(app: &AppHandle) {
     let mut settings = get();
     settings.inline_figures = !settings.inline_figures;

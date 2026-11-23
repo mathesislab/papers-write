@@ -222,6 +222,8 @@
   .name {
     flex: 0 1 auto;
     min-width: 0;
+    /* a long name cut short rather than taking a line of its own */
+    max-width: 14em;
     margin-right: auto;
     overflow: hidden;
     text-overflow: ellipsis;

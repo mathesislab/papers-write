@@ -11,6 +11,7 @@ mod hover;
 mod menu;
 mod notes;
 mod package;
+mod panetabs;
 mod pdfsync;
 mod preview;
 mod profiles;
@@ -25,9 +26,13 @@ mod sidebar;
 mod spelling;
 mod state;
 mod tabs;
+mod undo;
 mod trash;
 mod update;
+mod printpdf;
 mod watch;
+mod watchdog;
+mod zen;
 
 use tauri::{AppHandle, DragDropEvent, Manager, RunEvent, State, WebviewEvent, WindowEvent};
 use update::{Available, Installed, Updates};
@@ -57,12 +62,14 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
 }
 
 pub fn run() {
+    eprintln!("[papers-write {}] start", papers_tabs::stamp());
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_pdfkit::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // managed before the app launches: macOS may hand over files to open before `setup` has run
+        .manage(panetabs::PaneTabs::default())
         .manage(documents::Documents::default())
         .manage(files::Watched::default())
         .manage(build::Builds::default())
@@ -75,8 +82,11 @@ pub fn run() {
         .manage(spelling::Tags::default())
         .manage(tabs::Tabs::new(tabs::Write))
         .manage(sidebar::GoTos::default())
+        .manage(notes::Started::default())
         .setup(|app| {
             settings::init(app.handle());
+            // a frozen main thread said in the log, with where it is held
+            watchdog::start(app.handle());
             // elsewhere than on macOS the files to open are the arguments of the command
             #[cfg(not(target_os = "macos"))]
             documents::opened(
@@ -96,7 +106,10 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => documents::closing(window, api),
             WindowEvent::Focused(true) => tabs::window_focused(window.app_handle(), window.label()),
-            WindowEvent::Destroyed => tabs::window_closed(window.app_handle(), window.label()),
+            WindowEvent::Destroyed => {
+                zen::closed(window.label());
+                tabs::window_closed(window.app_handle(), window.label())
+            }
             // the system's appearance changed: the windows' background, as Settings ▸ Window ▸ Appearance System has it
             WindowEvent::ThemeChanged(_) => tabs::repaint(window.app_handle()),
             // files dropped on a window open in tabs of their own
@@ -112,12 +125,36 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            undo::history_read,
+            undo::history_write,
+            panetabs::pdf_tab_show,
+            panetabs::take_show_source,
+            panetabs::preview_tab,
+            panetabs::preview_tab_of,
+            panetabs::tab_in_front,
+            panetabs::tab_back,
+            panetabs::take_page,
+            panetabs::pdf_tab_offered,
+            panetabs::pdf_tab_choose,
+            panetabs::relay,
+            panetabs::bring_tab,
+            panetabs::page_path,
+            menu::zoom_key,
             projects::project_list,
+            preview::document_outline,
+            preview::chapter_neighbours,
+            preview::prepare_preview,
+            preview::heading_place,
             settings::settings,
             readaloud::read_aloud,
+            readaloud::speakers_found,
             readaloud::stop_reading,
             readaloud::reading,
             settings::set_settings,
+            settings::set_preview_follows,
+            settings::set_preview_changes,
+            settings::pin_project_bar,
+            settings::show_settings,
             settings::set_text_width,
             settings::zoom_window,
             settings::set_appearance,
@@ -145,6 +182,8 @@ pub fn run() {
             files::read_text,
             files::read_pdf,
             files::write_text,
+            documents::close_project_tabs,
+            documents::print_page,
             preview::preview,
             hover::render_math,
             hover::image_data,
@@ -211,6 +250,14 @@ pub fn run() {
             notes::search_notes,
             notes::new_note,
             notes::kept_by,
+            notes::project_notes,
+            notes::watch_notes,
+            notes::notes_tab_show,
+            notes::rename_notes,
+            notes::choose_notes,
+            notes::note_here,
+            notes::take_notes_line,
+            notes::open_place,
             projects::switch_project,
             projects::open_project_in_new_window,
             projects::remove_from_bar,
@@ -221,7 +268,7 @@ pub fn run() {
             projects::asking_project,
             projects::cancel_project,
             projects::create_project,
-            projects::choose_library,
+            projects::choose_in_project,
             projects::choose_project,
             sidebar::project_files,
             sidebar::project_file_list,
@@ -233,9 +280,16 @@ pub fn run() {
             pdfsync::place_in_text,
             menu::view_shown,
             menu::sidebar_shown,
+            menu::popup_menu,
+            zen::distraction_free_of,
+            printpdf::print_pdf,
+            zen::leave_distraction_free,
             sidepdf::side_pdf,
             profiles::build_profiles,
             profiles::set_build_profile,
+            profiles::set_background,
+            profiles::background_play,
+            profiles::set_build_on_save,
             profiles::reveal_profiles,
             sidepdf::set_side_pdf,
             sidepdf::choose_side_pdf,
@@ -254,6 +308,7 @@ pub fn run() {
             // the files handed over while launching, or else a window of untitled text; files that come after this
             // take the blank window
             RunEvent::Ready => {
+                eprintln!("[papers-write {}] ready", papers_tabs::stamp());
                 documents::ready(app);
                 package::sweep(app);
             }
@@ -270,9 +325,15 @@ pub fn run() {
                 api.prevent_exit();
             }
             // quitting: the windows close now, but stay saved as open for the next start
-            RunEvent::ExitRequested { .. } => tabs::quitting(app),
+            RunEvent::ExitRequested { code, .. } => {
+                eprintln!("[papers-write] exit requested (code {code:?}, {} windows)", app.windows().len());
+                tabs::quitting(app)
+            }
             // the commands of watch profiles stop with the app
-            RunEvent::Exit => profiles::stop_all(app),
+            RunEvent::Exit => {
+                eprintln!("[papers-write] exit");
+                profiles::stop_all(app)
+            }
             // the Dock icon clicked, no window open
             #[cfg(target_os = "macos")]
             RunEvent::Reopen {

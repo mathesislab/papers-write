@@ -13,7 +13,9 @@
   import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
   import { FileTree, type Node } from "papers-write/project";
-  import { Outline, type Heading } from "papers-write/editor";
+  import type { Heading } from "papers-write/editor";
+  import OutlineTree from "$lib/OutlineTree.svelte";
+  import { listen } from "$lib/events";
   import Search from "./Search.svelte";
 
   let {
@@ -63,6 +65,56 @@
     root;
     refresh();
   });
+
+  /** The outline of the whole document the text is part of (a thesis or book: its main document and chapters), as
+   *  the app last read it (preview.rs `document_outline`); none: the text's own headings alone. */
+  type Whole = { files: string[]; headings: { file: number; level: number; number: string; title: string }[] };
+  let whole = $state.raw<Whole | null>(null);
+  async function loadWhole() {
+    whole = await invoke<Whole | null>("document_outline").catch(() => null);
+  }
+  $effect(() => {
+    void front;
+    void loadWhole();
+  });
+  onMount(() => {
+    // the other chapters read anew (their table made again aside)
+    const unlisten = listen("preview-labels", loadWhole);
+    return () => void unlisten.then((f) => f());
+  });
+
+  /** The outline's lines: the whole document's headings, the text's own as it is typed (with the whole's numbers);
+   *  else the text's headings. Each says where it goes: one of the text's, or the `nth` of its title in a file. */
+  type Line = { level: number; title: string; number?: string; own?: number; file?: string; nth?: number };
+  const lines = $derived.by<Line[]>(() => {
+    const here = whole?.files.indexOf(front ?? "") ?? -1;
+    if (!whole || here < 0) return headings.map((h, i) => ({ level: h.level, title: h.title, number: h.number, own: i }));
+    const out: Line[] = [];
+    whole.files.forEach((file, f) => {
+      const theirs = whole!.headings.filter((h) => h.file === f);
+      if (f === here) {
+        headings.forEach((h, i) => out.push({ level: h.level, title: h.title, number: theirs[i]?.number || h.number, own: i }));
+        return;
+      }
+      const seen = new Map<string, number>();
+      for (const h of theirs) {
+        const nth = seen.get(h.title) ?? 0;
+        seen.set(h.title, nth + 1);
+        out.push({ level: h.level, title: h.title, number: h.number || undefined, file, nth });
+      }
+    });
+    return out;
+  });
+  const currentLine = $derived(here < 0 ? -1 : lines.findIndex((l) => l.own === here));
+
+  /** A line chosen: the text's heading gone to, or the other file opened at the heading. */
+  async function chosen(i: number) {
+    const line = lines[i];
+    if (line.own !== undefined) return onheading(headings[line.own]);
+    if (!line.file) return;
+    const at = await invoke<number | null>("heading_place", { path: line.file, title: line.title, nth: line.nth ?? 0 }).catch(() => null);
+    await invoke("open_at", { path: line.file, at: at ?? 0, end: at ?? 0 }).catch((e) => onsay(String(e)));
+  }
 
   /** The search's field, its tab shown. */
   export function find() {
@@ -142,7 +194,7 @@
   </div>
   <div class="body" class:hidden={tab !== "outline"}>
     {#if outlined}
-      <Outline {headings} current={here} onselect={onheading} />
+      <OutlineTree entries={lines} current={currentLine} onselect={chosen} />
     {:else}
       <p class="none">No outline for this file</p>
     {/if}

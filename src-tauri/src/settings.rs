@@ -11,6 +11,16 @@ use tauri_plugin_dialog::DialogExt;
 
 const FILE: &str = "settings.json";
 
+/// What the preview beside the text shows (in a tab of its own it always follows the view): the block the cursor is
+/// in, or the block at the top of the text's view (and the text follows the preview as it is scrolled).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PreviewFollows {
+    #[default]
+    Cursor,
+    View,
+}
+
 /// The font of the editors.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -96,8 +106,10 @@ pub struct Settings {
     /// the user's colour among the review's authors, 1 to 6; none: from the name, as everyone's
     pub review_colour: Option<u8>,
 
-    /// the preview scrolled to the block the cursor is in
-    pub preview_follow: bool,
+    /// the preview scrolled to the block the cursor is in, or to what the text shows
+    pub preview_follows: PreviewFollows,
+    /// the suggestions in the text itself (CriticMarkup) in the preview: marked, all accepted, or all rejected
+    pub preview_changes: write_core::review::critic::view::Shown,
 
     /// the tools, each the file to run; empty: found as usual (PATH and the folders the app looks in)
     pub texmark_path: String,
@@ -117,6 +129,16 @@ pub struct Settings {
     pub project_bar: ProjectBar,
     /// look for updates at start and twice a day; they are installed only when asked
     pub check_updates: bool,
+    /// the tabs not shown for this long have their page unloaded (minutes; 0: never), and at most this many keep
+    /// theirs, the most recently shown (Preferences ▸ Window): a tab comes back as it was when shown again
+    pub unload_after: u32,
+    pub loaded_tabs: u32,
+    /// the most memory the app takes (GB; 0: no limit), its pages' processes with it: beyond, the least recently
+    /// shown tabs are unloaded too (Linux)
+    pub tabs_memory: u32,
+    /// the tabs of each window loaded at the start: the one in front, then the most recently shown (0: all); the
+    /// others as they are shown
+    pub tabs_at_start: u32,
 }
 
 impl Default for Settings {
@@ -139,7 +161,8 @@ impl Default for Settings {
             review_email: String::new(),
             review_initials: String::new(),
             review_colour: None,
-            preview_follow: true,
+            preview_follows: PreviewFollows::Cursor,
+            preview_changes: Default::default(),
             texmark_path: String::new(),
             quarto_path: String::new(),
             latexmk_path: String::new(),
@@ -149,6 +172,10 @@ impl Default for Settings {
             project_colour_bar: false,
             project_bar: ProjectBar::Shown,
             check_updates: true,
+            unload_after: 60,
+            loaded_tabs: 20,
+            tabs_memory: 5,
+            tabs_at_start: 1,
         }
     }
 }
@@ -273,7 +300,13 @@ fn put(app: &AppHandle, settings: Settings) {
     if who_changed {
         crate::review::identity_changed(app);
     }
-    sync_menu(app, &settings);
+    // the menu's items changed on the main thread, not waited for (from a command's thread, waiting for the main
+    // thread while it waits for something of this one would hang the app)
+    let (handle, shown) = (app.clone(), settings.clone());
+    let _ = app.run_on_main_thread(move || {
+        sync_menu(&handle, &shown);
+        crate::menu::read_aloud_item(&handle, Some(!shown.read_aloud.trim().is_empty()), None);
+    });
     if let Err(e) = app.emit("settings-changed", settings) {
         eprintln!("settings-changed: {e}");
     }
@@ -286,18 +319,18 @@ pub fn toggle_project_bar(app: &AppHandle) {
     put(app, settings);
 }
 
+/// The project bar's pin: pinned (always shown), or sliding in on hover.
+#[tauri::command]
+pub fn pin_project_bar(app: AppHandle) {
+    toggle_project_bar(&app);
+}
+
 /// The check mark of View ▸ Show Project Bar on Hover, as the settings say.
 fn sync_menu(app: &AppHandle, settings: &Settings) {
     if let Some(item) = app.menu().and_then(|m| m.get("project-bar")).and_then(|k| k.as_check_menuitem().cloned()) {
-        let _ = item.set_checked(settings.project_bar == ProjectBar::Hover);
+        // macOS: Show Project Bar on Hover; elsewhere Pin the Project Bar (the other way round)
+        let _ = item.set_checked((settings.project_bar == ProjectBar::Hover) == cfg!(target_os = "macos"));
     }
-}
-
-/// View ▸ Show Figures in the Text: the figures in the text, or in their tooltips.
-pub fn toggle_inline_figures(app: &AppHandle) {
-    let mut settings = get();
-    settings.inline_figures = !settings.inline_figures;
-    put(app, settings);
 }
 
 /// The narrowest and widest column of text (em).
@@ -349,6 +382,13 @@ pub fn toggle_full_width(app: &AppHandle) {
     put(app, settings);
 }
 
+/// View ▸ Show Figures in the Text: the figures in the text, or in their tooltips.
+pub fn toggle_inline_figures(app: &AppHandle) {
+    let mut settings = get();
+    settings.inline_figures = !settings.inline_figures;
+    put(app, settings);
+}
+
 /// The settings, for the Settings window and the document pages; the page asking zoomed as they say.
 #[tauri::command]
 pub fn settings(webview: tauri::Webview) -> Settings {
@@ -372,6 +412,28 @@ pub fn step_zoom(app: &AppHandle, by: f64) {
     let mut settings = get();
     settings.zoom = if by == 0.0 { 1.0 } else { ((settings.zoom + by * 0.1) * 10.0).round() / 10.0 };
     put(app, settings);
+}
+
+/// The preview following the cursor or the view (the preview's ▾).
+#[tauri::command]
+pub fn set_preview_follows(app: AppHandle, how: PreviewFollows) {
+    let mut settings = get();
+    settings.preview_follows = how;
+    put(&app, settings);
+}
+
+/// The suggestions in the preview marked, all accepted or all rejected (the preview's ▾).
+#[tauri::command]
+pub fn set_preview_changes(app: AppHandle, how: write_core::review::critic::view::Shown) {
+    let mut settings = get();
+    settings.preview_changes = how;
+    put(&app, settings);
+}
+
+/// The Settings window, at `section` (a menu's Settings…).
+#[tauri::command]
+pub fn show_settings(app: AppHandle, section: Option<String>) {
+    show(&app, section.as_deref());
 }
 
 /// The settings changed in the Settings window.
@@ -461,7 +523,7 @@ mod tests {
         assert_eq!((s.editor_font, s.editor_size, s.indent), (EditorFont::System, 13.5, Indent::Two));
         assert!(s.readable_width && !s.line_numbers && s.spelling && s.symbols.is_empty());
         assert!((s.review_name.as_str(), s.review_email.as_str(), s.review_colour) == ("", "", None));
-        assert!(s.preview_follow && s.tabs && !s.project_colour_bar);
+        assert!(s.preview_follows == PreviewFollows::Cursor && s.tabs && !s.project_colour_bar);
         assert!(["texmark", "quarto", "latexmk", "pandoc"].iter().all(|t| s.tool(t).is_none()));
         // a file with nothing in it is the defaults
         assert_eq!(serde_json::from_str::<Settings>("{}").unwrap(), s);
@@ -470,7 +532,7 @@ mod tests {
     #[test]
     fn a_missing_key_keeps_its_default() {
         let s: Settings = serde_json::from_str(r#"{"tabs": false, "indent": "tab"}"#).unwrap();
-        assert!(!s.tabs && s.preview_follow);
+        assert!(!s.tabs && s.preview_follows == PreviewFollows::Cursor);
         assert_eq!(s.indent, Indent::Tab);
     }
 
@@ -503,7 +565,8 @@ mod tests {
             review_email: "a@example.org".into(),
             review_initials: "AR".into(),
             review_colour: Some(3),
-            preview_follow: false,
+            preview_follows: PreviewFollows::View,
+            preview_changes: write_core::review::critic::view::Shown::Accepted,
             texmark_path: "/opt/bin/texmark".into(),
             quarto_path: "/opt/bin/quarto".into(),
             latexmk_path: "/opt/bin/latexmk".into(),
@@ -513,6 +576,10 @@ mod tests {
             project_colour_bar: true,
             project_bar: ProjectBar::Hover,
             check_updates: false,
+            unload_after: 30,
+            loaded_tabs: 6,
+            tabs_memory: 3,
+            tabs_at_start: 3,
         };
         settings.save(&dir);
         assert_eq!(Settings::load(&dir), settings);

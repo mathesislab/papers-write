@@ -264,7 +264,33 @@ them) are proposed upstream; until they are released,
   Quarto's (`{#fig-x}`, `@fig-x`) are numbered too, with Quarto's words:
   "Figure 1", "Figures 1 and 2", "Equation 1"; `crossref: {fig-prefix: Fig.}`
   changes them. The export to Word numbers them the same way.
+  Suggestions kept in the text itself (CriticMarkup) are marked as changes:
+  insertions underlined in green, deletions struck through in red, highlights
+  in yellow, comments as small notes in the line. The preview's ▾ (or
+  Settings ▸ Editor) shows instead the text with all of them accepted, or all
+  rejected; Read Aloud reads the text with them accepted.
   Drag the split to resize; its width is kept for the window.
+- View ▸ Show Notes (⌥⌘N) shows the project's notes in the preview's place:
+  beside the text, or in a tab of their own as View ▸ Panes says (from that
+  tab, ⌥⌘N goes back to the text). They are one Markdown file of the
+  project, `notes.md` unless Project Info names another (`notes` in
+  write.toml), made the first time. The file's name at the top of the pane
+  renames it, chooses another file or opens it in a tab. View ▸ Add Note
+  Here (⌥⇧⌘N), in a text or a PDF, starts a line at the end of the notes with
+  the date and a link to the place: `[discussion.md:35](discussion.md#L35)`,
+  `[synopsis.pdf p. 12](build/synopsis.pdf#page=12)`. With words selected,
+  they are quoted after the link and are its title:
+  `[discussion.md:35](discussion.md#L35 "far end") “far end”`. A ⌘-click on
+  such a link, or Follow in its tooltip, opens the file at the words, where
+  they are nearest to that line (else at the line, and it says so), or at
+  the page and the words from there. Every editor of the notes shows the
+  same text: what is typed and not saved (autosave off) goes to the others
+  too, each with a star by its name; File ▸ Save in the pane saves the notes.
+- Links: a click in a link of a Markdown text only puts the cursor there (to
+  edit it); ⌘-click (Ctrl elsewhere) follows it, and so
+  does Follow in the tooltip shown on hovering it. Following a link, there or
+  with a click in the preview, opens a web address in the browser and a file
+  of the computer in the app.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
   project's tile) has three tabs; shown or not, its width and its tab are the same in all the
   project's tabs, and kept for the next time. Files: the project's folder as a tree (the

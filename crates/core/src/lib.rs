@@ -15,6 +15,7 @@
 pub mod bib;
 pub mod colour;
 pub mod exchange;
+pub mod exclude;
 pub mod files;
 pub mod frontmatter;
 pub mod latex;

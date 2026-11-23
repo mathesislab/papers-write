@@ -32,8 +32,10 @@ pub fn read_pdf(path: String) -> Result<tauri::ipc::Response, String> {
 /// `text` written to the file, atomically: a file beside it, renamed. A file that is a link is written through it,
 /// and one that was there keeps its permissions.
 #[tauri::command]
-pub fn write_text(path: String, text: String) -> Result<(), String> {
-    write(Path::new(&path), &text).map_err(|e| format!("{path}: {e}"))
+pub fn write_text(app: tauri::AppHandle, window: tauri::Webview, path: String, text: String) -> Result<(), String> {
+    write(Path::new(&path), &text).map_err(|e| format!("{path}: {e}"))?;
+    crate::profiles::saved(&app, window.label(), Path::new(&path));
+    Ok(())
 }
 
 pub fn write(path: &Path, text: &str) -> std::io::Result<()> {

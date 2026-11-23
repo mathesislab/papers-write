@@ -145,3 +145,17 @@ test("latexMath: escapes, comments, unclosed", () => {
   assert.equal(latexMathAt("\\[x\\]", 3)?.display, true);
   assert.equal(latexMathAt("a $x$ b", 6), null);
 });
+
+test("a link: its target, and its title (the words a note quotes)", () => {
+  assert.deepEqual(over('- [d.md:3](d.md#L3 "far \\"end\\"") on'.replace("d.md:3", "d.md|:3")), {
+    kind: "link",
+    target: "d.md#L3",
+    title: 'far "end"',
+    from: 2,
+    to: 33,
+  });
+  const spaced = over("[my |text.md:1](<my text.md#L1>)");
+  assert.ok(spaced?.kind === "link" && spaced.target === "my text.md#L1" && spaced.title === null, JSON.stringify(spaced));
+  const web = over("see [the |site](https://example.org)");
+  assert.ok(web?.kind === "link" && web.target === "https://example.org");
+});

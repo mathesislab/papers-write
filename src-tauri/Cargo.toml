@@ -41,3 +41,11 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSResponder", "NSGraphics", "NSApplication", "NSSpellChecker"] }
 # the Trash (as papers-review moves files there); already in the lock through objc2-app-kit
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSFileManager", "NSURL", "NSString", "NSError", "NSUserDefaults", "NSRange", "NSArray"] }
+
+# a folder shown in the file manager raised (GNOME on Wayland: the activation token GTK gives), as Tauri's own GTK
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+
+# commands started by the app stopped when it ends, however it ends (group.rs)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

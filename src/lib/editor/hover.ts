@@ -18,7 +18,8 @@ export type Target =
   | { kind: "math"; tex: string; display: boolean; from: number; to: number }
   | { kind: "citation"; key: string; from: number; to: number }
   | { kind: "ref"; key: string; from: number; to: number }
-  | { kind: "image"; path: string; from: number; to: number };
+  | { kind: "image"; path: string; from: number; to: number }
+  | { kind: "link"; target: string; title: string | null; from: number; to: number };
 
 const MATH_NODES = new Set(["InlineMath", "DisplayMath", "MathEnvironment"]);
 export const INCLUDE = /\\includegraphics\*?(?:\[[^\]]*\])?\{([^}]*)\}/g;
@@ -64,6 +65,13 @@ export function targetAt(state: EditorState, pos: number, side: -1 | 1 = 1): Tar
       const path = url ? imagePath(state.sliceDoc(url.from, url.to)) : "";
       return isFile(path) ? { kind: "image", path, from, to } : null;
     }
+    if (name === "Link" || name === "Autolink") {
+      const url = node.getChild("URL");
+      if (!url) return null;
+      const target = state.sliceDoc(url.from, url.to).replace(/^<(.*)>$/, "$1");
+      const title = node.getChild("LinkTitle");
+      return { kind: "link", target, title: title ? unquote(state.sliceDoc(title.from, title.to)) : null, from, to };
+    }
   }
   // a LaTeX file has no math nodes: its formulas are found in the text
   if (isTex(state)) {
@@ -82,6 +90,9 @@ export function targetAt(state: EditorState, pos: number, side: -1 | 1 = 1): Tar
   }
   return null;
 }
+
+/** A link's title as written (`"…"`, `'…'` or `(…)`), without its quotes and escapes. */
+export const unquote = (title: string) => title.slice(1, -1).replace(/\\(.)/g, "$1");
 
 const KINDS: Record<string, string> = { fig: "Figure", eq: "Equation", tbl: "Table", sec: "Section", lst: "Listing" };
 const SHORT = 220;
@@ -220,6 +231,29 @@ async function contentOf(view: EditorView, target: Target, sources: HoverSources
       dom.textContent = text;
       return dom;
     }
+    case "link": {
+      const follow = sources.link;
+      if (!follow) return null;
+      const head = document.createElement("div");
+      head.className = "cm-hover-link";
+      const where = document.createElement("span");
+      where.textContent = target.target;
+      const button = document.createElement("button");
+      button.textContent = "Follow";
+      button.title = "Ctrl-click on the link does it too";
+      // the editor keeps the keys: the press is not a click in the text
+      button.addEventListener("mousedown", (e) => e.preventDefault());
+      button.addEventListener("click", () => follow(target.target, target.title));
+      head.append(where, button);
+      dom.append(head);
+      if (target.title) {
+        const quoted = document.createElement("div");
+        quoted.className = "cm-hover-quote";
+        quoted.textContent = `“${short(target.title)}”`;
+        dom.append(quoted);
+      }
+      return dom;
+    }
   }
 }
 
@@ -229,10 +263,14 @@ const theme = EditorView.theme({
   ".cm-hover-head": { fontWeight: "650" },
   ".cm-hover-math": { fontSize: "1.15em", overflowX: "auto" },
   ".cm-hover-image img": { display: "block", height: "auto", maxHeight: "240px" },
+  ".cm-hover-link": { display: "flex", alignItems: "center", gap: "10px" },
+  ".cm-hover-link span": { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: "0.8" },
+  ".cm-hover-link button": { font: "inherit", padding: "1px 10px", cursor: "pointer" },
+  ".cm-hover-quote": { fontStyle: "italic", opacity: "0.8", marginTop: "3px" },
 });
 
-/** The tooltips of the editor: 300 ms after the pointer stops over a formula, a citation key, an image or a
- *  cross-reference; none while a button is down (a selection being made). */
+/** The tooltips of the editor: 300 ms after the pointer stops over a formula, a citation key, an image, a
+ *  cross-reference or a link (Follow); none while a button is down (a selection being made). */
 export function hover(sources: HoverSources): Extension {
   let down = false;
   const release = () => {

@@ -38,7 +38,7 @@ fn key_of(label: &str) -> String {
 }
 
 /// The PDF a source shows beside it: the one chosen, else `<build>/<name>.pdf` when it exists.
-fn pdf_of(app: &AppHandle, source: &Path) -> Option<PathBuf> {
+pub(crate) fn pdf_of(app: &AppHandle, source: &Path) -> Option<PathBuf> {
     let chosen = projects::with_saved(app, |saved| saved.pdfs.get(source).cloned());
     if let Some(pdf) = chosen.filter(|p| p.is_file()) {
         return Some(pdf);
@@ -85,6 +85,11 @@ fn pdfs_in(root: &Path) -> Vec<Offered> {
         .collect()
 }
 
+/// The PDFs offered beside `file` (a text, a PDF): those of its project, else of its folder.
+pub(crate) fn offered_for(file: &Path) -> Vec<Offered> {
+    pdfs_in(&project::find(file).unwrap_or_else(|| file.parent().unwrap_or(Path::new("/")).to_path_buf()))
+}
+
 /// The PDF beside the window's text, watched; and the PDFs to choose from.
 #[tauri::command]
 pub fn side_pdf(window: Webview) -> Result<SidePdf, String> {
@@ -95,8 +100,7 @@ pub fn side_pdf(window: Webview) -> Result<SidePdf, String> {
         Some(pdf) => files::watch_for(app, &key_of(window.label()), window.label(), pdf, "pdf-changed")?,
         None => files::unwatch(app, &key_of(window.label())),
     }
-    let root = project::find(&source).unwrap_or_else(|| source.parent().unwrap_or(Path::new("/")).to_path_buf());
-    Ok(SidePdf { pdf: pdf.map(|p| p.to_string_lossy().into_owned()), offered: pdfs_in(&root) })
+    Ok(SidePdf { pdf: pdf.map(|p| p.to_string_lossy().into_owned()), offered: offered_for(&source) })
 }
 
 /// The PDF to show beside the window's text from now on (none: back to the one found), kept for its source file.

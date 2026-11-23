@@ -6,9 +6,12 @@ import { MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { plainOf } from "$lib/pdfSearch";
 import type { Settings } from "$lib/settings";
 
-/** Markdown or LaTeX as it is read: the marks, citations, comments, math and code left out, line by line. */
+/** Markdown or LaTeX as it is read: the marks, citations, comments, math and code left out, line by line. The
+ *  suggestions of CriticMarkup accepted first, over the whole text: a mark may run over several lines. */
 export function spokenOf(source: string): string {
   return source
+    .replace(/\{--[\s\S]*?--\}|\{>>[\s\S]*?<<\}/g, " ")
+    .replace(/\{~~([\s\S]*?)~>([\s\S]*?)~~\}/g, "$2")
     .replace(/<!--[\s\S]*?-->/g, " ")
     .split("\n")
     .map(plainOf)
@@ -17,14 +20,15 @@ export function spokenOf(source: string): string {
 }
 
 /** The items of a menu for `text` (what is read: the selection, else what is under the pointer), with the label for
- *  it; none without a command. A separator after them. A command that cannot be run says so in a dialog (Rust). */
+ *  it; none without a command. A separator before them: they go last, as a system's Speech does. A command that
+ *  cannot be run says so in a dialog (Rust). */
 export async function readAloudItems(text: string, label = "Read Aloud"): Promise<(MenuItem | PredefinedMenuItem)[]> {
   const settings = await invoke<Settings>("settings").catch(() => null);
   if (!settings?.read_aloud.trim()) return [];
   const reading = await invoke<boolean>("reading").catch(() => false);
   return Promise.all([
+    PredefinedMenuItem.new({ item: "Separator" }),
     MenuItem.new({ text: label, enabled: !!text.trim(), action: () => void invoke("read_aloud", { text }).catch(() => {}) }),
     ...(reading ? [MenuItem.new({ text: "Stop Reading", action: () => void invoke("stop_reading") })] : []),
-    PredefinedMenuItem.new({ item: "Separator" }),
   ]);
 }

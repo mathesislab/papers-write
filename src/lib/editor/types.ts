@@ -81,6 +81,9 @@ export type HoverSources = {
   citation?: (key: string) => Promise<{ label: string; detail?: string } | null>;
   /** the image at a path of the document (as `![…](path)` and `\includegraphics{path}` write it) as a data URL; null if none */
   image?: (path: string) => Promise<string | null>;
+  /** a link followed from its tooltip ("Follow"): its target as written, and its title (`[t](target "title")`), the
+   *  words quoted to find there; without it, links show no tooltip */
+  link?: (target: string, title: string | null) => void;
 };
 
 /** What the app supplies for the diagnostics of the editor (see `Options.diagnostics`). The cross-references to labels the

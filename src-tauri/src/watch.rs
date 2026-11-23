@@ -63,7 +63,7 @@ pub fn subscribe(folder: &Path, recursive: bool, handler: impl Fn(&notify::Event
     }
     let (with, without) = watching.folders.get(folder).copied().unwrap_or((0, 0));
     // watched anew when it was not, or not with its folders and now must be
-    let rewatch = (with == 0 && without == 0) || (recursive && with == 0);
+    let rewatch = with == 0 && (without == 0 || recursive);
     if rewatch {
         let watcher = watching.watcher.as_mut().unwrap();
         if with + without > 0 {

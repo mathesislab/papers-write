@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { showMenu } from "papers-write/project";
   // The builds of a document, over its editor: Build (⇧⌘B), Build and Show PDF (⌥⇧⌘B) and Marked-up PDF… of the Build
   // menu come to `run`. The document is written first (`flush`), then the backend runs texmark or Quarto (and for the marked-up
   // PDF latexdiff and latexmk; for a .tex document latexmk, and latexdiff) and tells only the status: `build-status`, shown in the foot of the window, where it stays: a split button
@@ -19,8 +20,9 @@
   type LatexError = { message: string; line: number | null; file: string | null; here: boolean; context: string | null; md_line: number | null };
   type Status = {
     what: "build" | "diff";
-    /** "watching": a watch profile's command left running; "external": a profile built elsewhere, only followed */
-    state: "building" | "done" | "failed" | "watching" | "external";
+    /** "external": a profile built elsewhere, only followed */
+    /** "kept": not built, the watch in the background keeps its PDF */
+    state: "building" | "done" | "failed" | "external" | "kept";
     seconds: number | null;
     pdf: string | null;
     log: string | null;
@@ -54,18 +56,39 @@
 
   /** the build profiles of the document's project (`.papers-write/build/*.toml`) and the one active */
   type Profile = { name: string; command: string; pdf: string | null; run: "build" | "watch" | "external" };
-  type Profiles = { profiles: Profile[]; active: string | null; watching: string | null; wrong: string[]; folder: string | null };
+  /** what runs in the background of the project: "watching" (started here), "elsewhere" (the same command started in
+   *  a terminal, followed), "ended" (its command exited), "paused" (chosen, not started), "busy" (building now) */
+  type Background = { name: string; file: string | null; state: "busy" | "watching" | "failed" | "elsewhere" | "ended" | "paused"; log: string | null };
+  type Profiles = { profiles: Profile[]; active: string | null; background: Background | null; kept: string | null; on_save: boolean; wrong: string[]; folder: string | null; default: string };
   let profiles = $state<Profiles | null>(null);
   const loadProfiles = async () => (profiles = await invoke<Profiles>("build_profiles").catch(() => null));
   /** the active profile's name, said after what the button says */
-  const named = $derived(profiles?.active ? ` · ${profiles.active}` : "");
+  const named = $derived((profiles?.active ? ` · ${profiles.active}` : "") + (profiles?.on_save ? " · on save" : ""));
+  /** the background, said after it */
+  const BACKGROUND = { busy: "building", watching: "watching", failed: "its last build failed", elsewhere: "watching (terminal)", ended: "ended", paused: "paused" };
+  /** the background's button: ▶ starts what is paused (or ended), ❚❚ pauses what runs (still chosen) */
+  const behind = $derived(profiles?.background ?? null);
+  const running = $derived(behind?.state === "busy" || behind?.state === "watching" || behind?.state === "failed");
+  // while something runs in the background, its state looked at every second or two (building, watching, ended)
+  $effect(() => {
+    if (!running && behind?.state !== "elsewhere") return;
+    const timer = setInterval(() => void loadProfiles(), 1500);
+    return () => clearInterval(timer);
+  });
+  async function playPause() {
+    if (!behind || behind.state === "elsewhere") return;
+    // its last build failed: its log in a tab (the menu's Keep Building (watch) pauses it)
+    if (behind.state === "failed" && behind.log) return void request("open_document", { path: behind.log });
+    profiles = (await request<Profiles>("background_play", { play: !running })) ?? profiles;
+  }
+  const commandOf = (name: string) => profiles?.profiles.find((p) => p.name === name)?.command ?? name;
 
   const errors = $derived(status?.errors.length ?? 0);
   const label = $derived(
-    status?.state === "watching"
-      ? `Watching${named}`
-      : status?.state === "external"
-        ? `Built elsewhere${named}`
+    status?.state === "external"
+      ? `Built elsewhere${named}`
+      : status?.state === "kept"
+        ? `Kept by the watch${named}`
         : labelOf() + (status?.state === "building" ? "" : named),
   );
   function labelOf(): string {
@@ -81,11 +104,13 @@
   }
   const title = $derived(
     keys(
-      status?.state === "watching" || status?.state === "external"
+      (status?.state === "external"
         ? `${status.message ?? ""}. Show the PDF (⌥⇧⌘B)`
         : status?.state === "done"
           ? `Made in ${status.seconds?.toFixed(1)} s. Build and Show PDF (⌥⇧⌘B)`
-          : "Build and Show PDF (⌥⇧⌘B)",
+          : "Build and Show PDF (⌥⇧⌘B)") +
+        `\nBuild (⇧⌘B) runs: ${profiles?.active ? commandOf(profiles.active) : "this document"}` +
+        (profiles?.background ? `\nIn the background: ${commandOf(profiles.background.name)} (${BACKGROUND[profiles.background.state]})` : ""),
     ),
   );
 
@@ -101,7 +126,7 @@
       ...(pdf ? [MenuItem.new({ text: "Show PDF", action: () => void request("open_document", { path: pdf }) })] : []),
       ...(await profileItems()),
     ]);
-    await (await Menu.new({ items })).popup(new LogicalPosition(at.left, at.top));
+    await showMenu(await Menu.new({ items }), new LogicalPosition(at.left, at.top));
   }
 
   /** The build profiles in the ▾: none (the document in front, by texmark, Quarto or latexmk) or one of the project's,
@@ -113,13 +138,30 @@
       profiles = (await request<Profiles>("set_build_profile", { name })) ?? profiles;
       status = null;
     };
+    const behind = async (name: string | null) => (profiles = (await request<Profiles>("set_background", { name })) ?? profiles);
     const RUNS = { build: "", watch: " (kept running)", external: " (built elsewhere)" };
+    const now = profiles.profiles.filter((p) => p.run === "build" || p.run === "external");
+    const background = profiles.profiles.filter((p) => p.run === "watch");
+    // a Build With profile making the PDF the running watch keeps: not built while it runs
+    const keptBy = (p: Profile) => (p.run === "build" && profiles?.kept && p.pdf === profiles.kept ? " (kept by the watch)" : "");
+    const onSave = async (on: boolean) => (profiles = (await request<Profiles>("set_build_on_save", { on })) ?? profiles);
+    const on = profiles.background?.name;
     return [
       PredefinedMenuItem.new({ item: "Separator" }),
-      CheckMenuItem.new({ text: "No Profile: This Document", checked: !profiles.active, action: () => void choose(null) }),
-      ...profiles.profiles.map((p) =>
-        CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}`, checked: profiles?.active === p.name, action: () => void choose(p.name) }),
-      ),
+      MenuItem.new({ text: "Build With", enabled: false }),
+      CheckMenuItem.new({ text: profiles.default, checked: !profiles.active, action: () => void choose(null) }),
+      ...now.map((p) => CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}${keptBy(p)}`, checked: profiles?.active === p.name, action: () => void choose(p.name) })),
+      PredefinedMenuItem.new({ item: "Separator" }),
+      CheckMenuItem.new({ text: "Also Build on Save", checked: profiles.on_save, action: () => void onSave(!profiles?.on_save) }),
+      ...(background.length
+        ? [
+            PredefinedMenuItem.new({ item: "Separator" }),
+            MenuItem.new({ text: "Keep Building (watch)", enabled: false }),
+            CheckMenuItem.new({ text: "Off", checked: !on, action: () => void behind(null) }),
+            ...background.map((p) => CheckMenuItem.new({ text: `${p.name}${RUNS[p.run]}`, checked: on === p.name, action: () => void behind(p.name) })),
+          ]
+        : []),
+      PredefinedMenuItem.new({ item: "Separator" }),
       ...(profiles.wrong.length ? [MenuItem.new({ text: `${profiles.wrong.length} profile file${profiles.wrong.length === 1 ? "" : "s"} not read`, enabled: false })] : []),
       MenuItem.new({ text: "Build Profiles…", action: () => void request("reveal_profiles") }),
     ];
@@ -130,7 +172,10 @@
     status = next;
     refused = "";
     sheet = next.state === "failed";
-    if (next.state !== "building") ended = new Date();
+    if (next.state !== "building") {
+      ended = new Date();
+      void loadProfiles();
+    }
   }
 
   async function request<T>(command: string, args: Record<string, unknown> = {}): Promise<T | undefined> {
@@ -181,7 +226,18 @@
   onMount(() => {
     loadProfiles();
     const unlisten = listen<Status>("build-status", (e) => told(e.payload));
-    return () => void unlisten.then((f) => f());
+    // chosen in Build ▸ Build With or Keep Building (watch) (outside macOS)
+    const unlistenChosen = listen("profiles-changed", () => void loadProfiles());
+    // the background of the project as the tab comes in front (chosen from another of its tabs, or its command ended)
+    const shown = () => document.visibilityState === "visible" && void loadProfiles();
+    document.addEventListener("visibilitychange", shown);
+    window.addEventListener("focus", shown);
+    return () => {
+      void unlisten.then((f) => f());
+      void unlistenChosen.then((f) => f());
+      document.removeEventListener("visibilitychange", shown);
+      window.removeEventListener("focus", shown);
+    };
   });
 </script>
 
@@ -201,6 +257,15 @@
       <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
     </button>
   </div>
+  {#if behind}
+    <button
+      class="behind {behind.state}"
+      onclick={playPause}
+      title="{commandOf(behind.name)}: {BACKGROUND[behind.state]}. {behind.state === 'elsewhere' ? 'Started in a terminal: stopped there' : behind.state === 'failed' ? 'A click shows its log' : running ? 'A click pauses it (still chosen)' : 'A click starts it'}"
+    >
+      {running || behind.state === "elsewhere" ? "●" : "▶"} {behind.name}{behind.file ? `: ${behind.file}` : ""}{behind.state === "elsewhere" ? " (terminal)" : behind.state === "ended" ? " (ended)" : behind.state === "failed" ? " (failed)" : ""}
+    </button>
+  {/if}
   {#if status && status.state !== "building" && (status.state === "failed" || errors)}
     <button class="errors" onclick={() => (sheet = true)} title="Show the errors">
       {status.state === "failed" ? "Show why" : `${errors} LaTeX error${errors === 1 ? "" : "s"}`}
@@ -269,6 +334,43 @@
 {/if}
 
 <style>
+  /* what runs in the background: ● running (a click pauses it), ▶ paused or ended (a click starts it) */
+  .behind {
+    font: inherit;
+    font-size: 11.5px;
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border, #888);
+    background: transparent;
+    color: var(--muted, #888);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .behind.watching,
+  .behind.elsewhere {
+    color: #2f9e57;
+    border-color: #2f9e57;
+  }
+  .behind.failed {
+    color: var(--error, #c4321f);
+    border-color: var(--error, #c4321f);
+  }
+  .behind.busy {
+    color: #d08a0a;
+    border-color: #d08a0a;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.55;
+    }
+  }
+  .behind.paused,
+  .behind.ended {
+    color: var(--accent, #2f6fde);
+    border-color: var(--accent, #2f6fde);
+  }
   .goto {
     display: block;
     font: inherit;

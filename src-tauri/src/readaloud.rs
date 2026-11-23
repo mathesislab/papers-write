@@ -24,12 +24,37 @@ fn words_of(template: &str, text: &str) -> Result<(Vec<String>, bool), String> {
 }
 
 /// The text read aloud by the command of the settings, the reading before stopped; what went wrong in a dialog.
+/// A speech tool found on this computer, and the command that reads with it.
+#[derive(serde::Serialize)]
+pub struct Speaker {
+    name: String,
+    command: String,
+}
+
+/// The usual speech tools found (on PATH and where the builds look): their Read Aloud commands, for Settings to offer.
+#[tauri::command]
+pub fn speakers_found() -> Vec<Speaker> {
+    [
+        ("bard", "bard --text {text}"),
+        ("say", "say {text}"),
+        ("spd-say", "spd-say --wait {text}"),
+        ("espeak-ng", "espeak-ng --stdin"),
+        ("espeak", "espeak --stdin"),
+        ("festival", "festival --tts"),
+    ]
+    .into_iter()
+    .filter(|(name, _)| crate::build::found_tool(name).is_ok())
+    .map(|(name, command)| Speaker { name: name.into(), command: command.into() })
+    .collect()
+}
+
 #[tauri::command]
 pub fn read_aloud(app: AppHandle, text: String) -> Result<(), String> {
     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
     match start(&text) {
         Ok(id) => {
             let _ = app.emit("reading-changed", true);
+            crate::menu::read_aloud_item(&app, None, Some(true));
             watch(app, id);
             Ok(())
         }
@@ -52,6 +77,7 @@ fn watch(app: AppHandle, id: u32) {
                 }
                 *reading = None;
                 let _ = app.emit("reading-changed", false);
+                crate::menu::read_aloud_item(&app, None, Some(false));
                 return;
             }
             // stopped (Stop Reading tells it) or followed by another
@@ -94,6 +120,7 @@ pub fn stop_reading(app: AppHandle) {
         crate::group::stop(&mut child);
     }
     let _ = app.emit("reading-changed", false);
+    crate::menu::read_aloud_item(&app, None, Some(false));
 }
 
 /// Whether the command is reading (for the menus' Stop Reading).

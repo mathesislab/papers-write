@@ -53,8 +53,6 @@ const EXTENSIONS: &[&str] = &[
     "md", "markdown", "qmd", "tex", "bib", "txt", "toml", "yaml", "yml", "sty", "cls", "csv", "lua",
 ];
 
-/// The folders not searched, besides the hidden ones: what builds and tools make.
-const SKIPPED: &[&str] = &["build", "_build", "node_modules", "target"];
 
 /// The largest file searched.
 const LARGEST: u64 = 2 * 1024 * 1024;
@@ -141,6 +139,8 @@ pub struct Listed {
     pub path: PathBuf,
     pub relative: String,
     pub modified: u64,
+    /// open in a tab (listed though left out of the walk: a PDF in the build folder, say)
+    pub open: bool,
 }
 
 /// The files under `root` that can be opened (text, Markdown, LaTeX, BibTeX, PDF; not hidden, not in a build folder,
@@ -152,19 +152,26 @@ pub fn openable(root: &Path, most: usize) -> Vec<Listed> {
         .map(|e| {
             let modified = e.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
             let relative = e.path().strip_prefix(root).unwrap_or(e.path()).to_string_lossy().into_owned();
-            Listed { path: e.into_path(), relative, modified: modified.map_or(0, |d| d.as_secs()) }
+            Listed { path: e.into_path(), relative, modified: modified.map_or(0, |d| d.as_secs()), open: false }
         })
         .collect()
 }
 
 /// The entries under `root`, hidden ones and build folders left out, in natural order of their paths.
 fn walk(root: &Path) -> impl Iterator<Item = walkdir::DirEntry> {
+    let ex = crate::exclude::Exclusions::of(root);
+    let base = root.to_path_buf();
     WalkDir::new(root)
         .sort_by(|a, b| natural(&a.file_name().to_string_lossy(), &b.file_name().to_string_lossy()))
         .into_iter()
-        .filter_entry(|e| {
-            let name = e.file_name().to_string_lossy();
-            e.depth() == 0 || !(name.starts_with('.') || (e.file_type().is_dir() && SKIPPED.contains(&name.as_ref())))
+        .filter_entry(move |e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            let relative = e.path().strip_prefix(&base).unwrap_or(e.path());
+            let dir = e.file_type().is_dir();
+            // a folder left out is walked still if `show` brings back something in it (its files then each judged)
+            !ex.hidden(e.path(), relative, dir) || (dir && ex.walked(relative))
         })
         .flatten()
 }

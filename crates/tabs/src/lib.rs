@@ -44,6 +44,21 @@ use model::{Set, Win};
 pub struct Layout {
     pub files: Vec<PathBuf>,
     pub front: Option<PathBuf>,
+    /// the tabs that go with a file of the project (a text's preview), made again beside it
+    pub companions: Vec<Companion>,
+    /// the tab in front, when it is one of those (`front` its file then)
+    pub front_companion: Option<Companion>,
+    /// the files of the tabs as last shown, the most recent first (the tabs loaded at the start:
+    /// `Host::loaded_at_start`)
+    pub recent: Vec<PathBuf>,
+}
+
+/// A tab that goes with a file (made with `add_beside`; the host says its kind: `Host::companion_kind`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Companion {
+    pub file: PathBuf,
+    pub kind: String,
 }
 
 /// A window as saved: its projects, the one shown first.
@@ -115,6 +130,16 @@ pub struct WindowStyle {
 }
 
 /// What the app says of its pages, and does as their tabs come and go.
+/// When the pages of tabs are unloaded (`Host::unload_policy`), checked once a minute: a tab unseen for `idle`, the
+/// tabs beyond the `most` recently seen, and while the app takes more than `memory`, the least recently seen.
+pub struct Unloading {
+    /// none: however long a tab goes unseen
+    pub idle: Option<std::time::Duration>,
+    pub most: usize,
+    /// bytes, the app's own processes and its pages' (none: no limit; Linux only)
+    pub memory: Option<u64>,
+}
+
 pub trait Host: Send + Sync + 'static {
     fn style(&self) -> WindowStyle;
 
@@ -171,6 +196,33 @@ pub trait Host: Send + Sync + 'static {
     /// The last window of tabs gone.
     fn none_left(&self, _app: &AppHandle) {}
 
+    /// The page of the tab `page` could not be loaded: the tab stays, the page shown before it in view, and is
+    /// loaded again when chosen again.
+    fn not_loaded(&self, _app: &AppHandle, _page: &str) {}
+
+    /// What kind of tab `page` is when it goes with another's file (made with `add_beside`: a preview), to be saved
+    /// and made again (`open_companion`); none: it is not kept.
+    fn companion_kind(&self, _app: &AppHandle, _page: &str) -> Option<String> {
+        None
+    }
+
+    /// The tab of kind `kind` made beside the page `beside` (as the project's tabs are restored); its label.
+    fn open_companion(&self, _app: &AppHandle, _beside: &str, _kind: &str) -> Result<String, String> {
+        Err("no such tab".into())
+    }
+
+    /** When the pages of tabs are unloaded (`Unloading`); none: never. */
+    fn unload_policy(&self, _app: &AppHandle) -> Option<Unloading> {
+        None
+    }
+
+    /** How many tabs of each window are loaded at the start (one at a time, `load_later`): the one in front, then
+     *  the most recently shown (a tab that goes with another, a preview, loaded with it and not counted); the others
+     *  as they come to the front. None: all. */
+    fn loaded_at_start(&self, _app: &AppHandle) -> Option<usize> {
+        None
+    }
+
     /** The colour of a window and of its pages before they are drawn (`dark`: the window's theme is, the system's
      *  unless the app chose one), so that a window opening shows it rather than an empty or half-drawn area; none: the
      *  platform's. The app calls `repaint` when what it gives changes. */
@@ -213,6 +265,16 @@ pub struct Tabs {
     deferring: AtomicBool,
     /// the pages made empty at the start, each with the address it loads (`load_later`)
     later: Mutex<Vec<(String, String)>>,
+    /// the pages made at the start, how recently each was shown before (0: the most recent; `Layout::recent`)
+    recency: Mutex<HashMap<String, usize>>,
+    /// the page each tab made with `add_beside` goes with (a preview: its text's)
+    beside: Mutex<HashMap<String, String>>,
+    /// when each page was last in front (the tabs unseen for a while have their page unloaded: `unload_idle`)
+    last_shown: Mutex<HashMap<String, std::time::Instant>>,
+    /// the pages unloaded, each with the address it loads again when its tab comes to the front
+    unloaded: Mutex<HashMap<String, String>>,
+    /// the unloading's watch started
+    unloading: AtomicBool,
     /// the address of the app's pages, from the first page made (what `WebviewUrl::App` joins to)
     base: Mutex<Option<tauri::Url>>,
     /// each window's tabs in the order they were last in front, and its tabs visited, to go back and forward to
@@ -222,6 +284,8 @@ pub struct Tabs {
     cycling: Mutex<Option<(String, usize)>>,
     /// the presses of Switch to Recent Tab, for the end of one after a while without a press or ⌃ let go
     cycle_presses: AtomicUsize,
+    /// when Switch to Recent Tab was last asked (a press said twice is left out)
+    last_recent: Mutex<Option<std::time::Instant>>,
     /// a tab brought back by Back or Forward: not itself a visit
     stepping: AtomicBool,
     /// the folders open in the file tree of each project's sidebar (none: of the pages of no project), the same in
@@ -233,6 +297,11 @@ pub struct Tabs {
     /// the page above the others of each window: the one in view (the model's front may be a page still being drawn,
     /// or none yet, as a project comes)
     on_top: Mutex<HashMap<String, String>>,
+    /// the pages whose document has begun to show (WebKit's load committed, an app page and not the empty one of a
+    /// tab unloaded; Linux): a tab chosen whose page has not, after a while, is loaded again rather than shown empty
+    committed: Mutex<HashSet<String>>,
+    /// the pages whose WebKit process ended: how many times since when (each reloaded, a few times at most)
+    ended: Mutex<HashMap<String, (u32, std::time::Instant)>>,
 }
 
 impl Tabs {
@@ -247,14 +316,22 @@ impl Tabs {
             restoring: AtomicBool::new(false),
             deferring: AtomicBool::new(false),
             later: Mutex::default(),
+            recency: Mutex::default(),
+            beside: Mutex::default(),
+            last_shown: Mutex::default(),
+            unloaded: Mutex::default(),
+            unloading: AtomicBool::new(false),
             base: Mutex::default(),
             visits: Mutex::default(),
             cycling: Mutex::default(),
             cycle_presses: AtomicUsize::new(0),
+            last_recent: Mutex::default(),
             stepping: AtomicBool::new(false),
             folders: Mutex::default(),
             ready: Mutex::default(),
             on_top: Mutex::default(),
+            committed: Mutex::default(),
+            ended: Mutex::default(),
         }
     }
 }
@@ -277,6 +354,9 @@ pub struct Tab {
     path: Option<String>,
     /// changes not saved
     edited: bool,
+    /// the tab in front of its set: brought there, its page shown at once if drawn, else once it is (the page shown
+    /// meanwhile says so: its strip marks the tab chosen)
+    front: bool,
 }
 
 fn host(app: &AppHandle) -> &dyn Host {
@@ -438,6 +518,7 @@ pub fn add(app: &AppHandle, label: &str, url: &str, project: Option<&Path>) -> t
 
 /// A page that is not a file (a history), named `title`, as a tab beside the page `beside`.
 pub fn add_beside(app: &AppHandle, label: &str, url: &str, beside: &str, title: String) -> tauri::Result<Webview> {
+    app.state::<Tabs>().beside.lock().unwrap().insert(label.to_string(), beside.to_string());
     let window = match window_of(app, beside).and_then(|w| app.get_window(&w)) {
         Some(window) => {
             with_tabs(app, |w| {
@@ -488,6 +569,8 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
         builder = builder.background_color(colour);
     }
     let page = window.add_child(builder, LogicalPosition::new(0.0, 0.0), LogicalSize::new(size.width, size.height))?;
+    #[cfg(target_os = "linux")]
+    watch_loads(app, &page);
     if later {
         state.later.lock().unwrap().push((label.to_string(), url.to_string()));
     } else if state.base.lock().unwrap().is_none() {
@@ -503,8 +586,9 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
         // meanwhile rather than the page being drawn (`reveal` shows it)
         let _ = page.hide();
     }
+    eprintln!("[papers-write {}] page {label} added{}", stamp(), if later { " (loaded later)" } else { "" });
     if !later {
-        show_after_a_while(app, label);
+        show_after_a_while(app, label, None);
     }
     with_tabs(app, |w| w.entry(window.label().to_string()).or_default().insert(label, title));
     host(app).added(app, window, label);
@@ -512,30 +596,148 @@ fn add_to(app: &AppHandle, window: &Window, label: &str, url: &str, title: Optio
     Ok(page)
 }
 
-/// A page that never says it is drawn shown all the same, after a while.
-fn show_after_a_while(app: &AppHandle, page: &str) {
+/// The time of day to the millisecond (UTC), for the log of the start (dev build).
+pub fn stamp() -> String {
+    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let s = ms / 1000;
+    format!("{:02}:{:02}:{:02}.{:03}", s / 3600 % 24, s / 60 % 60, s % 60, ms % 1000)
+}
+
+/// A page that never says it is drawn shown all the same, after a while. Outside macOS, one sent to `again` (a tab
+/// loaded later or again) that has not begun to load by then is sent there once more; if it still has not, it is
+/// not shown (an empty page, the tab strip with it, would leave no way out): the page shown before is brought back,
+/// the tab left unloaded, loaded again when chosen again (`Host::not_loaded` tells).
+fn show_after_a_while(app: &AppHandle, page: &str, again: Option<String>) {
     let (handle, waited) = (app.clone(), page.to_string());
     std::thread::spawn(move || {
+        let app = &handle;
+        let state = app.state::<Tabs>();
         std::thread::sleep(std::time::Duration::from_secs(2));
-        ready(&handle, &waited);
+        let drawn = || state.ready.lock().unwrap().contains(&waited);
+        let begun = || state.committed.lock().unwrap().contains(&waited);
+        if cfg!(target_os = "linux")
+            && let Some(url) = again
+            && !drawn()
+            && !begun()
+        {
+            eprintln!("[papers-write {}] page {waited} not loaded after 2 s: loading again", stamp());
+            let Some(webview) = app.get_webview(&waited) else { return };
+            if let Ok(address) = url.parse() {
+                let _ = webview.navigate(address);
+            }
+            for _ in 0..80 {
+                if drawn() || begun() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            if !drawn() && !begun() {
+                eprintln!("[papers-write {}] page {waited} could not be loaded: its tab left unloaded", stamp());
+                state.unloaded.lock().unwrap().insert(waited.clone(), url);
+                let window = window_of(app, &waited).unwrap_or_default();
+                let before = state.on_top.lock().unwrap().get(&window).cloned().filter(|p| *p != waited);
+                let (handle, page) = (app.clone(), waited.clone());
+                let _ = app.run_on_main_thread(move || {
+                    if let Some(before) = before {
+                        select(&handle, &before);
+                    }
+                    host(&handle).not_loaded(&handle, &page);
+                });
+                return;
+            }
+        }
+        if !drawn() {
+            eprintln!("[papers-write {}] page {waited} not drawn after 2 s: shown all the same", stamp());
+        }
+        ready(app, &waited);
+    });
+}
+
+/// WebKit's loads of `page` followed (Linux): whether its document has begun to show (`committed`), its loads that
+/// failed logged, and its process, ended (crashed, or killed for its memory), started again by a reload, three
+/// times in ten minutes at most; then the tab is left unloaded, loaded again when chosen.
+#[cfg(target_os = "linux")]
+fn watch_loads(app: &AppHandle, page: &Webview) {
+    let (handle, label) = (app.clone(), page.label().to_string());
+    let _ = page.with_webview(move |w| {
+        use webkit2gtk::{LoadEvent, WebViewExt};
+        let view = w.inner();
+        let blank = |uri: Option<String>| uri.as_deref().is_none_or(|u| u.is_empty() || u == "about:blank");
+        let (app, l) = (handle.clone(), label.clone());
+        view.connect_load_changed(move |view, event| {
+            let empty = blank(view.uri().map(|u| u.to_string()));
+            let state = app.state::<Tabs>();
+            match event {
+                LoadEvent::Started if !empty => eprintln!("[papers-write {}] page {l}: WebKit loading", stamp()),
+                LoadEvent::Committed if empty => {
+                    state.committed.lock().unwrap().remove(&l);
+                }
+                LoadEvent::Committed => {
+                    state.committed.lock().unwrap().insert(l.clone());
+                }
+                _ => {}
+            }
+        });
+        let l = label.clone();
+        view.connect_load_failed(move |_, _, uri, error| {
+            eprintln!("[papers-write {}] page {l}: loading {uri} failed: {error}", stamp());
+            false
+        });
+        let (app, l) = (handle.clone(), label.clone());
+        view.connect_web_process_terminated(move |view, reason| {
+            let uri = view.uri().map(|u| u.to_string());
+            eprintln!("[papers-write {}] page {l}: its process ended ({reason:?})", stamp());
+            let state = app.state::<Tabs>();
+            state.ready.lock().unwrap().remove(&l);
+            state.committed.lock().unwrap().remove(&l);
+            if blank(uri.clone()) {
+                return;
+            }
+            let uri = uri.unwrap_or_default();
+            let again = {
+                let mut ended = state.ended.lock().unwrap();
+                let e = ended.entry(l.clone()).or_insert((0, std::time::Instant::now()));
+                if e.1.elapsed() > std::time::Duration::from_secs(600) {
+                    *e = (0, std::time::Instant::now());
+                }
+                e.0 += 1;
+                e.0 <= 3
+            };
+            if again {
+                eprintln!("[papers-write {}] page {l} loading again", stamp());
+                view.reload();
+                show_after_a_while(&app, &l, Some(uri));
+            } else {
+                eprintln!("[papers-write {}] page {l}: its process ended three times in ten minutes: left unloaded", stamp());
+                state.unloaded.lock().unwrap().insert(l.clone(), uri);
+                host(&app).not_loaded(&app, &l);
+            }
+        });
     });
 }
 
 /// The pages made empty at the start loaded, one at a time, each once the one before is drawn (or a few seconds
 /// passed): first the tab in front of a window, then those in front of its other projects, then the others, a tab
-/// chosen meanwhile coming next. Nothing is saved till they all are (a quit meanwhile keeps the tabs as saved).
+/// chosen meanwhile coming next.
 fn load_later(app: &AppHandle) {
     let handle = app.clone();
     std::thread::spawn(move || {
         let app = &handle;
         let state = app.state::<Tabs>();
         let base = state.base.lock().unwrap().clone();
+        let most = state.host.loaded_at_start(app);
+        let recency = state.recency.lock().unwrap().clone();
+        // the tabs loaded in each window (not those that go with another)
+        let mut counted: HashMap<String, usize> = HashMap::new();
         loop {
             let next = {
                 let mut later = state.later.lock().unwrap();
+                let beside = state.beside.lock().unwrap().clone();
                 let rank = |label: &str| {
                     let window = window_of(app, label);
-                    if window.as_deref().and_then(|w| front_of(app, w)).as_deref() == Some(label) {
+                    let front = window.as_deref().and_then(|w| front_of(app, w));
+                    // the tab in front, and the one it goes with (a preview's text, which draws it)
+                    if front.as_deref() == Some(label) || front.and_then(|f| beside.get(&f).cloned()).as_deref() == Some(label) {
                         0
                     } else if with_tabs(app, |w| w.values().any(|win| win.sets.iter().any(|s| s.front.as_deref() == Some(label)))) {
                         1
@@ -543,17 +745,35 @@ fn load_later(app: &AppHandle) {
                         2
                     }
                 };
-                let best = (0..later.len()).min_by_key(|&i| rank(&later[i].0));
-                best.map(|i| later.remove(i))
+                let order = |label: &str| (rank(label), recency.get(label).copied().unwrap_or(usize::MAX));
+                let best = (0..later.len()).min_by_key(|&i| order(&later[i].0));
+                best.map(|i| {
+                    let front = rank(&later[i].0) == 0;
+                    let (label, url) = later.remove(i);
+                    (label, url, front)
+                })
             };
-            let Some((label, url)) = next else { break };
+            let Some((label, url, front)) = next else { break };
             let (Some(page), Some(base)) = (app.get_webview(&label), base.as_ref()) else { continue };
             let address = if url == "index.html" { Ok(base.clone()) } else { base.join(&url) };
             let Ok(address) = address else { continue };
-            if page.navigate(address).is_err() {
+            // the tab in front, then the most recent up to the number loaded at the start (`Host::loaded_at_start`);
+            // the others as unloaded ones, loaded as they come to the front
+            let goes_with = state.beside.lock().unwrap().contains_key(&label);
+            let window = window_of(app, &label).unwrap_or_default();
+            let count = counted.entry(window).or_default();
+            if !front && !goes_with && most.is_some_and(|most| *count >= most) {
+                state.unloaded.lock().unwrap().insert(label, address.to_string());
                 continue;
             }
-            show_after_a_while(app, &label);
+            if !goes_with {
+                *count += 1;
+            }
+            eprintln!("[papers-write {}] page {label} loading", stamp());
+            if page.navigate(address.clone()).is_err() {
+                continue;
+            }
+            show_after_a_while(app, &label, Some(address.to_string()));
             for _ in 0..80 {
                 if state.ready.lock().unwrap().contains(&label) || app.get_webview(&label).is_none() {
                     break;
@@ -561,9 +781,114 @@ fn load_later(app: &AppHandle) {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
-        state.restoring.store(false, Ordering::SeqCst);
-        save(app);
     });
+}
+
+/// The pages of tabs unseen for a while unloaded, and beyond the most recently seen that may keep their page, the
+/// least recent first (`Host::unload_policy`): each made empty, its tab staying in the strip, loaded again as it comes
+/// to the front (`select`), the page then putting itself back as it was (its place, its undo history: the host's).
+/// Never the tab in front of a window, nor the one it goes with (a preview's text). Watched once a minute.
+fn unload_idle(app: &AppHandle) {
+    let state = app.state::<Tabs>();
+    if state.unloading.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        let app = &handle;
+        let state = app.state::<Tabs>();
+        let Some(policy) = state.host.unload_policy(app) else { continue };
+        let (pages, kept): (Vec<String>, Vec<String>) = with_tabs(app, |w| {
+            let pages = w.values().flat_map(Win::pages).cloned().collect();
+            let fronts = w.values().filter_map(|win| win.sets.first()?.front.clone()).collect();
+            (pages, fronts)
+        });
+        let beside = state.beside.lock().unwrap().clone();
+        let mut keep: std::collections::HashSet<String> = kept.iter().cloned().collect();
+        keep.extend(kept.iter().filter_map(|f| beside.get(f).cloned()));
+        let unloaded: std::collections::HashSet<String> = state.unloaded.lock().unwrap().keys().cloned().collect();
+        let waiting: std::collections::HashSet<String> = state.later.lock().unwrap().iter().map(|(l, _)| l.clone()).collect();
+        let shown = state.last_shown.lock().unwrap().clone();
+        // the pages loaded, the least recently seen first (never seen: first of all)
+        let mut loaded: Vec<(String, Option<std::time::Instant>)> = pages
+            .into_iter()
+            .filter(|p| !unloaded.contains(p) && !waiting.contains(p))
+            .map(|p| {
+                let at = shown.get(&p).copied();
+                (p, at)
+            })
+            .collect();
+        // not shown since the start: the least recently shown before first (`Layout::recent`), and before any shown
+        let before = state.recency.lock().unwrap().clone();
+        let older = |page: &str| std::cmp::Reverse(before.get(page).copied().unwrap_or(usize::MAX));
+        loaded.sort_by(|(p, a), (q, b)| match (a, b) {
+            (None, None) => older(p).cmp(&older(q)),
+            _ => a.cmp(b),
+        });
+        let mut count = loaded.len();
+        let over = || policy.memory.is_some_and(|most| memory_used() > most);
+        let mut too_much = over();
+        for (page, at) in loaded {
+            if keep.contains(&page) {
+                continue;
+            }
+            let recent = policy.idle.is_none_or(|idle| at.is_some_and(|at| at.elapsed() < idle));
+            if recent && count <= policy.most && !too_much {
+                continue;
+            }
+            let Some(webview) = app.get_webview(&page) else { continue };
+            let Ok(url) = webview.url() else { continue };
+            if url.as_str() == "about:blank" || webview.navigate("about:blank".parse().expect("a URL")).is_err() {
+                continue;
+            }
+            state.unloaded.lock().unwrap().insert(page.clone(), url.to_string());
+            state.ready.lock().unwrap().remove(&page);
+            count -= 1;
+            if too_much {
+                // the page's memory given back, then measured again
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                too_much = over();
+            }
+        }
+    });
+}
+
+/// The memory the app takes, in bytes: its own process and those of its process group it started (the pages'
+/// processes; not the commands it runs, which have groups of their own), their proportional share (PSS: what is
+/// shared counted once). Linux; elsewhere 0.
+fn memory_used() -> u64 {
+    #[cfg(target_os = "linux")]
+    {
+        let me = std::process::id();
+        // each process's parent and group: the fields after the name, which is in parentheses
+        let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+        let mut group = HashMap::new();
+        for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+            let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
+            let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else { continue };
+            let Some((_, rest)) = stat.rsplit_once(')') else { continue };
+            let mut fields = rest.split_whitespace().skip(1);
+            let (Some(Ok(parent)), Some(Ok(pgid))) = (fields.next().map(str::parse::<u32>), fields.next().map(str::parse::<u32>)) else { continue };
+            children.entry(parent).or_default().push(pid);
+            group.insert(pid, pgid);
+        }
+        let mine = group.get(&me).copied();
+        let mut total = 0;
+        let mut todo = vec![me];
+        while let Some(pid) = todo.pop() {
+            if pid != me && group.get(&pid).copied() != mine {
+                continue;
+            }
+            let rollup = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")).unwrap_or_default();
+            let kb = rollup.lines().find_map(|l| l.strip_prefix("Pss:")).and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok());
+            total += kb.unwrap_or(0) * 1024;
+            todo.extend(children.get(&pid).into_iter().flatten());
+        }
+        total
+    }
+    #[cfg(not(target_os = "linux"))]
+    0
 }
 
 /// A page drawn (`page_ready`, or the wait for it over): shown when its tab is in front.
@@ -638,9 +963,32 @@ fn reveal(app: &AppHandle, window: &str) {
 /// A tab brought to the front: its set shown by its window, its page shown (once drawn: `reveal`) and every other
 /// page of the window hidden, the window titled after it and brought forward.
 pub fn select(app: &AppHandle, page: &str) {
+    let took = std::time::Instant::now();
+    selected(app, page);
+    // a switch slower than a frame or two, logged: where tab switches spend their time
+    if took.elapsed() > std::time::Duration::from_millis(20) {
+        eprintln!("[papers-write {}] tab {page} brought to the front in {:?}", stamp(), took.elapsed());
+    }
+}
+
+fn selected(app: &AppHandle, page: &str) {
     let Some(window_label) = window_of(app, page) else {
         return;
     };
+    {
+        let state = app.state::<Tabs>();
+        state.last_shown.lock().unwrap().insert(page.to_string(), std::time::Instant::now());
+        // a page unloaded: loaded again, shown once drawn (the one before in view meanwhile)
+        let again = state.unloaded.lock().unwrap().remove(page);
+        if let (Some(url), Some(webview)) = (again, app.get_webview(page))
+            && let Ok(address) = url.parse()
+        {
+            eprintln!("[papers-write {}] page {page} loading again", stamp());
+            if webview.navigate(address).is_ok() {
+                show_after_a_while(app, page, Some(url));
+            }
+        }
+    }
     visited(app, &window_label, front_of(app, &window_label), page);
     let newly_shown = with_tabs(app, |w| {
         let win = w.get_mut(&window_label)?;
@@ -700,6 +1048,16 @@ pub fn recent(app: &AppHandle, by: isize) {
     let Some(window) = front_window(app) else {
         return;
     };
+    // one press said twice (the page and the menu both): the second left out
+    {
+        let state = app.state::<Tabs>();
+        let mut last = state.last_recent.lock().unwrap();
+        let now = std::time::Instant::now();
+        if last.is_some_and(|t| now.duration_since(t) < std::time::Duration::from_millis(80)) {
+            return;
+        }
+        *last = Some(now);
+    }
     let strip = strip_of(app, &window);
     let state = app.state::<Tabs>();
     let mut recent: Vec<String> = state.visits.lock().unwrap().get(&window).map(|v| v.recent.clone()).unwrap_or_default();
@@ -711,12 +1069,14 @@ pub fn recent(app: &AppHandle, by: isize) {
     }
     let target = {
         let mut cycling = state.cycling.lock().unwrap();
+        let from = cycling.as_ref().map(|(_, i)| *i);
         let at = match cycling.as_ref() {
             Some((w, i)) if *w == window => *i as isize,
             _ => 0,
         };
         let next = (at + by).rem_euclid(recent.len() as isize) as usize;
         *cycling = Some((window.clone(), next));
+        eprintln!("[papers-write] recent tab: {recent:?}, from {from:?} by {by}: {}", recent[next]);
         recent[next].clone()
     };
     select(app, &target);
@@ -838,6 +1198,9 @@ pub fn close(app: &AppHandle, page: &str) {
 /// A page and its tab gone (asked already): what was kept of it goes; the neighbour comes to the front; a set
 /// emptied goes, the window showing the project shown before; the window closes with its last tab.
 pub fn remove(app: &AppHandle, page: &str) {
+    app.state::<Tabs>().beside.lock().unwrap().remove(page);
+    app.state::<Tabs>().unloaded.lock().unwrap().remove(page);
+    app.state::<Tabs>().last_shown.lock().unwrap().remove(page);
     let Some(window_label) = window_of(app, page) else {
         return;
     };
@@ -900,6 +1263,11 @@ pub fn window_closed(app: &AppHandle, window: &str) {
 }
 
 /// The app quits: its windows close, but stay saved as open.
+/// Whether the app is quitting (its windows close, but stay saved as open).
+pub fn is_quitting(app: &AppHandle) -> bool {
+    app.state::<Tabs>().quitting.load(Ordering::SeqCst)
+}
+
 pub fn quitting(app: &AppHandle) {
     app.state::<Tabs>().quitting.store(true, Ordering::SeqCst);
 }
@@ -1100,8 +1468,25 @@ fn restore_project(app: &AppHandle, root: &Path) -> Result<(), String> {
             host.open(app, root, Some(file))?;
         }
     }
+    let ranks: Vec<(String, usize)> = layout.recent.iter().enumerate().filter_map(|(i, f)| Some((page_of(app, f)?, i))).collect();
+    let state = app.state::<Tabs>();
+    let mut recency = state.recency.lock().unwrap();
+    for (page, i) in ranks {
+        recency.entry(page).or_insert(i);
+    }
+    drop(recency);
     let front = layout.front.filter(|f| files.contains(f)).unwrap_or_else(|| files[0].clone());
-    if let Some(label) = page_of(app, &front) {
+    // the tabs that went with files (a preview), made again beside them; the one in front again, if it was
+    let mut target = page_of(app, &front);
+    for c in &layout.companions {
+        let Some(beside) = page_of(app, &c.file) else { continue };
+        match host.open_companion(app, &beside, &c.kind) {
+            Ok(label) if layout.front_companion.as_ref() == Some(c) => target = Some(label),
+            Ok(_) => {}
+            Err(e) => eprintln!("{}: {e}", c.file.display()),
+        }
+    }
+    if let Some(label) = target {
         select(app, &label);
     }
     Ok(())
@@ -1137,8 +1522,13 @@ pub fn restore(app: &AppHandle) -> bool {
         let _ = show_project(app, first, Target::Window(window));
     }
     state.deferring.store(false, Ordering::SeqCst);
-    // the pages made empty loaded now, one at a time; saving waits for them
+    // every tab is there with its file, its page loading or not: saved from now on (a quit before the pages are all
+    // loaded keeps what was done meanwhile)
+    state.restoring.store(false, Ordering::SeqCst);
+    save(app);
+    // the pages made empty loaded now, one at a time
     load_later(app);
+    unload_idle(app);
     any_made
 }
 
@@ -1148,16 +1538,34 @@ fn save(app: &AppHandle) {
     if state.restoring.load(Ordering::SeqCst) || state.quitting.load(Ordering::SeqCst) {
         return;
     }
-    let sets: Vec<(PathBuf, Vec<String>, Option<String>)> = with_tabs(app, |w| {
-        w.values()
-            .flat_map(|win| win.sets.iter())
-            .filter_map(|set| Some((set.project.clone()?, set.pages.clone(), set.front.clone())))
+    let sets: Vec<(String, PathBuf, Vec<String>, Option<String>)> = with_tabs(app, |w| {
+        w.iter()
+            .flat_map(|(label, win)| win.sets.iter().map(move |set| (label, set)))
+            .filter_map(|(label, set)| Some((label.clone(), set.project.clone()?, set.pages.clone(), set.front.clone())))
             .collect()
     });
     let path = |page: &String| state.host.path(app, page);
+    let recent: HashMap<String, Vec<String>> = state.visits.lock().unwrap().iter().map(|(w, v)| (w.clone(), v.recent.clone())).collect();
+    let beside = state.beside.lock().unwrap().clone();
     let layouts = sets
         .into_iter()
-        .map(|(root, pages, front)| (root, Layout { files: pages.iter().filter_map(path).collect(), front: front.as_ref().and_then(path) }))
+        .map(|(window, root, pages, front)| {
+            // a tab in front with no file of its own (a preview, a history): the tab of a file in front last, for
+            // the project to open on it again
+            let front_file = front.as_ref().and_then(path).or_else(|| {
+                recent.get(&window)?.iter().filter(|p| pages.contains(p)).find_map(path)
+            });
+            // the tabs that go with a file (a preview), by their file and kind
+            let companion = |page: &String| {
+                let kind = state.host.companion_kind(app, page)?;
+                let file = beside.get(page).and_then(path)?;
+                Some(Companion { file, kind })
+            };
+            let companions = pages.iter().filter_map(companion).collect();
+            let front_companion = front.as_ref().and_then(companion);
+            let recent = recent.get(&window).into_iter().flatten().filter(|p| pages.contains(p)).filter_map(path).collect();
+            (root, Layout { files: pages.iter().filter_map(path).collect(), front: front_file, companions, front_companion, recent })
+        })
         .collect();
     state.host.save_layouts(app, layouts);
     save_windows(app);
@@ -1192,15 +1600,17 @@ pub mod commands {
     #[tauri::command]
     pub fn tab_strip(page: Webview) -> Vec<Tab> {
         let app = page.app_handle();
-        let pages = with_tabs(app, |w| {
-            w.values().find_map(|win| win.set_of(page.label()).map(|i| win.sets[i].pages.clone())).unwrap_or_default()
-        });
+        let (pages, front) = with_tabs(app, |w| {
+            w.values().find_map(|win| win.set_of(page.label()).map(|i| (win.sets[i].pages.clone(), win.sets[i].front.clone())))
+        })
+        .unwrap_or_default();
         pages
             .into_iter()
             .map(|label| Tab {
                 title: title_of(app, &label),
                 path: host(app).path(app, &label).map(|p| p.display().to_string()),
                 edited: host(app).edited(app, &label),
+                front: front.as_deref() == Some(label.as_str()),
                 label,
             })
             .collect()
@@ -1264,6 +1674,7 @@ pub mod commands {
     /// The asking page is drawn: it may be shown (`ready`).
     #[tauri::command]
     pub fn page_ready(page: Webview) {
+        eprintln!("[papers-write {}] page {} drawn", super::stamp(), page.label());
         super::ready(page.app_handle(), page.label());
     }
 
@@ -1314,5 +1725,15 @@ mod tests {
         assert_eq!(s.of(Some(b)), outline);
         assert_eq!(s.of(Some(a)), files);
         assert_eq!(s.of(None), files);
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod memory_tests {
+    #[test]
+    fn the_memory_of_the_process_is_measured() {
+        let used = super::memory_used();
+        // a test process: more than a megabyte, less than its whole machine
+        assert!(used > 1 << 20 && used < 1 << 40, "{used}");
     }
 }

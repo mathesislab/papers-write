@@ -264,6 +264,11 @@ them) are proposed upstream; until they are released,
   Quarto's (`{#fig-x}`, `@fig-x`) are numbered too, with Quarto's words:
   "Figure 1", "Figures 1 and 2", "Equation 1"; `crossref: {fig-prefix: Fig.}`
   changes them. The export to Word numbers them the same way.
+  Suggestions kept in the text itself (CriticMarkup) are marked as changes:
+  insertions underlined in green, deletions struck through in red, highlights
+  in yellow, comments as small notes in the line. The preview's ▾ (or
+  Settings ▸ Editor) shows instead the text with all of them accepted, or all
+  rejected; Read Aloud reads the text with them accepted.
   Drag the split to resize; its width is kept for the window.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
   project's tile) has three tabs; shown or not, its width and its tab are the same in all the

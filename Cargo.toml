@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
 members = ["src-tauri", "crates/core", "crates/cli", "crates/tabs"]
+exclude = ["crates/patched"]
+
+# muda (Tauri's menus) with a fix of its GTK context menu: a menu GTK did not show (Wayland) froze the app,
+# crates/patched/muda/src/platform_impl/gtk/mod.rs `show_context_menu`. Till the fix is in a release of muda.
+[patch.crates-io]
+muda = { path = "crates/patched/muda" }
 
 [profile.release]
 codegen-units = 1

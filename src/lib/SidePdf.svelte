@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { showMenu } from "papers-write/project";
   // The PDF beside a text (View ▸ Show PDF): the one chosen for this source file, else the one found (`side_pdf`:
   // `<build>/<name>.pdf`), in a pane of the text's page, read again at the same page when it changes on disk
   // (`pdf-changed`: a build, a watch process). Its header says which PDF and changes it (the project's PDFs, the most
@@ -70,7 +71,7 @@
       await MenuItem.new({ text: "Other…", action: () => void other() }),
       await MenuItem.new({ text: "The One Built from This File", action: () => void choose(null) }),
     ];
-    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+    await showMenu(await Menu.new({ items }), new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
 
   /** Words looked for in the PDF and shown there; false when they are not in it. */
@@ -122,6 +123,8 @@
 
   /** Find… with the PDF in front: its field, with the PDF's selection. */
   export const focusFind = () => tools?.focusFind();
+  /** The keys to the PDF (its side was the one worked in). */
+  export const focus = () => view?.focus();
   /** Find Next and Find Previous with the PDF in front. */
   export const findAgain = (backwards: boolean) => tools?.findAgain(backwards);
   /** Use Selection for Find with the PDF in front. */
@@ -198,7 +201,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* the room left, and no more: cut short rather than pushing the PDF's name to a line of its own */
   .status {
+    flex: 1 1 0;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

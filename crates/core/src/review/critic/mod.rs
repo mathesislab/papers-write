@@ -7,5 +7,5 @@ pub mod export;
 pub mod import;
 pub mod view;
 
-pub use export::{Export, markdown_with_changes};
+pub use export::{Export, in_text, markdown_with_changes};
 pub use import::{CRITIC, import};

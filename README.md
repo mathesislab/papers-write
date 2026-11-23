@@ -392,6 +392,16 @@ them) are proposed upstream; until they are released,
     change back and rejecting it leaves it out. The document must have nothing
     uncommitted. A sheet says what happened ("Jane Doe's edits since a1b2c3d,
     back as suggestions"); commit when you like (Git ▸ Commit…).
+  - In a project that keeps its review in the text (`review = "in-file"`),
+    both (and Compare as Suggestions…) write the changes into the document as
+    CriticMarkup instead of the
+    review's notes: `{++ ++}`, `{-- --}`, `{~~ ~> ~~}`, each followed by its
+    commit's author (`{>>@Jane Doe:<<}`), the marks Export as CriticMarkup
+    makes. The commit's round and date are not kept. A change on or right
+    against a mark the text has already is not marked: Review Commits… then
+    changes nothing and lists them (the text going back would lose them);
+    Review Branch… marks the others and lists those left out, as it does those
+    on words changed since.
   - Who made what comes from `git blame`, by line: two commits that changed the
     same line both count as the later one.
 - Settings (⌘, in the app menu; one window, every change

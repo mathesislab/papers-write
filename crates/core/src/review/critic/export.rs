@@ -2,6 +2,9 @@
 //! `{~~old~>new~~}` (its note `{>>author: note<<}` right after it), and a comment as `{==text==}{>>author: comment<<}`.
 //! Marks are never one inside another: a comment on text that a suggestion or another comment marks (or on no text)
 //! is `{>>author: comment<<}` alone, at the end of the text it is on (after the mark it would be inside).
+//!
+//! [`in_text`] writes them as a project that keeps its review in the text has them: each mark signed
+//! `{>>@Jane Doe:<<}`, and none on or against a mark the text has already.
 
 use crate::review::Status;
 use crate::review::fold::{Item, State};
@@ -22,18 +25,64 @@ pub struct Export {
 
 /// `current` with the open suggestions and comments of `items` (the review folded onto `current`) as CriticMarkup.
 pub fn markdown_with_changes(current: &str, items: &[Item]) -> Export {
+    marked(current, items, false)
+}
+
+/// `current` with the open suggestions and comments of `items` as the marks of a project that keeps its review in
+/// the text: each mark followed by its author, `{>>@Jane Doe:<<}` (a note after the colon), which is how the editor
+/// reads whose a mark is. A suggestion on, or right against, a mark that `current` has already is left out (listed
+/// in `skipped`): the two would run into each other.
+pub fn in_text(current: &str, items: &[Item]) -> Export {
+    marked(current, items, true)
+}
+
+/// The note that says whose a mark is: `{>>@Jane Doe: note<<}`, `{>>@Jane Doe:<<}` without a note (a colon in the
+/// name is taken out: it would end the name).
+fn signed(author: &str, note: &str) -> String {
+    let author = author.replace(':', "");
+    let note = note.trim();
+    if note.is_empty() { format!("{{>>@{author}:<<}}") } else { format!("{{>>@{author}: {note}<<}}") }
+}
+
+/// The marks `text` has already, each from its `{` to its closing delimiter (one not closed is not a mark).
+fn marks_in(text: &str) -> Vec<Range<usize>> {
+    const MARKS: [(&str, &str); 5] = [("{++", "++}"), ("{--", "--}"), ("{~~", "~~}"), ("{==", "==}"), ("{>>", "<<}")];
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(rel) = text[i..].find('{') {
+        let start = i + rel;
+        i = start + 1;
+        let Some((open, close)) = MARKS.iter().find(|(o, _)| text[start..].starts_with(o)) else { continue };
+        if let Some(len) = text[start + open.len()..].find(close) {
+            let end = start + open.len() + len + close.len();
+            out.push(start..end);
+            i = end;
+        }
+    }
+    out
+}
+
+/// The marks of `items` in `current`; `in_text`: signed, and kept off the marks `current` has.
+fn marked(current: &str, items: &[Item], in_text: bool) -> Export {
     let mut edits: Vec<(Range<usize>, String)> = Vec::new();
     let (mut skipped, mut suggestions, mut comments) = (Vec::new(), 0, 0);
     // the text marked so far
     let mut taken: Vec<Range<usize>> = Vec::new();
     let overlaps = |taken: &[Range<usize>], r: &Range<usize>| taken.iter().any(|t| r.start < t.end && t.start < r.end);
+    // the marks the text has: a suggestion that touches one would go inside it, or take its note
+    let there = if in_text { marks_in(current) } else { Vec::new() };
+    let against = |r: &Range<usize>| there.iter().any(|t| r.start <= t.end && t.start <= r.end);
     let fits = |r: &Range<usize>| r.start <= r.end && r.end <= current.len() && current.is_char_boundary(r.start) && current.is_char_boundary(r.end);
     let open = || items.iter().filter(|i| i.state == State::Open);
     for item in open().filter(|i| i.kind == Kind::Suggestion) {
         let r = item.range.clone();
+        let change = || say_change(item.record.exact.as_deref().unwrap_or(""), item.replacement.as_deref().unwrap_or(""));
         if !fits(&r) || overlaps(&taken, &r) || !matches!(item.status, Status::Exact | Status::Moved) {
-            let change = say_change(item.record.exact.as_deref().unwrap_or(""), item.replacement.as_deref().unwrap_or(""));
-            skipped.push(format!("{}: {change} (outdated, or overlapping another)", item.author));
+            skipped.push(format!("{}: {} (outdated, or overlapping another)", item.author, change()));
+            continue;
+        }
+        if against(&r) {
+            skipped.push(format!("{}: {} (on or against a mark the text has)", item.author, change()));
             continue;
         }
         let (old, new) = (&current[r.clone()], item.replacement.as_deref().unwrap_or(""));
@@ -43,7 +92,10 @@ pub fn markdown_with_changes(current: &str, items: &[Item]) -> Export {
             (false, true) => format!("{{--{old}--}}"),
             (false, false) => format!("{{~~{old}~>{new}~~}}"),
         };
-        if let Some(note) = item.record.text.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        let note = item.record.text.as_deref().map(str::trim).filter(|t| !t.is_empty());
+        if in_text {
+            text.push_str(&signed(&item.author, note.unwrap_or("")));
+        } else if let Some(note) = note {
             text.push_str(&format!("{{>>{}: {note}<<}}", item.author));
         }
         taken.push(r.clone());
@@ -52,7 +104,8 @@ pub fn markdown_with_changes(current: &str, items: &[Item]) -> Export {
     }
     for item in open().filter(|i| i.kind == Kind::Comment && fits(&i.range)) {
         let r = item.range.clone();
-        let note = format!("{{>>{}: {}<<}}", item.author, item.record.text.as_deref().unwrap_or("").trim());
+        let body = item.record.text.as_deref().unwrap_or("").trim();
+        let note = if in_text { signed(&item.author, body) } else { format!("{{>>{}: {body}<<}}", item.author) };
         if r.is_empty() || overlaps(&taken, &r) || current[r.clone()].contains("==}") {
             // at the end of the text it is on, after a mark it would be inside
             let at = taken.iter().find(|t| t.start < r.end && r.end < t.end).map_or(r.end, |t| t.end);
@@ -100,6 +153,26 @@ mod tests {
         assert_eq!(
             made.markdown,
             "{++Note: ++}{--The --}grounding line retreats {~~rapidly~>slowly~~} when the bed slopes.\nWe show this in {==Fig. 3==}{>>Jane Doe: a comment<<}."
+        );
+    }
+
+    #[test]
+    fn in_the_text_each_mark_is_signed_and_kept_off_the_marks_there() {
+        const MARKED: &str = "The grounding line {++now ++}{>>@MP<<}retreats rapidly when the bed slopes.";
+        let d = doc("paper.md");
+        let jane = Person::new("Jane Doe", "");
+        crate::review::store::write_base(&d, MARKED).unwrap();
+        put(&d, &jane, make("jane-doe-1", Kind::Suggestion, MARKED, "rapidly", Some("slowly")));
+        put(&d, &jane, make("jane-doe-2", Kind::Suggestion, MARKED, "retreats", Some("moves")));
+        put(&d, &jane, make("jane-doe-3", Kind::Comment, MARKED, "bed", None));
+        let items = Review::load(&d).unwrap().items(MARKED);
+        let made = in_text(MARKED, &items);
+        assert_eq!((made.suggestions, made.comments), (1, 1));
+        assert_eq!(made.skipped.len(), 1, "{:?}", made.skipped);
+        assert!(made.skipped[0].contains("against a mark"), "{:?}", made.skipped);
+        assert_eq!(
+            made.markdown,
+            "The grounding line {++now ++}{>>@MP<<}retreats {~~rapidly~>slowly~~}{>>@Jane Doe:<<} when the {==bed==}{>>@Jane Doe: a comment<<} slopes."
         );
     }
 

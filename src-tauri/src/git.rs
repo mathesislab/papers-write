@@ -14,7 +14,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Webview};
 use write_core::review::Item;
 use write_core::review::compare::{as_items, suggestions};
-use write_core::review::history::{self, Added, Attribution};
+use write_core::project::ReviewStore;
+use write_core::review::history::{self, Added, Attribution, Change};
 
 use crate::build::{find_tool, search_path};
 use crate::documents;
@@ -451,25 +452,59 @@ fn commit_of(folder: &Path, rev: &str) -> Result<String, String> {
         .map_err(|_| format!("{rev}: no such branch or commit"))
 }
 
-/// The edits made to `doc` from the commit `start` to `end` written as the suggestions of their authors (each hunk
-/// under the commit that made it), on the text at `start` as their base. That text, and what was written.
-fn as_suggestions(doc: &Path, start: &str, end: &str) -> Result<(String, Added), String> {
+/// The edits made to `doc` from the commit `start` to `end` as the suggestions of their authors (each hunk under the
+/// commit that made it), with positions in the text at `start`. That text, and the suggestions.
+fn as_suggestions(doc: &Path, start: &str, end: &str) -> Result<(String, Vec<Change>), String> {
     let folder = folder_of(doc);
     let name = doc.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let (from, to) = (text_at(doc, start)?, text_at(doc, end)?);
     if from == to {
-        return Ok((from, Added::default()));
+        return Ok((from, Vec::new()));
     }
     let who = Attribution::read(|args| git(folder, args), &name, start, end)?;
     let newest = who.commits.last().ok_or_else(|| format!("no commit from {start} to {end}"))?;
     let changes = history::suggestions(&from, &to, |h| who.commit_of(&from, &to, h).unwrap_or(newest).clone());
-    let added = history::add(doc, &from, &changes).map_err(|e| e.to_string())?;
-    Ok((from, added))
+    Ok((from, changes))
+}
+
+/// `changes` (positions in `start`) put where the project of `doc` keeps its review, and the file set to `current`
+/// with them. In the review's notes (the default): written there with `start` as their base, and the file is
+/// `current`. In the text (`review = "in-file"`): the file is `current` with the changes as CriticMarkup, each mark
+/// signed by its author, made the way Export as CriticMarkup makes its marks (`exchange::marks_of`); a change that
+/// cannot be marked (outdated, or against a mark the text has) is listed in `left_out`, and with `whole` nothing is
+/// done and it is said, since the change would be lost.
+pub(crate) fn suggest(doc: &Path, start: &str, current: &str, changes: &[Change], whole: bool) -> Result<Added, String> {
+    let (text, added) = match write_core::project::review_store_of(doc) {
+        ReviewStore::Notes => (current.to_string(), history::add(doc, start, changes).map_err(|e| e.to_string())?),
+        ReviewStore::InFile => {
+            let name = doc.file_name().unwrap_or_default().to_string_lossy();
+            let made = write_core::exchange::marks_of(&name, start, current, changes)?;
+            if whole && !made.skipped.is_empty() {
+                return Err(format!(
+                    "{} of the edits cannot be marked in the text: they touch marks it has already. Nothing was changed.\n{}",
+                    made.skipped.len(),
+                    made.skipped.join("\n")
+                ));
+            }
+            let mut people: Vec<String> = Vec::new();
+            for c in changes {
+                if made.suggestions > 0 && !people.contains(&c.author.name) {
+                    people.push(c.author.name.clone());
+                }
+            }
+            (made.markdown, Added { added: made.suggestions, already: 0, people, left_out: made.skipped })
+        }
+    };
+    if read(doc)? != text {
+        crate::files::write(doc, &text).map_err(|e| format!("{}: {e}", doc.display()))?;
+    }
+    Ok(added)
 }
 
 /// The edits of the branch or commit `rev` since it left the history of HEAD (`git merge-base HEAD <rev>`) as
-/// suggestions: only what was done there, never the undoing of what was written here since.
-pub(crate) fn review_revision(doc: &Path, rev: &str) -> Result<Added, String> {
+/// suggestions (for [`suggest`]): only what was done there, never the undoing of what was written here since. The
+/// text they are on (that of the merge-base), and the suggestions.
+pub(crate) fn revision_changes(doc: &Path, rev: &str) -> Result<(String, Vec<Change>), String> {
     let folder = folder_of(doc);
     let tip = commit_of(folder, rev)?;
     let base = git(folder, &["merge-base", "HEAD", &tip]).map_err(|_| format!("{rev} has no history in common with this branch"))?;
@@ -479,7 +514,7 @@ pub(crate) fn review_revision(doc: &Path, rev: &str) -> Result<Added, String> {
             "{rev} is in the history of this branch already: its edits are in the text. Git ▸ Review Commits… turns committed edits back into suggestions."
         ));
     }
-    Ok(as_suggestions(doc, base, &tip)?.1)
+    as_suggestions(doc, base, &tip)
 }
 
 // ---- Review Branch…
@@ -597,7 +632,8 @@ pub struct Reviewed {
 /// The edits committed to `doc` from the commit `first` to HEAD turned back into suggestions: each change of them
 /// under the author of its commit, on the text before `first` as their base, and the file set back to that text, so
 /// that accepting a suggestion brings its change back. The document must have no changes not committed (they would
-/// be lost). Nothing is committed: the Commit sheet does it.
+/// be lost). In a project that keeps its review in the text, the suggestions are marks in that text ([`suggest`]).
+/// Nothing is committed: the Commit sheet does it.
 pub(crate) fn review_commits_of(doc: &Path, first: &str) -> Result<Reviewed, String> {
     let folder = folder_of(doc);
     let name = doc.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -610,10 +646,8 @@ pub(crate) fn review_commits_of(doc: &Path, first: &str) -> Result<Reviewed, Str
     }
     let start = commit_of(folder, &format!("{first}^")).map_err(|_| format!("{} is the first commit: there is nothing before it to go back to", short(&first)))?;
     let head = commit_of(folder, "HEAD")?;
-    let (text, added) = as_suggestions(doc, &start, &head)?;
-    if read(doc)? != text {
-        crate::files::write(doc, &text).map_err(|e| format!("{}: {e}", doc.display()))?;
-    }
+    let (text, changes) = as_suggestions(doc, &start, &head)?;
+    let added = suggest(doc, &text, &text, &changes, true)?;
     Ok(Reviewed { added, since: short(&start).to_string() })
 }
 
@@ -1021,6 +1055,112 @@ mod tests {
         let root = sh(&dir, &["rev-list", "--max-parents=0", "HEAD"]);
         sh(&dir, &["checkout", "--", "paper.md"]);
         assert!(review_commits_of(&doc, root.trim()).unwrap_err().contains("first commit"));
+    }
+
+    /// A repository whose project keeps its review in the text (`review = "in-file"`), and a way to commit the
+    /// document as someone.
+    fn in_file_repo(name: &str) -> (PathBuf, PathBuf) {
+        let dir = repo(name);
+        std::fs::write(dir.join("write.toml"), "review = \"in-file\"\n").unwrap();
+        sh(&dir, &["add", "write.toml"]);
+        sh(&dir, &["commit", "-q", "-m", "In the text"]);
+        assert_eq!(write_core::project::review_store_of(&dir.join("paper.md")), ReviewStore::InFile);
+        let doc = dir.join("paper.md");
+        (dir, doc)
+    }
+
+    fn commit_as(dir: &Path, who: &str, text: &str, subject: &str) {
+        std::fs::write(dir.join("paper.md"), text).unwrap();
+        let (name, mail) = (format!("user.name={who}"), format!("user.email={}@example.org", who.split(' ').next().unwrap()));
+        sh(dir, &["-c", &name, "-c", &mail, "commit", "-q", "-am", subject]);
+    }
+
+    /// The suggestions of a text of marks, as the import reads them: whose, the text they replace, and what with.
+    fn marks(text: &str) -> Vec<(String, String, String)> {
+        let original = write_core::review::critic::view::shown(text, Shown::Original);
+        let read = write_core::review::critic::import(&original, text, &[], "nobody", false);
+        assert!(read.unplaced.is_empty(), "{:?}", read.unplaced);
+        read.suggestions
+            .iter()
+            .map(|(who, r)| (who.clone(), original[r.from..r.to].to_string(), r.insert.clone().unwrap_or_default()))
+            .collect()
+    }
+
+    use write_core::review::critic::view::Shown;
+
+    #[test]
+    fn committed_edits_come_back_as_marks_in_the_text() {
+        let (dir, doc) = in_file_repo("recall-in-file");
+        commit_as(&dir, "Jane Doe", "The line retreats slowly now.\n", "Slower");
+        commit_as(&dir, "Bob Smith", "The line retreats slowly now.\nReally.\n", "Really");
+        let recent = recent_of(&doc).unwrap();
+        let first = recent.commits.iter().find(|c| c.subject == "Slower").unwrap().rev.clone();
+        // not with changes not committed
+        std::fs::write(&doc, "typed\n").unwrap();
+        assert!(review_commits_of(&doc, &first).unwrap_err().contains("not committed"));
+        sh(&dir, &["checkout", "--", "paper.md"]);
+        let done = review_commits_of(&doc, &first).unwrap();
+        assert_eq!((done.added.added, done.added.people.clone()), (2, vec!["Jane Doe".to_string(), "Bob Smith".to_string()]));
+        assert!(done.added.left_out.is_empty());
+        // the marks are in the text, each signed by the author of its commit; the review's notes have nothing
+        let now = std::fs::read_to_string(&doc).unwrap();
+        assert!(now.contains("{~~rapidly~>slowly~~}{>>@Jane Doe:<<}"), "{now}");
+        assert!(now.contains("{>>@Bob Smith:<<}"), "{now}");
+        let got = marks(&now);
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert_eq!(got[0], ("Jane Doe".into(), "rapidly".into(), "slowly".into()));
+        assert_eq!(got[1].0, "Bob Smith");
+        assert!(got[1].2.contains("Really."), "{got:?}");
+        assert!(write_core::review::Review::load(&doc).unwrap().files.is_empty());
+        // accepted, they give the text at the end; rejected, the text before them
+        assert_eq!(write_core::review::critic::view::shown(&now, Shown::Accepted), "The line retreats slowly now.\nReally.\n");
+        assert_eq!(write_core::review::critic::view::shown(&now, Shown::Original), "The line retreats rapidly now.\n");
+    }
+
+    #[test]
+    fn an_edit_against_a_mark_the_text_has_is_not_marked() {
+        let (dir, doc) = in_file_repo("against-in-file");
+        commit_as(&dir, "Test User", "The line retreats {++rapidly ++}{>>@TU<<}now.\n", "A suggestion");
+        // Jane accepts the suggestion by hand: her edit takes the mark's delimiters out
+        commit_as(&dir, "Jane Doe", "The line retreats rapidly now.\n", "Accepted");
+        let first = sh(&dir, &["rev-parse", "HEAD"]);
+        let e = review_commits_of(&doc, first.trim()).unwrap_err();
+        assert!(e.contains("cannot be marked") && e.contains("Nothing was changed"), "{e}");
+        assert_eq!(std::fs::read_to_string(&doc).unwrap(), "The line retreats rapidly now.\n");
+    }
+
+    #[test]
+    fn a_branch_comes_as_marks_on_the_text_now() {
+        let (dir, doc) = in_file_repo("branch-in-file");
+        sh(&dir, &["checkout", "-q", "-b", "jane"]);
+        commit_as(&dir, "Jane Doe", "The line retreats slowly now.\n", "Slower");
+        sh(&dir, &["checkout", "-q", "main"]);
+        // here, written since the branch left: kept, and the branch's edit placed on it
+        commit_as(&dir, "Test User", "Since then, the line retreats rapidly now.\n", "Since then");
+        let current = std::fs::read_to_string(&doc).unwrap();
+        let (start, changes) = revision_changes(&doc, "jane").unwrap();
+        let made = suggest(&doc, &start, &current, &changes, false).unwrap();
+        assert_eq!((made.added, made.people.clone()), (1, vec!["Jane Doe".to_string()]));
+        let now = std::fs::read_to_string(&doc).unwrap();
+        assert_eq!(now, "Since then, the line retreats {~~rapidly~>slowly~~}{>>@Jane Doe:<<} now.\n");
+        assert_eq!(write_core::review::critic::view::shown(&now, Shown::Accepted), "Since then, the line retreats slowly now.\n");
+        assert_eq!(write_core::review::critic::view::shown(&now, Shown::Original), current);
+    }
+
+    #[test]
+    fn in_a_notes_project_the_text_has_no_marks() {
+        let dir = repo("branch-notes");
+        let doc = dir.join("paper.md");
+        sh(&dir, &["checkout", "-q", "-b", "jane"]);
+        commit_as(&dir, "Jane Doe", "The line retreats slowly now.\n", "Slower");
+        sh(&dir, &["checkout", "-q", "main"]);
+        let current = std::fs::read_to_string(&doc).unwrap();
+        let (start, changes) = revision_changes(&doc, "jane").unwrap();
+        let made = suggest(&doc, &start, &current, &changes, false).unwrap();
+        assert_eq!(made.added, 1);
+        assert_eq!(std::fs::read_to_string(&doc).unwrap(), current);
+        let items = write_core::review::Review::load(&doc).unwrap().items(&current);
+        assert_eq!(write_core::review::apply_all(&current, &items), "The line retreats slowly now.\n");
     }
 
     #[test]

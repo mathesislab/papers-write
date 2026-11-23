@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, EventTarget, Manager, Webview};
 use write_core::exchange::{self, Imported};
-use write_core::review::history::{self, Added, Change};
+use write_core::review::history::{Added, Change};
 use write_core::review::{self, Person};
 
 use crate::{documents, git};
@@ -49,8 +49,9 @@ pub struct Author {
 
 /// The edits of `source` written as suggestions. A file: the changes from `current` to it, under `author` (their own
 /// file, as if they had suggested). A branch or a commit: what was done there since it left this branch's history,
-/// each change under the author of the commit that made it (git.rs, `review_revision`). Those the review has already
-/// are not written again.
+/// each change under the author of the commit that made it (git.rs, `revision_changes`). Those the review has already
+/// are not written again. In a project that keeps its review in the text, they are marks written into the document
+/// instead (git.rs, `suggest`).
 fn compare(doc: &Path, current: &str, source: &Source, author: Option<&Author>) -> Result<Added, String> {
     match (&source.file, &source.revision) {
         (Some(file), _) => {
@@ -65,9 +66,12 @@ fn compare(doc: &Path, current: &str, source: &Source, author: Option<&Author>) 
                 .into_iter()
                 .map(|r| Change { author: me.clone(), record: r.round(round.clone()) })
                 .collect();
-            history::add(doc, current, &changes).map_err(|e| e.to_string())
+            git::suggest(doc, current, current, &changes, false)
         }
-        (None, Some(rev)) => git::review_revision(doc, rev.trim()),
+        (None, Some(rev)) => {
+            let (start, changes) = git::revision_changes(doc, rev.trim())?;
+            git::suggest(doc, &start, current, &changes, false)
+        }
         (None, None) => Err("Choose a branch, a commit or a file to compare with".into()),
     }
 }

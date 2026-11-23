@@ -149,6 +149,8 @@
   async function reviewBranch() {
     const b = branching;
     if (!b || !b.chosen || b.busy) return;
+    // in a project that keeps its review in the text, the marks are written into the file: what is typed goes first
+    await flush();
     [b.busy, b.done, b.error] = [true, "", ""];
     try {
       const made = await invoke<Added>("compare_as_suggestions", { source: { revision: b.chosen }, author: null });

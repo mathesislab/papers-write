@@ -1136,6 +1136,8 @@
   let symbols = $state<[string, string][]>([]);
   let colour = $state<number | null>(null);
   let follows = $state<"cursor" | "view">("cursor");
+  /** the suggestions in the text marked, accepted or rejected in the preview (as last told) */
+  let changes = "";
   /** the system's spelling on the prose (Settings ▸ Editor) */
   let spelling = $state(true);
   /** the file written as it is typed; off: only when saved, a draft kept meanwhile (Settings ▸ Editor) */
@@ -1158,6 +1160,9 @@
     colour = s.review_colour;
     initials = s.review_initials;
     follows = s.preview_follows;
+    // the suggestions shown otherwise: the preview made again
+    if (changes && changes !== s.preview_changes) void refresh();
+    changes = s.preview_changes;
     const now = `${s.review_name}\n${s.review_email}`;
     if (who && who !== now) session.identity();
     who = now;

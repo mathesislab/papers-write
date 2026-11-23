@@ -52,9 +52,10 @@
 
   type Chapter = { path: string; title: string };
 
-  /** The ▾ in the corner: Follows the Cursor or the View (beside the text), Panes ▸, Settings ▸ Editor. */
+  /** The ▾ in the corner: Follows the Cursor or the View (beside the text), the suggestions in the text marked,
+   *  accepted or rejected, Panes ▸, Settings ▸ Editor. */
   async function settingsMenu() {
-    const now = await invoke<{ preview_follows: "cursor" | "view" }>("settings").catch(() => null);
+    const now = await invoke<{ preview_follows: "cursor" | "view"; preview_changes: "marked" | "accepted" | "original" }>("settings").catch(() => null);
     const items = await Promise.all([
       // in a tab of its own the preview always follows the view
       ...(!inTab
@@ -66,6 +67,17 @@
             }),
           )
         : []),
+      ...(!inTab ? [PredefinedMenuItem.new({ item: "Separator" })] : []),
+      ...(
+        [
+          ["marked", "Suggestions Marked"],
+          ["accepted", "Suggestions Accepted"],
+          ["original", "Suggestions Rejected"],
+        ] as const
+      ).map(([how, text]) =>
+        CheckMenuItem.new({ text, checked: (now?.preview_changes ?? "marked") === how, action: () => void invoke("set_preview_changes", { how }) }),
+      ),
+      PredefinedMenuItem.new({ item: "Separator" }),
       ...(panes
         ? [
             Submenu.new({
@@ -151,9 +163,9 @@
   });
 
   const SHEET = `
-    :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fdfdfd; --muted: #6e6e73; --rule: #888; --code: rgba(0,0,0,.05); --link: #2f6fde; }
-    @media (prefers-color-scheme: dark) { :root:not([data-theme=light]) { --fg: #e8e8ea; --bg: #1e1e20; --muted: #9a9aa0; --rule: #888; --code: rgba(255,255,255,.08); --link: #7ea6f5; } }
-    :root[data-theme=dark] { color-scheme: dark; --fg: #e8e8ea; --bg: #1e1e20; --muted: #9a9aa0; --rule: #888; --code: rgba(255,255,255,.08); --link: #7ea6f5; }
+    :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fdfdfd; --muted: #6e6e73; --rule: #888; --code: rgba(0,0,0,.05); --link: #2f6fde; --ins: #1a7f37; --del: #cf222e; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme=light]) { --fg: #e8e8ea; --bg: #1e1e20; --muted: #9a9aa0; --rule: #888; --code: rgba(255,255,255,.08); --link: #7ea6f5; --ins: #56d364; --del: #ff7b72; } }
+    :root[data-theme=dark] { color-scheme: dark; --fg: #e8e8ea; --bg: #1e1e20; --muted: #9a9aa0; --rule: #888; --code: rgba(255,255,255,.08); --link: #7ea6f5; --ins: #56d364; --del: #ff7b72; }
     :root[data-theme=light] { color-scheme: light; }
     html { background: var(--bg); }
     body { box-sizing: border-box; max-width: 42em; margin: 0 auto; padding: 2em 1.5em 40vh; color: var(--fg);
@@ -190,6 +202,13 @@
     .pw-chapter.previous a:only-child[data-chapter] { margin-left: 0; }
     .pw-chapter a { color: var(--muted); }
     .pw-chapter a:hover { color: var(--link); }
+    /* the suggestions in the text itself (CriticMarkup, critic/view.rs) */
+    .critic-ins { color: var(--ins); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+    .critic-del { color: var(--del); text-decoration: line-through; }
+    .critic-ins .citation, .critic-del .citation { white-space: normal; }
+    .critic-mark { background: rgba(255, 221, 0, 0.35); border-radius: 2px; }
+    .critic-note { font: italic .78em/1.3 system-ui, sans-serif; color: var(--muted); background: var(--code); border-radius: 3px;
+      padding: 0 .35em; margin: 0 .15em; text-align: left; }
     .synced { background: rgba(255, 221, 0, 0.35); border-radius: 3px; transition: background 1.2s ease-out; }
   `;
 

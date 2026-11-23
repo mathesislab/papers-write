@@ -263,6 +263,8 @@ pub fn render(text: &str, dir: &Path, saved: bool, bibs: &[PathBuf], labels: Opt
 /// a filter), then the citations (a bibliography that is missing, or one that does not parse): the text still shows.
 fn render_with(text: &str, dir: &Path, saved: bool, bibs: &[PathBuf], labels: Option<&Path>, turn: Turn, filter: Option<&Path>) -> Result<Preview, String> {
     let start = Instant::now();
+    // the suggestions in the text itself marked, accepted or rejected, as the settings say
+    let text = &write_core::review::critic::view::shown(text, crate::settings::get().preview_changes);
     let pandoc = pandoc()?;
     let mut citeproc = saved || text.contains("bibliography") || text.contains("references:");
     let mut filter = filter;
@@ -563,6 +565,24 @@ Unknown @fig:nope, and a range [@fig:loop; @fig:second].
     }
 
     #[test]
+    fn criticmarkup_drawn_as_changes() {
+        if pandoc().is_err() {
+            return;
+        }
+        let dir = scratch("critic");
+        let generation = AtomicU64::new(1);
+        // the settings' default: the marks drawn
+        let text = "{++# Added++}\n\nKept {~~old *one*~>new **one**~~}{>>@MP<<} and {--gone\nover two lines--}.\n";
+        let p = render(text, &dir, false, &[], None, Turn { generation: &generation, mine: 1 }).unwrap();
+        assert!(p.error.is_none(), "{:?}", p.error);
+        let h = &p.html;
+        assert!(h.contains("<span class=\"critic-ins\">Added</span></h1>"), "{h}");
+        assert!(h.contains("<span class=\"critic-del\">old <em>one</em></span><span class=\"critic-ins\">new <strong>one</strong></span>"), "{h}");
+        assert!(h.contains("<span class=\"critic-note\">@MP</span>") && !h.contains("{"), "{h}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn quarto_crossrefs_with_quarto_words() {
         if pandoc().is_err() {
             return;
@@ -701,10 +721,12 @@ static READY: std::sync::LazyLock<Mutex<HashMap<PathBuf, (u64, Preview)>>> = std
 /// The most kept.
 const READY_MOST: usize = 6;
 
+/// The hash of `text` as shown: a preview made with the suggestions shown otherwise is not this one.
 fn hash_of(text: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     text.hash(&mut h);
+    crate::settings::get().preview_changes.hash(&mut h);
     h.finish()
 }
 

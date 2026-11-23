@@ -27,6 +27,8 @@ export type Settings = {
   /** 1 to 6, or null: from the name */
   review_colour: number | null;
   preview_follows: "cursor" | "view";
+  /** the suggestions in the text itself (CriticMarkup) in the preview */
+  preview_changes: "marked" | "accepted" | "original";
   texmark_path: string;
   quarto_path: string;
   latexmk_path: string;

@@ -108,6 +108,8 @@ pub struct Settings {
 
     /// the preview scrolled to the block the cursor is in, or to what the text shows
     pub preview_follows: PreviewFollows,
+    /// the suggestions in the text itself (CriticMarkup) in the preview: marked, all accepted, or all rejected
+    pub preview_changes: write_core::review::critic::view::Shown,
 
     /// the tools, each the file to run; empty: found as usual (PATH and the folders the app looks in)
     pub texmark_path: String,
@@ -160,6 +162,7 @@ impl Default for Settings {
             review_initials: String::new(),
             review_colour: None,
             preview_follows: PreviewFollows::Cursor,
+            preview_changes: Default::default(),
             texmark_path: String::new(),
             quarto_path: String::new(),
             latexmk_path: String::new(),
@@ -419,6 +422,14 @@ pub fn set_preview_follows(app: AppHandle, how: PreviewFollows) {
     put(&app, settings);
 }
 
+/// The suggestions in the preview marked, all accepted or all rejected (the preview's ▾).
+#[tauri::command]
+pub fn set_preview_changes(app: AppHandle, how: write_core::review::critic::view::Shown) {
+    let mut settings = get();
+    settings.preview_changes = how;
+    put(&app, settings);
+}
+
 /// The Settings window, at `section` (a menu's Settings…).
 #[tauri::command]
 pub fn show_settings(app: AppHandle, section: Option<String>) {
@@ -555,6 +566,7 @@ mod tests {
             review_initials: "AR".into(),
             review_colour: Some(3),
             preview_follows: PreviewFollows::View,
+            preview_changes: write_core::review::critic::view::Shown::Accepted,
             texmark_path: "/opt/bin/texmark".into(),
             quarto_path: "/opt/bin/quarto".into(),
             latexmk_path: "/opt/bin/latexmk".into(),

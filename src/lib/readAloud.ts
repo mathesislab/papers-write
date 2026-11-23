@@ -6,9 +6,12 @@ import { MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { plainOf } from "$lib/pdfSearch";
 import type { Settings } from "$lib/settings";
 
-/** Markdown or LaTeX as it is read: the marks, citations, comments, math and code left out, line by line. */
+/** Markdown or LaTeX as it is read: the marks, citations, comments, math and code left out, line by line. The
+ *  suggestions of CriticMarkup accepted first, over the whole text: a mark may run over several lines. */
 export function spokenOf(source: string): string {
   return source
+    .replace(/\{--[\s\S]*?--\}|\{>>[\s\S]*?<<\}/g, " ")
+    .replace(/\{~~([\s\S]*?)~>([\s\S]*?)~~\}/g, "$2")
     .replace(/<!--[\s\S]*?-->/g, " ")
     .split("\n")
     .map(plainOf)

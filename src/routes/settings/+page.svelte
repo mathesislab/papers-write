@@ -230,6 +230,17 @@
             <option value="view">The View</option>
           </select>
         </label>
+        <label class="row">
+          <span>
+            <span class="label">Suggestions in the preview</span>
+            <span class="hint">The suggestions and comments kept in the text itself (CriticMarkup): marked as changes, or the text with all of them accepted, or all rejected</span>
+          </span>
+          <select bind:value={settings.preview_changes} onchange={save}>
+            <option value="marked">Marked</option>
+            <option value="accepted">All Accepted</option>
+            <option value="original">All Rejected</option>
+          </select>
+        </label>
       </section>
 
       <section>

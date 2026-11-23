@@ -150,6 +150,7 @@ pub fn run() {
             readaloud::reading,
             settings::set_settings,
             settings::set_preview_follows,
+            settings::set_preview_changes,
             settings::pin_project_bar,
             settings::show_settings,
             settings::set_text_width,

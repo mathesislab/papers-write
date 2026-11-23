@@ -14,14 +14,17 @@
 // cursor goes through the text as without Live Preview, and the line it comes to is shown as typed. A block revealed
 // is its text, with its rendering kept under it; a figure that shares its line with other text is always so.
 //
-// The renderings are the tooltips' (`HoverSources.math`: pandoc's MathML) and the figures' images, each asked once
-// while the editor lives (`Renderings`); an element is shown as typed until its rendering has come, and when it cannot
-// be rendered (an image not found).
+// The renderings are the tooltips' (`HoverSources.math`: pandoc's MathML; `citation`: a reference's label, "Schoof
+// (2007)") and the figures' images, each asked once while the editor lives (`Renderings`); an element is shown as typed
+// until its rendering has come, and when it cannot be rendered (an image or a citation key not found: the key's
+// underline stays in sight). Cross-references read as the label's number ("Figure 2", `labelNumbers`), which the
+// editor finds itself; one to a label it does not know stays as typed.
 
 import { syntaxTree } from "@codemirror/language";
 import { StateEffect, StateField, type EditorState, type Extension, type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
-import { INCLUDE, imagePath, isFile, mathOf } from "./hover.ts";
+import { INCLUDE, imagePath, isFile, labelNumbers, mathOf, refText } from "./hover.ts";
+import { refKindOf } from "./lang/cite.ts";
 import { outline } from "./outline.ts";
 import { criticMarks } from "./review/criticMode.ts";
 import { shownOf } from "./review/overlay.ts";
@@ -43,9 +46,45 @@ export type Span = { from: number; to: number };
 /** What an element is rendered as: a formula (by `HoverSources.math`), a figure (its image by `image`), the front
  *  matter (its title). */
 export type Rendering =
-  | { kind: "math"; tex: string; display: boolean }
+  | { kind: "math"; tex: string; display: boolean; number?: string }
   | { kind: "image"; path: string; caption?: string }
-  | { kind: "front"; title?: string };
+  | { kind: "front"; title?: string }
+  | { kind: "cite"; parts: CitePart[]; group: boolean };
+
+/** A part of a citation: its text as typed (a prefix, a locator, `; `), a citation key (`suppress`: `-@key`, the year
+ *  alone), or a cross-reference as it reads ("Figure 2"). */
+export type CitePart = string | { key: string; suppress: boolean } | { ref: string };
+
+/** The narrative form of a reference is its label ("Schoof (2007)"); in brackets, its parenthetical form ("Schoof
+ *  2007"), or the year alone (`-@key`). */
+function citeForm(label: string, group: boolean, suppress: boolean): string {
+  const m = /^(.*?)\s*\(([^()]*)\)$/.exec(label);
+  if (!m || !group) return label;
+  return suppress ? m[2] : `${m[1]} ${m[2]}`;
+}
+
+/** What a citation reads, its references' labels from `label` (undefined: not come yet; null: not found): "Schoof
+ *  (2007)", "(see Schoof 2007, p. 3; Smith 2010)", "Figure 2". Undefined until every label has come, null if one is
+ *  not found. */
+export function citationText(what: { parts: CitePart[]; group: boolean }, label: (key: string) => string | null | undefined): string | null | undefined {
+  let text = "";
+  let cites = false;
+  // every label asked, before any answer is waited for
+  let missing: null | undefined | false = false;
+  for (const part of what.parts) {
+    if (typeof part === "string") text += part;
+    else if ("ref" in part) text += part.ref;
+    else {
+      const found = label(part.key);
+      if (found == null) missing = missing === null ? null : found;
+      else text += citeForm(found, what.group, part.suppress);
+      cites = true;
+    }
+  }
+  if (missing !== false) return missing;
+  // references alone in brackets read without them, as the preview has them
+  return what.group && cites ? `(${text.trim()})` : text.trim();
+}
 
 /** What is drawn of the text: a class on a line (at its start), a class on a range, a section number before a
  *  heading, a range hidden (a mark) or rendered unless the element it is part of, `scope`, is revealed. */
@@ -89,16 +128,27 @@ function linesOfNode(state: EditorState, node: SyntaxNode): Span & { alone: bool
 /** Whether a math node is a block: display math alone on its lines (its attributes after it). */
 const isMathBlock = (state: EditorState, node: SyntaxNode) => node.name !== "InlineMath" && linesOfNode(state, node).alone;
 
+/** The figure label of the attributes after `node` (`![a](b){#fig:x}`), if any. */
+function figureLabel(state: EditorState, node: SyntaxNode): string | undefined {
+  const next = node.nextSibling;
+  if (next?.name !== "Attributes" || state.sliceDoc(node.to, next.from).trim()) return undefined;
+  const label = next.getChildren("LabelName").map((n) => state.sliceDoc(n.from, n.to));
+  return label.find((l) => refKindOf(l) === "fig");
+}
+
 /** The figures of the text (`![caption](path)` in Markdown, `\includegraphics{path}` anywhere), in order: of a path
- *  that is a file. */
-export function figuresOf(state: EditorState): Block[] {
+ *  that is a file. A figure labelled has its number before its caption ("Figure 2: …"), from `labels`. */
+export function figuresOf(state: EditorState, labels: ReadonlyMap<string, string> = new Map()): Block[] {
   const found: Block[] = [];
   syntaxTree(state).iterate({
     enter(node) {
       if (node.name !== "Image") return;
       const url = node.node.getChild("URL");
       const path = url ? imagePath(state.sliceDoc(url.from, url.to)) : "";
-      const caption = /^!\[([^]*)\]/.exec(state.sliceDoc(node.from, url ? url.from : node.to))?.[1]?.trim();
+      let caption = /^!\[([^]*)\]/.exec(state.sliceDoc(node.from, url ? url.from : node.to))?.[1]?.trim();
+      const label = figureLabel(state, node.node);
+      const number = label && labels.get(label);
+      if (label && number) caption = caption ? `${refText(label, number)}: ${caption}` : refText(label, number);
       const alone = node.node.parent?.name === "Paragraph";
       const lines = linesOfNode(state, node.node);
       if (isFile(path)) found.push({ ...lines, alone: alone && lines.alone, what: { kind: "image", path, ...(caption ? { caption } : {}) } });
@@ -116,11 +166,15 @@ export function figuresOf(state: EditorState): Block[] {
   return found.sort((a, b) => a.from - b.from);
 }
 
-/** The blocks of the text, in order: display math, figures, the front matter. In a LaTeX file only the figures, under
- *  their lines. */
-export function blocksOf(state: EditorState, latex = false): Block[] {
+/** The numbers of the labels and equations (`labelNumbers`). */
+type Numbers = { labels: ReadonlyMap<string, string>; equations: ReadonlyMap<number, string> };
+const NONE: Numbers = { labels: new Map(), equations: new Map() };
+
+/** The blocks of the text, in order: display math (numbered from `numbers`), figures, the front matter. In a LaTeX
+ *  file only the figures, under their lines. */
+export function blocksOf(state: EditorState, latex = false, numbers: Numbers = NONE): Block[] {
   if (latex) return figuresOf(state).map((f) => ({ ...f, alone: false }));
-  const out: Block[] = figuresOf(state);
+  const out: Block[] = figuresOf(state, numbers.labels);
   syntaxTree(state).iterate({
     enter(node) {
       if (node.name === "FrontMatter") {
@@ -130,7 +184,10 @@ export function blocksOf(state: EditorState, latex = false): Block[] {
       }
       if (!MATH.has(node.name)) return;
       const math = isMathBlock(state, node.node) && mathOf(state, node.node);
-      if (math && math.tex) out.push({ ...linesOfNode(state, node.node), what: { kind: "math", tex: math.tex, display: true } });
+      if (math && math.tex) {
+        const number = numbers.equations.get(node.from);
+        out.push({ ...linesOfNode(state, node.node), what: { kind: "math", tex: math.tex, display: true, ...(number ? { number } : {}) } });
+      }
       return false;
     },
   });
@@ -138,14 +195,40 @@ export function blocksOf(state: EditorState, latex = false): Block[] {
 }
 
 /** What is read from the whole text, again as it or its tree changes: the section numbers, by where their heading
- *  begins, and the blocks. */
-export type Analysis = { numbers: Map<number, string>; blocks: Block[] };
+ *  begins, the numbers of the labels (`labelNumbers`), and the blocks. */
+export type Analysis = { numbers: Map<number, string>; labels: ReadonlyMap<string, string>; blocks: Block[] };
 
 /** The analysis of `state`: the headings of the tree as it is (not parsed further: this runs as the text is typed). */
 export function analyse(state: EditorState, latex = false): Analysis {
+  if (latex) return { numbers: new Map(), labels: new Map(), blocks: blocksOf(state, true) };
+  const headings = outline(state, false);
   const numbers = new Map<number, string>();
-  if (!latex) for (const h of outline(state, false)) if (h.number) numbers.set(h.from, h.number);
-  return { numbers, blocks: blocksOf(state, latex) };
+  for (const h of headings) if (h.number) numbers.set(h.from, h.number);
+  const found = labelNumbers(state, headings);
+  return { numbers, labels: found.labels, blocks: blocksOf(state, false, found) };
+}
+
+/** A citation or cross-reference as it reads (`citationText`): its parts, the cross-references numbered from
+ *  `labels`; null when a cross-reference is to a label without a number. */
+function citationOf(state: EditorState, node: SyntaxNode, labels: ReadonlyMap<string, string>): Rendering | null {
+  const group = state.sliceDoc(node.from, node.from + 1) === "[";
+  const parts: CitePart[] = [];
+  let at = group ? node.from + 1 : node.from;
+  for (let key = node.firstChild; key; key = key.nextSibling) {
+    if (key.name !== "CitationKey" && key.name !== "CrossRefKey") continue;
+    const name = state.sliceDoc(key.from, key.to);
+    const suppress = state.sliceDoc(key.from - 2, key.from) === "-@";
+    const start = key.from - (suppress ? 2 : 1);
+    parts.push(state.sliceDoc(at, start));
+    if (key.name === "CrossRefKey") {
+      const number = labels.get(name);
+      if (!number) return null;
+      parts.push({ ref: refText(name, number) });
+    } else parts.push({ key: name, suppress });
+    at = key.to;
+  }
+  parts.push(state.sliceDoc(at, group ? node.to - 1 : node.to));
+  return { kind: "cite", parts, group };
 }
 
 const HEADING = /^(?:ATX|Setext)Heading([1-6])$/;
@@ -166,8 +249,9 @@ function linesOf(state: EditorState, from: number, to: number, start: number, en
 }
 
 /** The delimiters of the CriticMarkup marks from `from` to `to` (`{++`, `~>`, `<<}` ...), hidden unless their mark is
- *  revealed. */
+ *  revealed; the notes' `@initials` are no citations. */
 function criticPieces(state: EditorState, from: number, to: number, out: Piece[]) {
+  const notes: Span[] = [];
   for (const m of criticMarks(state)) {
     if (m.to < from || m.from > to) continue;
     const scope = { from: m.from, to: m.to };
@@ -183,8 +267,12 @@ function criticPieces(state: EditorState, from: number, to: number, out: Piece[]
     if (note < m.to) {
       hide(note, note + 3);
       hide(m.to - 3, m.to);
+      notes.push({ from: note, to: m.to });
     }
   }
+  if (!notes.length) return;
+  const inNote = (p: Piece) => p.type === "render" && p.what.kind === "cite" && notes.some((n) => n.from <= p.from && p.to <= n.to);
+  for (let i = out.length - 1; i >= 0; i--) if (inNote(out[i])) out.splice(i, 1);
 }
 
 /** What is drawn of the text from `from` to `to` (the blocks apart). */
@@ -255,6 +343,12 @@ export function inlinePieces(state: EditorState, from: number, to: number, analy
           hide(marks[0].from, marks[0].to, node);
           hide(marks[1].from, marks[1].to, node);
           out.push({ type: "mark", from: marks[0].to, to: marks[1].from, cls: "cm-lp-link" });
+          return false;
+        }
+        case "Citation":
+        case "CrossRef": {
+          const what = citationOf(state, node.node, analysis.labels);
+          if (what) out.push({ type: "render", from: node.from, to: node.to, scope: scoped(node), what });
           return false;
         }
         case "Image":
@@ -380,9 +474,17 @@ class RenderedWidget extends WidgetType {
         caption.className = "cm-figure-caption";
         caption.textContent = what.caption;
       }
+    } else if (what.kind === "cite") {
+      dom.className = "cm-lp-cite";
+      dom.textContent = this.value;
     } else {
       dom.className = what.title ? "cm-lp-title" : "cm-lp-front";
       dom.textContent = what.title ?? "Front matter";
+    }
+    if (what.kind === "math" && what.number) {
+      const number = dom.appendChild(document.createElement("span"));
+      number.className = "cm-lp-eqno";
+      number.textContent = `(${what.number})`;
     }
     return dom;
   }
@@ -403,40 +505,51 @@ class Renderings {
     this.sources = sources;
   }
 
-  /** What `what` is asked as, and what of the answer is kept. */
-  ask(what: Rendering): { key: string; asking: () => Promise<string | null> } | null {
-    const { hover, image } = this.sources;
-    switch (what.kind) {
-      case "math": {
-        const math = hover?.math;
-        if (!math) return null;
-        const asking = () => math(what.tex, what.display).then((html) => (html.includes("<math") ? html : null));
-        return { key: `math:${what.display ? "display" : "inline"}:${what.tex}`, asking };
-      }
-      case "image":
-        return { key: `image:${what.path}`, asking: () => image(what.path) };
-      case "front":
-        return null;
-    }
-  }
+  /** When a key found nowhere is asked again (the reference may be added to the bibliography meanwhile), by key. */
+  readonly retry = new Map<string, number>();
 
-  /** The rendering of `what` if it has come (null: it cannot be rendered); asked if it was not. */
-  get = (what: Rendering): string | null | undefined => {
-    if (what.kind === "front") return "";
-    const asked = this.ask(what);
-    if (!asked) return null;
-    const { key, asking } = asked;
-    if (this.results.has(key)) return this.results.get(key);
+  /** What came of `asking` under `key`, if it has; asked if it was not. A citation not found (`again`) is asked again
+   *  after a few seconds. */
+  one(key: string, asking: () => Promise<string | null>, again = false): string | null | undefined {
+    if (this.results.has(key)) {
+      const value = this.results.get(key);
+      if (value !== null || !again || Date.now() < (this.retry.get(key) ?? 0)) return value;
+      this.results.delete(key);
+      this.asked.delete(key);
+    }
     if (!this.asked.has(key)) {
       this.asked.add(key);
       asking()
         .then((value) => value || null, () => null)
         .then((value) => {
           this.results.set(key, value);
+          if (value === null && again) this.retry.set(key, Date.now() + RETRY);
           this.tell();
         });
     }
     return undefined;
+  }
+
+  /** The rendering of `what` if it has come (null: it cannot be rendered); asked if it was not. */
+  get = (what: Rendering): string | null | undefined => {
+    const { hover, image } = this.sources;
+    switch (what.kind) {
+      case "front":
+        return "";
+      case "image":
+        return this.one(`image:${what.path}`, () => image(what.path));
+      case "math": {
+        const math = hover?.math;
+        if (!math) return null;
+        const asking = () => math(what.tex, what.display).then((html) => (html.includes("<math") ? html : null));
+        return this.one(`math:${what.display ? "display" : "inline"}:${what.tex}`, asking);
+      }
+      case "cite": {
+        const citation = hover?.citation;
+        const label = (key: string) => (citation ? this.one(`cite:${key}`, () => citation(key).then((found) => found?.label ?? null), true) : null);
+        return citationText(what, label);
+      }
+    }
   };
 
   tell() {
@@ -450,6 +563,8 @@ class Renderings {
 
 /** Renderings have come. */
 const renderedEffect = StateEffect.define<null>();
+/** How long a citation key found nowhere is taken as such before it is asked again, in ms. */
+const RETRY = 5000;
 
 const hidden = Decoration.replace({});
 
@@ -555,7 +670,9 @@ const theme = EditorView.baseTheme({
   ".cm-lp-code": { background: "rgba(127, 127, 127, 0.14)", borderRadius: "3px" },
   ".cm-lp-link": { color: "var(--accent)" },
   // math as the preview has it: display math centred on a line of its own
-  ".cm-lp-block": { padding: "4px 0", textAlign: "center", overflowX: "auto", cursor: "text" },
+  ".cm-lp-block": { position: "relative", padding: "4px 0", textAlign: "center", overflowX: "auto", cursor: "text" },
+  ".cm-lp-eqno": { position: "absolute", right: "0", top: "50%", transform: "translateY(-50%)" },
+  ".cm-lp-cite": { color: "var(--md-cite, var(--accent))", cursor: "text" },
   ".cm-lp-block math": { display: "block", margin: "0 auto" },
   ".cm-lp-inline": { cursor: "text" },
   // a figure as wide as the column at most, its caption under it

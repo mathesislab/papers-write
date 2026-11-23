@@ -5,7 +5,9 @@ import { test } from "node:test";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorState, StateEffect, type Extension } from "@codemirror/state";
 import { parsed } from "./parsed.ts";
-import { blocksOf, figuresOf, hiddenRanges, inlinePieces } from "../src/lib/editor/livePreview.ts";
+import { blocksOf, citationText, figuresOf, hiddenRanges, inlinePieces } from "../src/lib/editor/livePreview.ts";
+import { labelNumbers, refText } from "../src/lib/editor/hover.ts";
+import { outline } from "../src/lib/editor/outline.ts";
 import { criticReview } from "../src/lib/editor/review/criticMode.ts";
 import { shownFacet } from "../src/lib/editor/review/overlay.ts";
 import { paperMarkdown } from "../src/lib/editor/lang/index.ts";
@@ -113,7 +115,7 @@ test("CriticMarkup delimiters hidden off the line", () => {
   assert.deepEqual(hidden(doc, [criticReview(() => "")]), ["{++", "++}", "{~~", "~>", "~~}{>>", "<<}"]);
   assert.deepEqual(hidden("an {++in|sert++}\n", [criticReview(() => "")]), []);
   // without the review in the text, the marks are text
-  assert.deepEqual(hidden(doc), []);
+  assert.deepEqual(hidden(doc.replace("@MP: ", "")), []);
 });
 
 test("an element a suggestion or comment of the review is on is shown as typed", () => {
@@ -137,6 +139,49 @@ test("inline math rendered off the cursor's line, display math as a block of who
 test("math that is not alone on its lines stays inline, and over lines in a paragraph is not rendered", () => {
   assert.deepEqual(blocksOf(md("> $$\n> a\n> $$\n")), []);
   assert.deepEqual(hidden("text $$a\nb$$ more\n\nend"), []);
+});
+
+test("citations and cross-references rendered off the cursor's line", () => {
+  const doc = "As @schoof2007 says [see @a, p. 3; -@b], in @fig:loop and @eq:x.\n\n![Loop](l.png){#fig:loop}\n\n$$ x $$ {#eq:x}\n\nend";
+  assert.deepEqual(hidden(doc).slice(0, 4), ["@schoof2007", "[see @a, p. 3; -@b]", "@fig:loop", "@eq:x"]);
+  // a reference to a label the text lacks stays as typed
+  assert.deepEqual(hidden("see @fig:none\n\nend"), []);
+  assert.deepEqual(hidden("As @schoof|2007 says\n\nend"), []);
+});
+
+test("what a citation reads", () => {
+  const labels: Record<string, string | null | undefined> = { a: "Schoof (2007)", b: "Smith et al. (2010)", gone: null };
+  const label = (key: string) => labels[key];
+  const state = md("As @a says [see @a, p. 3; -@b] and [@fig:x], @gone, [@a; @later]\n\n![X](x.png){#fig:x}\n");
+  const texts = inlinePieces(state, 0, state.doc.line(1).to).flatMap((p) => (p.type === "render" && p.what.kind === "cite" ? [citationText(p.what, label)] : []));
+  assert.deepEqual(texts, ["Schoof (2007)", "(see Schoof 2007, p. 3; 2010)", "Figure 1", null, undefined]);
+});
+
+test("the numbers of the labels, as the preview's filter gives them", () => {
+  const doc = [
+    "# Intro {#sec:intro}",
+    "![A](a.png){#fig:a}",
+    "$$ x $$ {#eq:x}",
+    "$$ y $$",
+    "\\begin{equation}\nz\n\\end{equation}",
+    "\\begin{align*}\nw\n\\end{align*}",
+    "\\begin{align}\nv \\label{eq:v}\n\\end{align}",
+    "## Two",
+    "![B](b.png){#fig:b}",
+    ": Data {#tbl:d}",
+  ].join("\n\n");
+  const state = md(doc);
+  const { labels, equations } = labelNumbers(state, outline(state));
+  assert.deepEqual([...labels], [["sec:intro", "1"], ["fig:a", "1"], ["eq:x", "1"], ["eq:v", "3"], ["fig:b", "2"], ["tbl:d", "1"]]);
+  assert.equal(equations.size, 3);
+  assert.equal(refText("eq:v", "3"), "Equation (3)");
+  assert.equal(refText("fig-a", "1"), "Figure 1");
+  // the figure's caption numbered, the equation's number with it
+  const blocks = blocksOf(state, false, { labels, equations });
+  assert.deepEqual(
+    blocks.flatMap((b) => (b.what.kind === "image" ? [b.what.caption] : b.what.kind === "math" ? [b.what.number] : [])),
+    ["Figure 1: A", "1", undefined, "2", undefined, "3", "Figure 2: B"],
+  );
 });
 
 test("an element over lines is shown as typed from any of them, and nothing hidden crosses a line", () => {

@@ -8,7 +8,7 @@ import type { EditorState, Extension } from "@codemirror/state";
 import { EditorView, hoverTooltip, type Tooltip } from "@codemirror/view";
 import { cellLabels, refKindOf } from "./lang/cite.ts";
 import { latexMathAt } from "./lang/tex-math.ts";
-import { headingTitle } from "./outline.ts";
+import { headingTitle, type Heading } from "./outline.ts";
 import type { HoverSources } from "./types.ts";
 
 type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>["resolve"]>;
@@ -174,6 +174,64 @@ export function labelTarget(state: EditorState, key: string): string | null {
   const kind = kindOf(at.kind);
   const text = short(at.text);
   return kind ? `${kind}: ${text}` : text;
+}
+
+/** The numbers of the document's labels, as the preview's filter (crossref.lua) gives them: figures, tables and
+ *  listings counted in order by their labels (`{#fig:x}`, a code cell's `#| label: fig-x`); equations counted in
+ *  order, each numbered one (labelled, or an environment without a star) once, its labels all of its number; sections
+ *  numbered as `headings` (the outline) has them. `equations` are the numbers of the equations by where they begin. */
+export function labelNumbers(state: EditorState, headings: readonly Heading[]): { labels: Map<string, string>; equations: Map<number, string> } {
+  const labels = new Map<string, string>();
+  const equations = new Map<number, string>();
+  const counts: Record<string, number> = {};
+  const count = (kind: string) => String((counts[kind] = (counts[kind] ?? 0) + 1));
+  const sections = new Map(headings.flatMap((h) => (h.number ? [[h.from, h.number] as const] : [])));
+  const tree = syntaxTree(state);
+  // labels in order: those of the text, and those of code cells
+  const events: { at: number; keys: string[]; equation?: boolean }[] = [];
+  const counted = new Set<number>();
+  const namesIn = (node: SyntaxNode) => node.getChildren("LabelName").map((n) => state.sliceDoc(n.from, n.to));
+  tree.iterate({
+    enter(n) {
+      if (n.name === "DisplayMath" || n.name === "MathEnvironment") {
+        const keys: string[] = [];
+        n.node.cursor().iterate((c) => void (c.name === "LabelName" && keys.push(state.sliceDoc(c.from, c.to))));
+        // `$$ x $$ {#eq:x}` in a paragraph: the attributes after it
+        const next = n.node.nextSibling;
+        const attributes = next?.name === "Attributes" && !state.sliceDoc(n.to, next.from).trim() ? next : null;
+        if (attributes) counted.add(attributes.from), keys.push(...namesIn(attributes));
+        const starred = n.name === "MathEnvironment" && /^\\begin\{[^}]*\*\}/.test(state.sliceDoc(n.from, n.from + 40));
+        if (n.name === "MathEnvironment" ? !starred : keys.length) events.push({ at: n.from, keys, equation: true });
+        return false;
+      }
+      if (n.name === "Attributes" && !counted.has(n.from)) events.push({ at: n.from, keys: namesIn(n.node) });
+    },
+  });
+  for (const c of cellLabels(tree, state.doc.toString())) events.push({ at: c.from, keys: [c.key] });
+  events.sort((a, b) => a.at - b.at);
+  for (const e of events) {
+    if (e.equation) {
+      const n = count("eq");
+      equations.set(e.at, n);
+      for (const key of e.keys) labels.set(key, n);
+      continue;
+    }
+    for (const key of e.keys) {
+      const kind = refKindOf(key);
+      if (kind === "sec") {
+        const number = sections.get(state.doc.lineAt(e.at).from);
+        if (number) labels.set(key, number);
+      } else if (kind && kind !== "eq" && !labels.has(key)) labels.set(key, count(kind));
+    }
+  }
+  return { labels, equations };
+}
+
+/** What a reference to `key` reads, its label numbered `number`: "Figure 2", "Equation (3)", "Section 2.1". */
+export function refText(key: string, number: string): string {
+  const kind = refKindOf(key) ?? "";
+  const n = kind === "eq" ? `(${number})` : number;
+  return KINDS[kind] ? `${KINDS[kind]} ${n}` : n;
 }
 
 const THUMBNAIL = 240;

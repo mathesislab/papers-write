@@ -194,15 +194,22 @@ pub struct Offered {
     current: bool,
 }
 
-/// Switch Project's list: the projects of the bar, then the others opened recently; each once, those that are there.
+/// Switch Project's list: the project switched from last first, then the projects of the bar and the others opened
+/// recently; each once, those that are there.
 #[tauri::command]
 pub fn project_list(app: AppHandle, window: Webview) -> Vec<Offered> {
     let current = crate::tabs::project_of_page(&app, window.label());
     let mut roots = with_saved(&app, |saved| saved.bar.clone());
-    for root in recent(&app) {
-        if !roots.contains(&root) {
-            roots.push(root);
+    let recent = recent(&app);
+    for root in &recent {
+        if !roots.contains(root) {
+            roots.push(root.clone());
         }
+    }
+    // the project switched from last first (Enter switches back and forth between two), the others as they are
+    if let Some(i) = recent.iter().find(|r| current.as_deref() != Some(r.as_path())).and_then(|r| roots.iter().position(|x| x == r)) {
+        let last = roots.remove(i);
+        roots.insert(0, last);
     }
     roots
         .into_iter()

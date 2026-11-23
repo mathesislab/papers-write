@@ -49,6 +49,9 @@
   ];
 
   let settings = $state<Settings | null>(null);
+  /** the speech tools found, for Read Aloud */
+  let speakers = $state<{ name: string; command: string }[]>([]);
+  void invoke<{ name: string; command: string }[]>("speakers_found").then((s) => (speakers = s)).catch(() => {});
   let tab = $state<Tab>("editor");
   /** where each tool is found as usual: the path, or null; undefined until asked */
   let found = $state<Record<Tool, string | null> | undefined>();
@@ -219,10 +222,13 @@
         </label>
         <label class="row">
           <span>
-            <span class="label">Preview follows the cursor</span>
-            <span class="hint">The preview scrolled to the block the cursor is in</span>
+            <span class="label">Preview follows</span>
+            <span class="hint">The block the cursor is in, or what the text shows (the text then follows the preview too). A preview in a tab of its own always follows what the text shows</span>
           </span>
-          <input type="checkbox" class="switch" bind:checked={settings.preview_follow} onchange={save} />
+          <select bind:value={settings.preview_follows} onchange={save}>
+            <option value="cursor">The Cursor</option>
+            <option value="view">The View</option>
+          </select>
         </label>
       </section>
 
@@ -377,6 +383,16 @@
           </span>
           <input class="text path" bind:value={settings.read_aloud} onchange={save} placeholder={"bard --text {text}"} autocomplete="off" spellcheck="false" aria-label="Read Aloud command" />
         </label>
+        {#if speakers.length}
+          <div class="row">
+            <span class="grow"><span class="label">Found on this computer</span><span class="hint">A click puts its command above</span></span>
+            <span class="speakers">
+              {#each speakers as s (s.name)}
+                <button onclick={() => settings && ((settings.read_aloud = s.command), save())} title={s.command}>{s.name}</button>
+              {/each}
+            </span>
+          </div>
+        {/if}
       </section>
     </div>
 
@@ -396,6 +412,34 @@
             <span class="hint">A thin bar in the project's colour along the top of its windows</span>
           </span>
           <input type="checkbox" class="switch" bind:checked={settings.project_colour_bar} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
+            <span class="label">Unload tabs not shown for</span>
+            <span class="hint">Minutes (0: never). Their page is freed, and loaded again as it was when the tab is shown: its place, its undo history, its panes</span>
+          </span>
+          <input class="text number" type="number" min="0" max="1440" bind:value={settings.unload_after} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
+            <span class="label">Tabs kept loaded</span>
+            <span class="hint">At most, the most recently shown; the others are unloaded the same way</span>
+          </span>
+          <input class="text number" type="number" min="1" max="100" bind:value={settings.loaded_tabs} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
+            <span class="label">Memory at most</span>
+            <span class="hint">GB, the pages of the tabs included (0: no limit). Beyond, the tabs shown longest ago are unloaded the same way (Linux)</span>
+          </span>
+          <input class="text number" type="number" min="0" max="256" bind:value={settings.tabs_memory} onchange={save} />
+        </label>
+        <label class="row">
+          <span>
+            <span class="label">Tabs loaded at start</span>
+            <span class="hint">In each window, the tab in front and then the most recently shown (0: all). All tabs are back; the others load when first shown</span>
+          </span>
+          <input class="text number" type="number" min="0" max="100" bind:value={settings.tabs_at_start} onchange={save} />
         </label>
         <label class="row">
           <span>
@@ -466,6 +510,15 @@
 {/if}
 
 <style>
+  .speakers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+  .number {
+    width: 5em;
+  }
   :global(html, body) {
     margin: 0;
     background: var(--bg);

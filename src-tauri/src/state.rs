@@ -30,6 +30,14 @@ pub struct Saved {
     /// the build profile chosen for each source file, and the last chosen for each project (by its folder); empty:
     /// none, Build builds the document in front
     pub profiles: BTreeMap<PathBuf, String>,
+    /// View ▸ Panes as the pages last said it ("side", "tabs", "auto"; empty: side): preview tabs are made again at
+    /// the start only in tabs, before any page can say
+    pub panes: String,
+    /// what was chosen to run in the background of each project, and the document it was chosen from: not started at
+    /// the start, shown paused till asked (the Build button's ▶, the PDF shown beside a text)
+    pub background: BTreeMap<PathBuf, (String, PathBuf)>,
+    /// the projects (by folder) whose saves are followed by a build (Build ▸ Build After Saves), as Build With says
+    pub build_on_save: Vec<PathBuf>,
     /// the sidebar of each project, and the last one changed (`sidebars` and `sidebar` in the file)
     #[serde(flatten)]
     pub sidebars: Sidebars,
@@ -134,7 +142,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("papers-write-state-{}", std::process::id()));
         let mut saved = Saved::default();
         saved.opened(Path::new("/p"));
-        saved.layouts.insert("/p".into(), Layout { files: vec!["/p/a.md".into(), "/p/b.md".into()], front: Some("/p/b.md".into()) });
+        saved.layouts.insert("/p".into(), Layout { files: vec!["/p/a.md".into(), "/p/b.md".into()], front: Some("/p/b.md".into()), ..Default::default() });
         saved.windows.push(SavedWindow { projects: vec!["/p".into()] });
         saved.save(&dir);
         assert_eq!(Saved::load(&dir), saved);

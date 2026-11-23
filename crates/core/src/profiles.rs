@@ -6,7 +6,20 @@
 //! ```toml
 //! command = "make synopsis"
 //! pdf = "build/synopsis.pdf"
-//! run = "build"     # Build runs it; "watch": started and kept running; "external": never run, its PDF followed
+//! run = "build"     # Build runs it (and after saves, Build ▸ Build After Saves); "watch": kept running in the
+//!                   # background (the Build button's menu); "external": never run, its PDF followed
+//! ```
+//!
+//! The command and the PDF may name the document they are run for (the one in front; for a profile run in the
+//! background, the one it was chosen from): `{file}` (its path from the project's folder), `{stem}` (its name without
+//! the extension), `{dir}` (its folder from the project's), `{build}` (the project's build folder, from its folder:
+//! `build_dir` of `write.toml`, else `build`), and in the command `{pdf}` (the `pdf` said, filled in likewise) and
+//! `{texmark}` (the texmark the app found: the app's PATH is not a terminal's). In the command they are quoted for the
+//! shell as needed:
+//!
+//! ```toml
+//! command = "texmark {file} --pdf -o {pdf}"
+//! pdf = "build/{stem}.pdf"
 //! ```
 
 use std::fs;
@@ -26,7 +39,8 @@ pub enum Run {
     /// Build runs the command, and waits for it
     #[default]
     Build,
-    /// Build starts the command (`make watch`, `texmark --watch`) and leaves it running till the app quits
+    /// Build starts the command (`make watch`, `texmark --watch`) and leaves it running till Build again or the app
+    /// quits; the same command running already in the project's folder (started in a terminal) is followed instead
     Watch,
     /// the command is run elsewhere (a terminal): Build only shows the PDF
     External,
@@ -44,6 +58,9 @@ pub struct Profile {
     pub pdf: Option<PathBuf>,
     #[serde(default)]
     pub run: Run,
+    /// one the app offers itself (texmark found), not a file of the project
+    #[serde(default, skip_deserializing)]
+    pub builtin: bool,
 }
 
 /// The profile of the file `path`, named after it; an error says what is wrong with it.
@@ -55,6 +72,59 @@ pub fn read(path: &Path) -> Result<Profile, String> {
         return Err(format!("{}: no command to run", path.display()));
     }
     Ok(profile)
+}
+
+impl Profile {
+    /// Whether it names the document it is run for (`{file}`, `{stem}`, `{dir}`).
+    pub fn per_document(&self) -> bool {
+        let pdf = self.pdf.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        ["{file}", "{stem}", "{dir}", "{build}"].iter().any(|t| self.command.contains(t) || pdf.contains(t))
+    }
+
+    /// The profile for the document `file` of the project at `root`: its templates filled in.
+    pub fn for_document(&self, root: &Path, file: &Path) -> Result<Profile, String> {
+        self.for_document_with(root, file, &[])
+    }
+
+    /// `for_document`, with more templates (`{texmark}`: the tool found), quoted in the command.
+    pub fn for_document_with(&self, root: &Path, file: &Path, more: &[(&str, String)]) -> Result<Profile, String> {
+        let rel = file.strip_prefix(root).unwrap_or(file);
+        let slash = |p: &Path| p.to_string_lossy().replace('\\', "/");
+        let file_s = slash(rel);
+        let stem = rel.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+        let dir = rel.parent().map(slash).filter(|d| !d.is_empty()).unwrap_or_else(|| ".".into());
+        let build_dir = crate::project::build_dir_of(file);
+        let build = slash(build_dir.strip_prefix(root).unwrap_or(&build_dir));
+        let fill = |text: &str, quote: bool| {
+            let q = |s: &str| if quote { shell_quote(s) } else { s.to_string() };
+            let mut text = text.replace("{file}", &q(&file_s)).replace("{stem}", &q(&stem)).replace("{dir}", &q(&dir)).replace("{build}", &q(&build));
+            for (name, value) in more {
+                text = text.replace(&format!("{{{name}}}"), &q(value));
+            }
+            text
+        };
+        let pdf = self.pdf.as_ref().map(|p| PathBuf::from(fill(&p.to_string_lossy(), false)));
+        let mut command = fill(&self.command, true);
+        if command.contains("{pdf}") {
+            let Some(pdf) = &pdf else {
+                return Err(format!("{}: the command says {{pdf}}, but no pdf is set", self.name));
+            };
+            command = command.replace("{pdf}", &shell_quote(&slash(pdf)));
+        }
+        Ok(Profile { name: self.name.clone(), command, pdf, run: self.run, builtin: self.builtin })
+    }
+}
+
+/// `s` as one word of a shell command: as it is when it is plain, quoted otherwise (`'…'`; `"…"` on Windows).
+fn shell_quote(s: &str) -> String {
+    let plain = !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "_-./:+,=@%".contains(c));
+    if plain {
+        s.to_string()
+    } else if cfg!(windows) {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
 }
 
 /// The profiles of the project at `root`, by name; the files that are not profiles, with what is wrong with them.
@@ -103,6 +173,29 @@ mod tests {
         assert_eq!(wrong.len(), 1);
         assert!(wrong[0].contains("broken.toml") && wrong[0].contains("no command"), "{wrong:?}");
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_profile_for_a_document_has_its_templates_filled_in_and_quoted() {
+        let p = Profile {
+            name: "chapter".into(),
+            command: "texmark {file} --pdf -o {pdf} # {stem} in {dir}".into(),
+            pdf: Some(PathBuf::from("build/{stem}.pdf")),
+            run: Run::Build,
+            builtin: false,
+        };
+        assert!(p.per_document());
+        let root = Path::new("/home/me/thesis");
+        let made = p.for_document(root, &root.join("chapters/methods.md")).unwrap();
+        assert_eq!(made.command, "texmark chapters/methods.md --pdf -o build/methods.pdf # methods in chapters");
+        assert_eq!(made.pdf.as_deref(), Some(Path::new("build/methods.pdf")));
+        let spaced = p.for_document(root, &root.join("my notes.md")).unwrap();
+        assert_eq!(spaced.command, "texmark 'my notes.md' --pdf -o 'build/my notes.pdf' # 'my notes' in .");
+        let no_pdf = Profile { pdf: None, ..p.clone() };
+        assert!(no_pdf.for_document(root, &root.join("a.md")).unwrap_err().contains("no pdf"));
+        let plain = Profile { command: "make full".into(), pdf: Some("build/thesis.pdf".into()), ..p };
+        assert!(!plain.per_document());
+        assert_eq!(plain.for_document(root, &root.join("a.md")).unwrap().command, "make full");
     }
 
     #[test]

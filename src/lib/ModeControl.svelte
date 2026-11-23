@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { showMenu } from "papers-write/project";
   // The review's mode, at the right of the toolbar: Editing or Suggesting, a click on either switches to it (⇧⌘E
   // switches too), Suggesting in the user's colour; the ▾ is a menu of the views of the suggestions in Editing (All
   // Markup, Accepted, Original), the one shown said after Editing when it is not All Markup. An untitled document has
@@ -56,7 +57,7 @@
           ]
         : []),
     ]);
-    await (await Menu.new({ items })).popup(new LogicalPosition(anchor.left, anchor.bottom + 2));
+    await showMenu(await Menu.new({ items }), new LogicalPosition(anchor.left, anchor.bottom + 2));
   }
 
   const viewName = $derived(VIEWS.find(([v]) => v === view)?.[1] ?? "");

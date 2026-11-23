@@ -9,20 +9,26 @@
   import { onMount, type Snippet } from "svelte";
   import TabStrip, { type TabItem } from "./TabStrip.svelte";
 
-  type Tab = { label: string; title: string; path: string | null; edited: boolean };
+  type Tab = { label: string; title: string; path: string | null; edited: boolean; front: boolean };
 
   let { least = 2, extra }: { least?: number; extra?: Snippet<[TabItem]> } = $props();
 
   const me = getCurrentWebview().label;
   let tabs = $state.raw<TabItem[]>([]);
+  /** the tab in front: this page's, or one chosen whose page is not drawn yet (this one shown meanwhile, dimmed: the
+   *  class `switching` on the document, theme.css) */
+  let front = $state(me);
 
   async function refresh() {
     try {
       const got = await invoke<Tab[]>("tab_strip");
       tabs = got.map((t) => ({ id: t.label, title: t.title, tooltip: t.path, edited: t.edited }));
+      front = got.find((t) => t.front)?.label ?? me;
     } catch {
       tabs = [];
+      front = me;
     }
+    document.documentElement.classList.toggle("switching", front !== me);
   }
 
   /** A tab dragged to another place: shown there at once, then the app told (which tells every page of the window). */
@@ -39,17 +45,23 @@
     refresh();
     window.addEventListener("focus", refresh);
     // the events sent to this page alone (not `listen` of @tauri-apps/api/event, which hears those of every page)
-    const unlisten = getCurrentWebview().listen("tabs-changed", refresh);
+    const unlisten = [
+      getCurrentWebview().listen("tabs-changed", refresh),
+      // shown: in front, not dimmed (before the strip is asked again)
+      getCurrentWebview().listen<boolean>("tab-shown", (e) => {
+        if (e.payload) document.documentElement.classList.remove("switching");
+      }),
+    ];
     return () => {
       window.removeEventListener("focus", refresh);
-      unlisten.then((f) => f());
+      unlisten.forEach((u) => u.then((f) => f()));
     };
   });
 </script>
 
 <TabStrip
   {tabs}
-  front={me}
+  {front}
   {least}
   {extra}
   onselect={(label) => invoke("select_tab", { label })}

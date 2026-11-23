@@ -34,8 +34,8 @@ export function environmentTex(text: string): string {
   return (WRAPPERS.exec(clean)?.[1] ?? clean).trim();
 }
 
-/** The formula of a math node and whether it is displayed. */
-function mathOf(state: EditorState, node: SyntaxNode): { tex: string; display: boolean } | null {
+/** The formula of a math node (InlineMath, DisplayMath, MathEnvironment) and whether it is displayed. */
+export function mathOf(state: EditorState, node: SyntaxNode): { tex: string; display: boolean } | null {
   if (node.name === "MathEnvironment") return { tex: environmentTex(state.sliceDoc(node.from, node.to)), display: true };
   const marks = node.getChildren("MathMark");
   if (marks.length < 2) return null;

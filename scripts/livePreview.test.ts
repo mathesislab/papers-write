@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorState, StateEffect, type Extension } from "@codemirror/state";
 import { parsed } from "./parsed.ts";
-import { hiddenRanges, inlinePieces } from "../src/lib/editor/livePreview.ts";
+import { blocksOf, hiddenRanges, inlinePieces } from "../src/lib/editor/livePreview.ts";
 import { criticReview } from "../src/lib/editor/review/criticMode.ts";
 import { shownFacet } from "../src/lib/editor/review/overlay.ts";
 import { figuresOf } from "../src/lib/editor/figures.ts";
@@ -102,6 +102,21 @@ test("an element a suggestion or comment of the review is on is shown as typed",
   const item = { id: "x-1", kind: "comment" as const, slug: "x", from: at, to: at + 1, insert: null, dim: false, item: null };
   assert.deepEqual(hidden(doc, [shownFacet.of(() => [item])]), ["*", "*"]);
   assert.equal(hiddenRanges(md(doc)).length, 4);
+});
+
+test("inline math rendered off the cursor's line, display math as a block of whole lines", () => {
+  const doc = "so $x^2$ and $$y$$ here\n\n$$\na = b\n$$ {#eq:a}\n\n$$ c $$ {#eq:c}\n\n\\begin{equation}\nE\n\\end{equation}\n\nend";
+  assert.deepEqual(hidden(doc), ["$x^2$", "$$y$$", "$$\na = b\n$$ {#eq:a}", "$$ c $$ {#eq:c}", "\\begin{equation}\nE\n\\end{equation}"]);
+  // the cursor in a block shows all of it as typed
+  assert.deepEqual(hidden(doc.replace("a = b", "a =| b")), ["$x^2$", "$$y$$", "$$ c $$ {#eq:c}", "\\begin{equation}\nE\n\\end{equation}"]);
+  assert.deepEqual(hidden(doc.replace("so ", "so| ")).slice(0, 1), ["$$\na = b\n$$ {#eq:a}"]);
+  const blocks = blocksOf(md(doc));
+  assert.deepEqual(blocks.map((b) => b.what.tex), ["a = b", "c", "E"]);
+});
+
+test("math that is not alone on its lines stays inline, and over lines in a paragraph is not rendered", () => {
+  assert.deepEqual(blocksOf(md("> $$\n> a\n> $$\n")), []);
+  assert.deepEqual(hidden("text $$a\nb$$ more\n\nend"), []);
 });
 
 test("an element over lines is shown as typed from any of them, and nothing hidden crosses a line", () => {

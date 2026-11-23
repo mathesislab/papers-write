@@ -11,6 +11,7 @@ mod hover;
 mod menu;
 mod notes;
 mod package;
+mod panetabs;
 mod pdfsync;
 mod preview;
 mod profiles;
@@ -25,6 +26,7 @@ mod sidebar;
 mod spelling;
 mod state;
 mod tabs;
+mod undo;
 mod trash;
 mod update;
 mod watch;
@@ -63,6 +65,7 @@ pub fn run() {
         .plugin(tauri_plugin_pdfkit::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // managed before the app launches: macOS may hand over files to open before `setup` has run
+        .manage(panetabs::PaneTabs::default())
         .manage(documents::Documents::default())
         .manage(files::Watched::default())
         .manage(build::Builds::default())
@@ -112,7 +115,20 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            undo::history_read,
+            undo::history_write,
+            panetabs::pdf_tab_show,
+            panetabs::take_show_source,
+            panetabs::preview_tab,
+            panetabs::preview_tab_of,
+            panetabs::tab_in_front,
+            panetabs::relay,
+            panetabs::bring_tab,
+            panetabs::page_path,
+            menu::zoom_key,
             projects::project_list,
+            preview::document_outline,
+            preview::heading_place,
             settings::settings,
             readaloud::read_aloud,
             readaloud::stop_reading,

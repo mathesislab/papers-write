@@ -5,6 +5,7 @@
 import {
   defaultKeymap,
   history,
+  historyField,
   historyKeymap,
   indentLess,
   indentMore,
@@ -465,6 +466,8 @@ export type Options = {
   /** what an empty editor shows, the app's (Papers Review: how to write a review); none by default */
   placeholder?: string;
   extensions?: Extension[];
+  /** an undo history to start with (CodeMirror's `historyField` as JSON, kept by the app), for the same text */
+  history?: unknown;
 };
 
 const spellingSlot = new Compartment();
@@ -479,10 +482,7 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
   const latexFile = options.latex ?? false;
   const mono = (options.mono ?? false) || latexFile;
   const complete = (!mono || latexFile) && options.completion;
-  return new EditorView({
-    parent,
-    state: EditorState.create({
-      doc: text,
+  const config = {
       extensions: [
         history(),
         drawSelection(),
@@ -525,9 +525,21 @@ export function makeEditor(parent: HTMLElement, text: string, changed: (text: st
         }),
         ...(options.extensions ?? []),
       ],
-    }),
-  });
+  };
+  // the history kept for this text, when there is one: undo goes back through what was done before
+  let state: EditorState | null = null;
+  if (options.history) {
+    try {
+      state = EditorState.fromJSON({ doc: text, selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 }, history: options.history }, config, { history: historyField });
+    } catch {
+      state = null;
+    }
+  }
+  return new EditorView({ parent, state: state ?? EditorState.create({ doc: text, ...config }) });
 }
+
+/** The editor's undo history, as JSON (kept by the app between the page's loads). */
+export const historyOf = (view: EditorView): unknown => view.state.toJSON({ history: historyField }).history;
 
 /** The text replaced by `text` (read again from the file), not to be undone into: only the part that differs, so
  *  that the cursor and the history of what was typed elsewhere stay where they were. */

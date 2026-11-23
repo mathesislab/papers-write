@@ -4,6 +4,7 @@
   // to the same one (pandoc's Markdown reader has no source positions, so the blocks are matched by their order).
   // `error` is what pandoc said, in a bar at the foot.
 
+
   import { followButtons, popupReleased } from "papers-write/project";
   import { readAloudItems } from "$lib/readAloud";
   import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
@@ -27,8 +28,8 @@
     /** a click in the preview (not a selection): the index of the top-level block clicked, for the text to scroll
      *  to it */
     onblock?: (index: number) => void;
-    /** Show PDF, in the menu: the pane switched to the PDF */
-    onpdf?: () => void;
+    /** Show in PDF, in the menu: the place clicked found in the text, then shown in the PDF (the block, the word) */
+    onpdf?: (text: string, word: string, around: { before: string[]; after: string[] }) => void;
   } = $props();
 
   let frame: HTMLIFrameElement;
@@ -91,6 +92,11 @@
   });
 
   /** The block the cursor is in brought into view and marked a moment (Show in Preview). */
+  /** The keys to the preview (its side was the one worked in). */
+  export function focus() {
+    frame?.contentWindow?.focus();
+  }
+
   export function flash() {
     reveal();
     const body = frame?.contentDocument?.body;
@@ -135,8 +141,17 @@
    *  to the source, the block in view. */
   function loaded() {
     const doc = frame?.contentDocument;
-    if (doc) void showPdfImages(doc.body);
-    if (doc) followButtons(doc);
+    if (doc?.body) void showPdfImages(doc.body);
+    if (doc) {
+      followButtons(doc);
+      // the keys typed in the frame given to the page too (its own keys: ⌃Tab, ⌃+, ⌃ let go), which a frame's keep
+      for (const type of ["keydown", "keyup"] as const) {
+        doc.addEventListener(type, (e) => {
+          const { key, code, ctrlKey, shiftKey, altKey, metaKey, repeat } = e;
+          window.dispatchEvent(new KeyboardEvent(type, { key, code, ctrlKey, shiftKey, altKey, metaKey, repeat }));
+        });
+      }
+    }
     if (doc && onsource) {
       doc.addEventListener("click", (e) => {
         if (e.button !== 0) return;
@@ -155,6 +170,22 @@
         e.preventDefault();
         onsource(at.text, at.word, at.around);
       });
+      // a double-click: Go to Source, as ⌃-click; one whose pointer moved before it was let go is a selection made by
+      // double-tap and drag, and stays one
+      let secondPress: { x: number; y: number } | null = null;
+      doc.addEventListener("mousedown", (e) => {
+        if (e.detail >= 2) secondPress = { x: e.clientX, y: e.clientY };
+      });
+      doc.addEventListener("dblclick", (e) => {
+        if (e.button !== 0) return;
+        const moved = secondPress && Math.hypot(e.clientX - secondPress.x, e.clientY - secondPress.y) > 4;
+        secondPress = null;
+        if (moved) return;
+        const at = clicked(e);
+        if (!at) return;
+        doc.getSelection()?.removeAllRanges();
+        onsource(at.text, at.word, at.around);
+      });
       doc.addEventListener("contextmenu", async (e) => {
         const at = clicked(e);
         if (!at) return;
@@ -163,11 +194,11 @@
         const selected = doc.getSelection()?.toString().trim() ?? "";
         const reading = await readAloudItems(selected || at.text, selected ? "Read Aloud" : "Read Aloud Paragraph");
         const items = await Promise.all([
-          ...reading,
           MenuItem.new({ text: keys("Go to Source (⌘-click)"), action: () => onsource(at.text, at.word, at.around) }),
-          ...(onpdf ? [MenuItem.new({ text: "Show PDF", action: onpdf })] : []),
+          ...(onpdf ? [MenuItem.new({ text: "Show in PDF", action: () => onpdf(at.text, at.word, at.around) })] : []),
           PredefinedMenuItem.new({ item: "Separator" }),
           PredefinedMenuItem.new({ item: "Copy" }),
+          ...reading,
         ]);
         // at the pointer: the frame's own place added to where the click is in it
         const box = frame.getBoundingClientRect();

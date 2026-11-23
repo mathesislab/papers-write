@@ -5,23 +5,29 @@
 import type { Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
-/** The target of the Markdown link at `pos` in `text` that goes to a place in a file of the computer (`#L35`, a line;
- *  `#page=12`, a page of a PDF); none when `pos` is not in such a link. `<target>` is taken without its brackets. */
-export function placeLinkAt(text: string, pos: number): string | null {
-  const link = /\[[^\]\n]*\]\((?:<([^>\n]+)>|([^)\s]+))\)/g;
+/** A link to a place: its target (`discussion.md#L35`, `build/synopsis.pdf#page=12`) and its title, the words quoted
+ *  to find there (none). */
+export type Place = { target: string; title: string | null };
+
+/** The Markdown link at `pos` in `text` that goes to a place in a file of the computer (`#L35`, a line; `#page=12`, a
+ *  page of a PDF); none when `pos` is not in such a link. `<target>` is taken without its brackets, the title without
+ *  its quotes. */
+export function placeLinkAt(text: string, pos: number): Place | null {
+  const link = /\[[^\]\n]*\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+"((?:[^"\\\n]|\\.)*)")?\)/g;
   for (let m = link.exec(text); m; m = link.exec(text)) {
     if (m.index > pos) break;
     if (pos > m.index + m[0].length) continue;
     const target = m[1] ?? m[2];
     // a line of a text or a page of a PDF, of a file of the computer
     if (!/#(L\d+|page=\d+)$/.test(target)) return null;
-    return /^[a-z][a-z0-9+.-]*:/i.test(target) && !/^[a-z]:[\\/]/i.test(target) ? null : target;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target) && !/^[a-z]:[\\/]/i.test(target)) return null;
+    return { target, title: m[3] === undefined ? null : m[3].replace(/\\(.)/g, "$1") };
   }
   return null;
 }
 
-/** The link under the cursor of `view`, when it goes to a place: the line around the cursor looked at. */
-export function placeLinkOf(view: EditorView): string | null {
+/** The link to a place under the cursor of `view`, when there is one: the line around the cursor looked at. */
+export function placeLinkOf(view: EditorView): Place | null {
   const head = view.state.selection.main.head;
   const line = view.state.doc.lineAt(head);
   return placeLinkAt(line.text, head - line.from);

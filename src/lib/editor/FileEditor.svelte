@@ -504,6 +504,20 @@
     }
   }
 
+  /** Another editor of the same file kept a draft of it (a draft is what is typed and not saved: autosave off): its
+   *  text taken here too, so that every editor of a file shows the last of what was typed (the notes beside each text
+   *  and in their tab). As typed here, so not saved either; nothing when it is what this editor has. */
+  export async function draftChanged() {
+    if (!editor || !drafts) return;
+    try {
+      const file = await load();
+      if (gone || file.path !== path || !file.draft || file.draft.text === text()) return;
+      replaceText(editor, file.draft.text);
+    } catch {
+      // the draft could not be read: this editor's text stays as it is
+    }
+  }
+
   /** The citation keys asked of the app again (its bibliography or library changed), with `diagnostics`. */
   export const recheckKeys = () => editor && recheck(editor);
 

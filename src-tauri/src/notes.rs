@@ -160,11 +160,14 @@ pub async fn choose_notes(window: Webview) -> Result<Option<ProjectNotes>, Strin
     notes_file(&project).map(Some)
 }
 
-/// Where Add Note Here was asked: the page's file, at a line of a text or a page of a PDF.
+/// Where Add Note Here was asked: the page's file, at a line of a text or a page of a PDF, and the words selected
+/// there (if any).
 #[derive(Deserialize)]
 pub struct Place {
     line: Option<u32>,
     page: Option<u32>,
+    #[serde(default)]
+    quote: Option<String>,
 }
 
 /// Add Note Here: a line started in the notes of the page's project, with `date` and a link to `place` in the page's
@@ -184,7 +187,9 @@ pub fn note_here(window: Webview, date: String, place: Place) -> Result<ProjectN
 }
 
 /// A Markdown link from the notes `notes` to `place` in `file`: `[discussion.md:35](discussion.md#L35)`,
-/// `[synopsis.pdf p. 12](build/synopsis.pdf#page=12)`; the path from the notes' folder (in `<>` with spaces).
+/// `[synopsis.pdf p. 12](build/synopsis.pdf#page=12)`; the path from the notes' folder (in `<>` with spaces). The
+/// words selected, when some were, are its title (looked for when it is followed) and quoted after it, for whoever
+/// reads the notes elsewhere: `[discussion.md:35](discussion.md#L35 "far end") “far end”`.
 fn link_to(notes: &Path, file: &Path, place: &Place) -> String {
     let folder = notes.parent().unwrap_or(Path::new("/"));
     let target = file.strip_prefix(folder).unwrap_or(file).to_string_lossy().into_owned();
@@ -195,7 +200,15 @@ fn link_to(notes: &Path, file: &Path, place: &Place) -> String {
         (None, None) => (name, String::new()),
     };
     let target = format!("{target}{anchor}");
-    if target.contains(' ') { format!("[{label}](<{target}>)") } else { format!("[{label}]({target})") }
+    let target = if target.contains(' ') { format!("<{target}>") } else { target };
+    match place.quote.as_deref().map(|q| q.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|q| !q.is_empty()) {
+        Some(quote) => {
+            let quote: String = if quote.chars().count() > 200 { quote.chars().take(199).chain(['…']).collect() } else { quote };
+            let title = quote.replace('\\', "\\\\").replace('"', "\\\"");
+            format!("[{label}]({target} \"{title}\") “{quote}”")
+        }
+        None => format!("[{label}]({target})"),
+    }
 }
 
 /// The lines started in the notes `path`, taken (none: nothing started).
@@ -206,26 +219,66 @@ pub fn take_notes_line(app: AppHandle, path: String) -> Vec<String> {
 }
 
 /// A link of the notes `notes` followed: `target` (a path from the notes' folder, or absolute) opened, at its line
-/// (`#L35`: the line marked) or its page (`#page=12`).
+/// (`#L35`: the line marked; with `quote`, the words quoted, where they are nearest to that line) or its page
+/// (`#page=12`, the words quoted found from there). What to say, when the words were not found.
 #[tauri::command]
-pub fn open_place(app: AppHandle, notes: String, target: String) -> Result<(), String> {
+pub fn open_place(app: AppHandle, notes: String, target: String, quote: Option<String>) -> Result<Option<String>, String> {
     let (file, anchor) = target.split_once('#').unwrap_or((target.as_str(), ""));
     let folder = Path::new(&notes).parent().unwrap_or(Path::new("/"));
     let path = folder.join(file);
     if !path.is_file() {
         return Err(format!("{file}: not found"));
     }
+    let quote = quote.filter(|q| !q.trim().is_empty());
     if let Some(page) = anchor.strip_prefix("page=").and_then(|p| p.parse().ok()) {
-        return crate::panetabs::show_page(&app, &path, page);
+        return crate::panetabs::show_page(&app, &path, page, quote).map(|()| None);
     }
     match anchor.strip_prefix('L').and_then(|l| l.parse::<usize>().ok()) {
         Some(line) => {
             let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-            let (at, end) = line_range(&text, line);
-            crate::sidebar::open_marked(&app, &path, at, end)
+            let found = quote.as_deref().and_then(|q| nearest(&text, q, line));
+            let (at, end) = found.unwrap_or_else(|| line_range(&text, line));
+            crate::sidebar::open_marked(&app, &path, at, end)?;
+            Ok(match (quote, found) {
+                (Some(q), None) => Some(format!("“{q}” no longer in {file}: at line {line}")),
+                _ => None,
+            })
         }
-        None => crate::documents::open_file(&app, &path),
+        None => crate::documents::open_file(&app, &path).map(|()| None),
     }
+}
+
+/// Where the words `quote` are in `text` nearest to line `line` (from 1), any spaces and line breaks between them, as
+/// the editor counts (UTF-16); none when they are not in it.
+fn nearest(text: &str, quote: &str, line: usize) -> Option<(usize, usize)> {
+    let words: Vec<&str> = quote.split_whitespace().collect();
+    if words.is_empty() {
+        return None;
+    }
+    // the words one after the other from `start`, any spaces between them: where they end
+    let matches = |start: usize| -> Option<usize> {
+        let mut at = start;
+        for (i, word) in words.iter().enumerate() {
+            if i > 0 {
+                let rest = &text[at..];
+                let spaces = rest.len() - rest.trim_start().len();
+                if spaces == 0 {
+                    return None;
+                }
+                at += spaces;
+            }
+            if !text[at..].starts_with(word) {
+                return None;
+            }
+            at += word.len();
+        }
+        Some(at)
+    };
+    let want = line_range(text, line).0;
+    let utf16 = |byte: usize| text[..byte].encode_utf16().count();
+    text.match_indices(words[0])
+        .filter_map(|(start, _)| matches(start).map(|end| (utf16(start), utf16(end))))
+        .min_by_key(|(at, _)| at.abs_diff(want))
 }
 
 /// Where line `line` (from 1) of `text` starts and ends, counted as the editor counts (UTF-16); past the end, the end.
@@ -249,11 +302,31 @@ mod tests {
     #[test]
     fn links_from_the_notes_to_a_line_or_a_page() {
         let notes = Path::new("/p/notes.md");
-        let at = |line, page| Place { line, page };
+        let at = |line, page| Place { line, page, quote: None };
         assert_eq!(link_to(notes, Path::new("/p/discussion.md"), &at(Some(35), None)), "[discussion.md:35](discussion.md#L35)");
         assert_eq!(link_to(notes, Path::new("/p/build/synopsis.pdf"), &at(None, Some(12))), "[synopsis.pdf p. 12](build/synopsis.pdf#page=12)");
         assert_eq!(link_to(notes, Path::new("/p/my text.md"), &at(Some(1), None)), "[my text.md:1](<my text.md#L1>)");
         assert_eq!(link_to(notes, Path::new("/elsewhere/a.md"), &at(Some(2), None)), "[a.md:2](/elsewhere/a.md#L2)");
+    }
+
+    #[test]
+    fn the_words_selected_quoted_and_made_the_title() {
+        let notes = Path::new("/p/notes.md");
+        let place = Place { line: Some(35), page: None, quote: Some("the far  end\nof \"it\"".into()) };
+        assert_eq!(
+            link_to(notes, Path::new("/p/discussion.md"), &place),
+            "[discussion.md:35](discussion.md#L35 \"the far end of \\\"it\\\"\") “the far end of \"it\"”"
+        );
+    }
+
+    #[test]
+    fn the_words_found_nearest_to_the_line_across_line_breaks() {
+        let text = "far end\nx\ny\nthe far\nend here\nfar end";
+        // lines 1 and 6 have it whole, line 4 across a line break
+        assert_eq!(nearest(text, "far end", 1), Some((0, 7)));
+        assert_eq!(nearest(text, "far  end", 4), Some((16, 23)));
+        assert_eq!(nearest(text, "far end", 6), Some((29, 36)));
+        assert_eq!(nearest(text, "nowhere", 3), None);
     }
 
     #[test]

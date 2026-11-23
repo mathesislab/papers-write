@@ -36,8 +36,8 @@ pub struct PaneTabs {
     /// the text each tab of a pane (a PDF's, the notes') was last shown from (Show PDF, Show Notes in that tab go back
     /// to it)
     shown_from: Mutex<HashMap<String, String>>,
-    /// the page each PDF's tab is to show, till it takes it (a link of the notes)
-    pages: Mutex<HashMap<String, u32>>,
+    /// the page each PDF's tab is to show, and the words to find from there, till it takes them (a link of the notes)
+    pages: Mutex<HashMap<String, PageAsked>>,
     next: AtomicUsize,
 }
 
@@ -74,10 +74,18 @@ pub fn show_in_tab(app: &AppHandle, from: &str, file: &Path) -> Result<Option<St
     }
 }
 
-/// A PDF opened at `page` (a link of the notes): its tab brought forward or opened, and told the page.
-pub fn show_page(app: &AppHandle, pdf: &Path, page: u32) -> Result<(), String> {
+/// A page of a PDF to show, and the words to find from there.
+#[derive(Clone, Serialize)]
+pub struct PageAsked {
+    page: u32,
+    quote: Option<String>,
+}
+
+/// A PDF opened at `page` (a link of the notes), the words `quote` found from there: its tab brought forward or
+/// opened, and told the page.
+pub fn show_page(app: &AppHandle, pdf: &Path, page: u32, quote: Option<String>) -> Result<(), String> {
     let pdf = &pdf.canonicalize().unwrap_or_else(|_| pdf.to_path_buf());
-    app.state::<PaneTabs>().pages.lock().unwrap().insert(pdf.to_string_lossy().into_owned(), page);
+    app.state::<PaneTabs>().pages.lock().unwrap().insert(pdf.to_string_lossy().into_owned(), PageAsked { page, quote });
     eprintln!("[papers-write {}] {} asked at page {page}", crate::tabs::stamp(), pdf.display());
     match crate::tabs::page_of(app, pdf) {
         Some(label) => {
@@ -91,7 +99,7 @@ pub fn show_page(app: &AppHandle, pdf: &Path, page: u32) -> Result<(), String> {
 
 /// The page a PDF's tab is to show, once (none: nothing asked).
 #[tauri::command]
-pub fn take_page(window: Webview) -> Option<u32> {
+pub fn take_page(window: Webview) -> Option<PageAsked> {
     let app = window.app_handle();
     let pdf = documents::path_of(app, window.label())?;
     app.state::<PaneTabs>().pages.lock().unwrap().remove(pdf.to_string_lossy().as_ref())

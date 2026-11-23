@@ -97,7 +97,9 @@
     const d = new Date();
     const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     try {
-      await invoke("note_here", { date, place: { page: current } });
+      // the words selected in the PDF, quoted in the note and looked for on its page when its link is followed
+      const quote = window.getSelection()?.toString().replace(/\s+/g, " ").trim() || null;
+      await invoke("note_here", { date, place: { page: current, quote } });
       await invoke("notes_tab_show");
     } catch (e) {
       say(String(e));
@@ -106,12 +108,15 @@
   /** The page a link asked for (a link of the notes): the page the PDF opens at, when it is not read yet; else gone
    *  to, and again a moment later if the view was not ready for it (a tab just brought forward). */
   async function pageAsked() {
-    const page = await invoke<number | null>("take_page").catch(() => null);
-    if (!page) return;
+    const asked = await invoke<{ page: number; quote: string | null } | null>("take_page").catch(() => null);
+    if (!asked) return;
+    const { page, quote } = asked;
     current = page;
     await opened.promise;
     view?.pageTo(page);
     setTimeout(() => current !== page && view?.pageTo(page), 400);
+    // the words quoted, found from that page on
+    if (quote) setTimeout(async () => !(await view?.find(quote)) && say(`“${quote}” not found: at page ${page}`), 600);
   }
 
   function say(what: string) {

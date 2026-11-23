@@ -9,7 +9,7 @@
   import { LogicalPosition } from "@tauri-apps/api/dpi";
   import { onMount, tick } from "svelte";
   import { showMenu } from "papers-write/project";
-  import { FileEditor, type EditorPrefs, type FileRead } from "papers-write/editor";
+  import { FileEditor, type EditorPrefs, type FileRead, type Status } from "papers-write/editor";
   import { listen } from "$lib/events";
   import { appendLines, placeLinkOf } from "$lib/notesLinks";
 
@@ -34,6 +34,8 @@
   let notes = $state<Notes | null>(null);
   let error = $state("");
   let editor = $state<FileEditor>();
+  /** whether what is in the editor is saved: a star by the file's name while it is not */
+  let status = $state<Status>("saved");
   /** the name typed in place of the file's (Rename…) */
   let renaming = $state<string | null>(null);
 
@@ -64,8 +66,15 @@
   /** ⌘-click: the place of the link under the cursor shown, when there is one. */
   function follow() {
     const view = editor?.view();
-    const target = view && placeLinkOf(view);
-    if (target && notes) void invoke("open_place", { notes: notes.path, target }).catch((e) => onsay(String(e)));
+    const place = view && placeLinkOf(view);
+    if (place) open(place.target, place.title);
+  }
+  /** A link of the notes followed (⌘-click, its tooltip's Follow): its place, at the words of its title near there. */
+  function open(target: string, quote: string | null) {
+    if (!notes) return;
+    void invoke<string | null>("open_place", { notes: notes.path, target, quote })
+      .then((said) => said && onsay(said))
+      .catch((e) => onsay(String(e)));
   }
 
   /** The file's name clicked: Rename…, Choose File…, Open in a Tab, Hide Notes. */
@@ -91,10 +100,14 @@
 
   onMount(() => {
     void ask(invoke<Notes>("project_notes")).then(() => tick()).then(takeLines);
-    const unlisten = listen("notes-changed", () => editor?.changedOnDisk());
+    const unlisten = [
+      listen("notes-changed", () => editor?.changedOnDisk()),
+      // what was typed in the notes elsewhere and not saved (their tab, the pane beside another text)
+      listen<string>("draft-changed", (e) => void (e.payload === notes?.path && editor?.draftChanged())),
+    ];
     return () => {
       void invoke("watch_notes", { path: null }).catch(() => {});
-      void unlisten.then((f) => f());
+      unlisten.forEach((u) => void u.then((f) => f()));
     };
   });
 </script>
@@ -113,7 +126,7 @@
         onblur={() => void rename()}
       />
     {:else if notes}
-      <button class="name" title={notes.path} onclick={menu}>{notes.name} ▾</button>
+      <button class="name" title={status === "editing" ? `${notes.path}: not saved` : notes.path} onclick={menu}>{notes.name}{status === "editing" ? " *" : ""} ▾</button>
     {/if}
   </header>
   <div class="body">
@@ -129,6 +142,8 @@
           {drafts}
           {prefs}
           onsync={follow}
+          hover={{ link: open }}
+          bind:status
         />
       {/key}
     {/if}

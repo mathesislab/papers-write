@@ -736,7 +736,10 @@
     const d = new Date();
     const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     try {
-      const notes = await invoke<{ path: string }>("note_here", { date, place: { line: view.state.doc.lineAt(view.state.selection.main.head).number } });
+      const { from, to, head } = view.state.selection.main;
+      // the words selected, quoted in the note and looked for when its link is followed
+      const quote = view.state.sliceDoc(from, to).replace(/\s+/g, " ").trim() || null;
+      const notes = await invoke<{ path: string }>("note_here", { date, place: { line: view.state.doc.lineAt(from === to ? head : from).number, quote } });
       if (notes.path === path) return void takeNotesLines();
       if (inTabs) return void (await invoke("notes_tab_show"));
       if (notesBeside) void notesPane?.takeLines();
@@ -746,12 +749,15 @@
       say(String(e));
     }
   }
-  /** A link of this text followed (⌘-click on a link to a place, a click on a link in its preview): a web address
-   *  in the browser; a file, from this text's folder, opened (at its line, `#L35`, or its page, `#page=12`). */
-  function openLink(target: string) {
+  /** A link of this text followed (⌘-click on a link to a place, its tooltip's Follow, a click on a link in its
+   *  preview): a web address in the browser; a file, from this text's folder, opened (at its line, `#L35`, or its
+   *  page, `#page=12`), at the words of its title near there when it has one. */
+  function openLink(target: string, title: string | null = null) {
     if (/^[a-z][a-z0-9+.-]*:/i.test(target) && !/^[a-z]:[\\/]/i.test(target)) return void openUrl(target).catch((e) => say(String(e)));
     if (!path) return say("Save the document first: its links are from its folder");
-    void invoke("open_place", { notes: path, target }).catch((e) => say(String(e)));
+    void invoke<string | null>("open_place", { notes: path, target, quote: title })
+      .then((said) => said && say(said))
+      .catch((e) => say(String(e)));
   }
 
   /** The lines Add Note Here started in this text, when it is the notes, put at its end. */
@@ -776,8 +782,8 @@
   function syncHere() {
     // a link to a place (the notes' links: Add Note Here) followed
     const view = editor?.view();
-    const target = view && path && placeLinkOf(view);
-    if (target) return openLink(target);
+    const place = view && path && placeLinkOf(view);
+    if (place) return openLink(place.target, place.title);
     if ((previewing || previewTab) && markdown) void showInPreview();
     else void showInPdf();
   }
@@ -941,6 +947,8 @@
   }
 
   async function save() {
+    // the notes beside the text, when they have the keys
+    if (notesBeside && notesPane?.hasFocus()) return notesPane.flush();
     if (path) return editor?.flush();
     try {
       problem = "";
@@ -991,6 +999,7 @@
     },
     // none in a tooltip while the figures are in the text
     image: (path) => (inlineFigures ? Promise.resolve(null) : figureImage(path)),
+    link: (target, title) => openLink(target, title),
   };
 
   /** The prose checked by the system's spell checker (the app's; the editor draws the misses), when Settings ▸ Editor ▸ Check spelling is on. */
@@ -1308,6 +1317,8 @@
       listen("save-and-close", saveAndClose),
       // the project's write.toml changed (Project Info): the suggestions may be kept elsewhere now, or it is notes now
       listen("projects-changed", () => (askStore(), void askNotes())),
+      // a draft of this file kept by another of its editors (the notes, beside another text): taken here too
+      listen<string>("draft-changed", (e) => void (e.payload === path && editor?.draftChanged())),
       listen("file-changed", () => {
         editor?.changedOnDisk();
         session.reload(300);

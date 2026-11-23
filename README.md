@@ -278,8 +278,17 @@ them) are proposed upstream; until they are released,
   renames it, chooses another file or opens it in a tab. View ▸ Add Note
   Here (⌥⇧⌘N), in a text or a PDF, starts a line at the end of the notes with
   the date and a link to the place: `[discussion.md:35](discussion.md#L35)`,
-  `[synopsis.pdf p. 12](build/synopsis.pdf#page=12)`. A ⌘-click on such a link
-  opens the file at that line or page.
+  `[synopsis.pdf p. 12](build/synopsis.pdf#page=12)`. With words selected,
+  they are quoted after the link and are its title:
+  `[discussion.md:35](discussion.md#L35 "far end") “far end”`. A ⌘-click on
+  such a link, or Follow in its tooltip, opens the file at the words, where
+  they are nearest to that line (else at the line, and it says so), or at
+  the page and the words from there. Every editor of the notes shows the
+  same text: what is typed and not saved (autosave off) goes to the others
+  too, each with a star by its name; File ▸ Save in the pane saves the notes.
+- Links: hovering a link of a Markdown text shows where it goes and a Follow
+  button; following a link, there or in the preview, opens a web address in
+  the browser and a file of the computer in the app.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
   project's tile) has three tabs; shown or not, its width and its tab are the same in all the
   project's tabs, and kept for the next time. Files: the project's folder as a tree (the

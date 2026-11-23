@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Serialize, Deserialize)]
 struct Stored {
@@ -71,7 +71,10 @@ pub fn draft_write(app: AppHandle, path: String, text: String, base: String) -> 
     // written whole, then put in place: never half a draft
     let part = file.with_extension("part");
     fs::write(&part, json).map_err(|e| e.to_string())?;
-    fs::rename(&part, &file).map_err(|e| e.to_string())
+    fs::rename(&part, &file).map_err(|e| e.to_string())?;
+    // every editor of the file told (its tab, the notes beside each text): they take the draft too
+    let _ = app.emit("draft-changed", &stored.path);
+    Ok(())
 }
 
 /// The draft of the file at `path` gone (saved, or discarded).

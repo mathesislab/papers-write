@@ -286,9 +286,11 @@ them) are proposed upstream; until they are released,
   the page and the words from there. Every editor of the notes shows the
   same text: what is typed and not saved (autosave off) goes to the others
   too, each with a star by its name; File ▸ Save in the pane saves the notes.
-- Links: hovering a link of a Markdown text shows where it goes and a Follow
-  button; following a link, there or in the preview, opens a web address in
-  the browser and a file of the computer in the app.
+- Links: a click in a link of a Markdown text only puts the cursor there (to
+  edit it); ⌘-click (Ctrl elsewhere) follows it, and so
+  does Follow in the tooltip shown on hovering it. Following a link, there or
+  with a click in the preview, opens a web address in the browser and a file
+  of the computer in the app.
 - The sidebar at the left (View ▸ Show Sidebar, ⌥⌘S, or a click on the current
   project's tile) has three tabs; shown or not, its width and its tab are the same in all the
   project's tabs, and kept for the next time. Files: the project's folder as a tree (the

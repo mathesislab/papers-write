@@ -54,7 +54,7 @@
   import { notesReview, textReview } from "$lib/reviewer";
   import { colorOf } from "$lib/reviewFormat";
   import { message, type Entry } from "$lib/commitLog";
-  import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+  import { openPath } from "@tauri-apps/plugin-opener";
   import {
     FileEditor,
     PREFS,
@@ -92,7 +92,7 @@
   import Frame from "$lib/Frame.svelte";
   import SidePdf from "$lib/SidePdf.svelte";
   import NotesPane from "$lib/NotesPane.svelte";
-  import { appendLines, placeLinkOf } from "$lib/notesLinks";
+  import { appendLines, followLink, isAddress, linkOf } from "$lib/notesLinks";
   import { phrasesAt, plainOf } from "$lib/pdfSearch";
   import type { Spot } from "$lib/pdf";
   import { figureImage } from "$lib/pdfImage";
@@ -753,11 +753,8 @@
    *  preview): a web address in the browser; a file, from this text's folder, opened (at its line, `#L35`, or its
    *  page, `#page=12`), at the words of its title near there when it has one. */
   function openLink(target: string, title: string | null = null) {
-    if (/^[a-z][a-z0-9+.-]*:/i.test(target) && !/^[a-z]:[\\/]/i.test(target)) return void openUrl(target).catch((e) => say(String(e)));
-    if (!path) return say("Save the document first: its links are from its folder");
-    void invoke<string | null>("open_place", { notes: path, target, quote: title })
-      .then((said) => said && say(said))
-      .catch((e) => say(String(e)));
+    if (!path && !isAddress(target)) return say("Save the document first: its links are from its folder");
+    followLink(path ?? "", { target, title }, say);
   }
 
   /** The lines Add Note Here started in this text, when it is the notes, put at its end. */
@@ -780,10 +777,10 @@
   /** ⌃-click in the text, or Show in … of its menu: where the cursor is, shown in the pane beside it: the preview's
    *  block when the preview is shown, else in the PDF (shown first when it is not). */
   function syncHere() {
-    // a link to a place (the notes' links: Add Note Here) followed
+    // a link followed (a plain click only puts the cursor in it, to edit it)
     const view = editor?.view();
-    const place = view && path && placeLinkOf(view);
-    if (place) return openLink(place.target, place.title);
+    const link = view && linkOf(view);
+    if (link) return openLink(link.target, link.title);
     if ((previewing || previewTab) && markdown) void showInPreview();
     else void showInPdf();
   }

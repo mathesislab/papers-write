@@ -11,7 +11,7 @@
   import { showMenu } from "papers-write/project";
   import { FileEditor, type EditorPrefs, type FileRead, type Status } from "papers-write/editor";
   import { listen } from "$lib/events";
-  import { appendLines, placeLinkOf } from "$lib/notesLinks";
+  import { appendLines, followLink, linkOf } from "$lib/notesLinks";
 
   let {
     read,
@@ -66,15 +66,12 @@
   /** ⌘-click: the place of the link under the cursor shown, when there is one. */
   function follow() {
     const view = editor?.view();
-    const place = view && placeLinkOf(view);
-    if (place) open(place.target, place.title);
+    const link = view && linkOf(view);
+    if (link) open(link.target, link.title);
   }
   /** A link of the notes followed (⌘-click, its tooltip's Follow): its place, at the words of its title near there. */
   function open(target: string, quote: string | null) {
-    if (!notes) return;
-    void invoke<string | null>("open_place", { notes: notes.path, target, quote })
-      .then((said) => said && onsay(said))
-      .catch((e) => onsay(String(e)));
+    if (notes) followLink(notes.path, { target, title: quote }, onsay);
   }
 
   /** The file's name clicked: Rename…, Choose File…, Open in a Tab, Hide Notes. */
